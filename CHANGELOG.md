@@ -5,6 +5,42 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-05-04
+
+### Added
+
+- **Zrušení spárování bankovní transakce.** Tlačítko „Zrušit spárování" v
+  detailu výpisu pro stavy `auto_exact / auto_partial / manual / ignored`.
+  Konzervativně: fakturu vrátí z `paid` na `issued` jen pokud `paid_at`
+  odpovídá datu této transakce a žádná jiná transakce už není spárována
+  (chrání ručně označené úhrady). Endpoint
+  `POST /api/bank-transactions/{id}/unmatch`, audit `bank.tx_unmatch`.
+- **Rychlý filtr na měsíc** v seznamu faktur (ve zvoleném roce). Aktivní
+  jen pokud je vybraný rok a není custom datum-rozsah. Funguje i v CSV
+  exportu (`filter[month]=N`).
+
+### Changed
+
+- **Graf „Obrat po měsících" → posledních 12 měsíců (rolling).** Místo
+  „letošní vs. minulý rok dle kalendářního roku" teď bar zobrazuje
+  posledních 12 měsíců a porovnávací linie stejných 12 měsíců o rok
+  dříve. X-osa formát `MM/YYYY`. Tooltip ukazuje pár současného a
+  minulého měsíce.
+- **YoY procento na dashboardu (`change_pct`) je YTD-vs-YTD.** Předtím
+  porovnávalo letošní YTD vs. **celý** minulý rok, takže nedokončený rok
+  vypadal výrazně hůř. Teď se porovnává minulý rok jen do stejné
+  kalendářní pozice (`<= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)`); v
+  tooltipu ukázané oba kontexty (YTD i celý rok).
+- **Proformy se nepočítají do obratu nikde.** Dashboard
+  (`issued_count_ytd`), detail klienta (`revenue_by_year`,
+  `revenue_by_month`), `project_revenue_cache`, `client_revenue_cache`
+  i `ProjectStatsAction` (top zakázky, totals) — všechny filtrují na
+  `invoice_type IN ('invoice', 'credit_note')`. Proforma není daňový
+  doklad, neměla by ovlivňovat metriky obratu. Cache se přepočítá přes
+  `php api/bin/recompute-stats.php`.
+- **Pagination invoices** zvětšen z 20 na 50 řádků na stránku
+  (`pagination.invoices_per_page`).
+
 ## [1.2.0] — 2026-05-03
 
 ### Added
