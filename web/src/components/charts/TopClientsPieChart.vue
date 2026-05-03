@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Chart, DoughnutController, ArcElement, Tooltip, Legend } from 'chart.js'
 import type { TopClient } from '@/api/dashboard'
 import { formatMoney } from '@/composables/useFormat'
@@ -10,6 +11,7 @@ const props = defineProps<{ clients: TopClient[]; currency?: string }>()
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 let chart: Chart | null = null
+const { t, locale } = useI18n()
 
 // Indigo gradient palette
 const palette = [
@@ -29,7 +31,7 @@ const sliceData = computed(() => {
   const labels = top.map(c => c.company_name)
   const values = top.map(c => c.total)
   if (rest.length > 0) {
-    labels.push('Ostatní')
+    labels.push(t('common.other'))
     values.push(rest.reduce((s, c) => s + c.total, 0))
   }
   return { labels, values }
@@ -78,11 +80,12 @@ function build() {
 onMounted(build)
 onBeforeUnmount(() => chart?.destroy())
 watch(() => [props.clients, props.currency], build, { deep: true })
+watch(() => locale.value, build)
 </script>
 
 <template>
   <div v-if="sliceData.labels.length === 0" class="text-sm text-neutral-400 text-center py-12">
-    žádná data
+    {{ t('common.no_data') }}
   </div>
   <div v-else class="relative h-64">
     <canvas ref="canvas"></canvas>

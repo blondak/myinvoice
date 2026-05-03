@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Chart,
   BarController,
@@ -26,7 +27,8 @@ const props = defineProps<{
 const canvas = ref<HTMLCanvasElement | null>(null)
 let chart: Chart | null = null
 
-const monthLabels = ['Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čvn', 'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro']
+const { t, locale } = useI18n()
+const monthLabels = computed(() => (t('common.months_short') as unknown as string[]))
 
 function build() {
   if (!canvas.value) return
@@ -35,7 +37,7 @@ function build() {
   chart = new Chart(canvas.value, {
     type: 'bar',
     data: {
-      labels: monthLabels,
+      labels: monthLabels.value,
       datasets: [
         {
           label: `${props.yearLabel}`,
@@ -99,7 +101,7 @@ function formatTick(n: number): string {
 
 onMounted(build)
 onBeforeUnmount(() => chart?.destroy())
-watch(() => [props.thisYear, props.prevYear, props.currency], build, { deep: true })
+watch(() => [props.thisYear, props.prevYear, props.currency, locale.value], build, { deep: true })
 </script>
 
 <template>

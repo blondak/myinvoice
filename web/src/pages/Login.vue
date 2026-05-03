@@ -48,7 +48,7 @@ async function submit() {
   // (button má `:disabled` ale Enter v inputu submitne form i s disabled buttonem
   //  → bez tohoto guardu by 1. pokus šel s prázdným tokenem → 400 captcha_failed.)
   if (captchaRequired.value && !turnstile.token.value) {
-    error.value = 'Počkej prosím, dokud se nenačte CAPTCHA…'
+    error.value = t('auth.captcha_loading')
     return
   }
   error.value = ''
@@ -71,14 +71,14 @@ async function submit() {
       turnstile.reset()  // taky reset — token z předchozího pokusu už invalid
     } else if (code === 'captcha_required') {
       captchaRequired.value = true
-      error.value = 'Vyžaduje se ověření CAPTCHA.'
+      error.value = t('auth.captcha_required')
     } else if (code === 'captcha_failed') {
       turnstile.reset()
-      error.value = 'CAPTCHA selhala, zkuste znovu.'
+      error.value = t('auth.captcha_failed')
     } else if (code === 'too_many_attempts') {
-      error.value = msg || 'Příliš mnoho pokusů. Zkuste to později.'
+      error.value = msg || t('auth.too_many_attempts')
     } else {
-      error.value = msg || 'Přihlášení selhalo.'
+      error.value = msg || t('auth.login_failed')
       turnstile.reset()
     }
   }

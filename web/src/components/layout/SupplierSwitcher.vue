@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSupplierStore } from '@/stores/supplier'
 
 const supplierStore = useSupplierStore()
+const { t } = useI18n()
 
 const open = ref(false)
 
@@ -53,7 +55,7 @@ function pick(id: number) {
           <span v-else class="w-4 h-4 mt-0.5 shrink-0"></span>
           <div class="flex-1 min-w-0">
             <div class="font-medium text-neutral-900 truncate">{{ s.company_name }}</div>
-            <div v-if="s.ic" class="text-xs text-neutral-500">IČ {{ s.ic }}</div>
+            <div v-if="s.ic" class="text-xs text-neutral-500">{{ t('common.ic') }} {{ s.ic }}</div>
           </div>
         </button>
       </div>

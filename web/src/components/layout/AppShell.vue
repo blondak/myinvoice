@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 defineProps<{ title?: string }>()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -11,7 +13,7 @@ defineProps<{ title?: string }>()
           <h1 class="text-lg font-semibold leading-tight">
             My<span class="text-primary-600">Invoice</span><span class="text-neutral-500 font-normal">.cz</span>
           </h1>
-          <p class="text-xs text-neutral-500 leading-tight">{{ title ?? 'Fakturační systém' }}</p>
+          <p class="text-xs text-neutral-500 leading-tight">{{ title ?? t('app.subtitle') }}</p>
         </div>
       </div>
     </header>

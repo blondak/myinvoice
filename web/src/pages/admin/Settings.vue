@@ -87,7 +87,7 @@ async function saveCurrency() {
 }
 
 async function addCurrencyAccount(code: string) {
-  const label = window.prompt(`Název nového účtu pro ${code} (např. „${code} — Fio Bank"):`, `${code} — nový účet`)
+  const label = window.prompt(t('settings.add_account_prompt', { code }), t('settings.add_account_default_label', { code }))
   if (!label) return
   try {
     await settingsApi.createCurrency({ code, label, is_active: true })
@@ -99,7 +99,7 @@ async function addCurrencyAccount(code: string) {
 }
 
 async function removeCurrency(c: CurrencyAccount) {
-  if (!window.confirm(`Smazat ${c.label}? Akce je nevratná.`)) return
+  if (!window.confirm(t('settings.delete_account_confirm', { label: c.label }))) return
   try {
     await settingsApi.deleteCurrency(c.id)
     currencies.value = await settingsApi.listCurrencies()
@@ -226,11 +226,11 @@ async function removeCurrency(c: CurrencyAccount) {
           <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
             <tr>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.currency') }}</th>
-              <th class="px-3 py-2 text-left font-medium">Účet (název)</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('settings.account_th') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.account_cz') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.iban') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.bic') }}</th>
-              <th class="px-3 py-2 text-center font-medium">Výchozí</th>
+              <th class="px-3 py-2 text-center font-medium">{{ t('common.default') }}</th>
               <th class="px-3 py-2 text-center font-medium">{{ t('settings.active') }}</th>
               <th class="px-3 py-2 w-32"></th>
             </tr>
@@ -261,7 +261,7 @@ async function removeCurrency(c: CurrencyAccount) {
           </tbody>
         </table>
         <div class="px-5 py-3 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600 flex flex-wrap gap-3 items-center">
-          <span>Přidat další účet:</span>
+          <span>{{ t('settings.add_another_account') }}</span>
           <button v-for="code in [...new Set(currencies.map(c => c.code))]" :key="code"
             @click="addCurrencyAccount(code)"
             class="cursor-pointer px-2 h-7 border border-neutral-300 rounded text-xs hover:bg-white">
@@ -274,10 +274,10 @@ async function removeCurrency(c: CurrencyAccount) {
     <!-- Modal — currency edit -->
     <div v-if="editingCurrency" class="fixed inset-0 bg-neutral-900/40 z-50 flex items-center justify-center p-4" @click.self="editingCurrency = null">
       <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-5">
-        <h3 class="text-lg font-semibold mb-3">Editace měny: {{ editingCurrencyLabel }}</h3>
+        <h3 class="text-lg font-semibold mb-3">{{ t('settings.edit_currency_label_full', { label: editingCurrencyLabel }) }}</h3>
         <div class="space-y-3">
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Název účtu (label)</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.account_label_form') }}</label>
             <input v-model="currencyDraft.label" type="text" placeholder="CZK — Fio Bank"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
           </div>
@@ -312,7 +312,7 @@ async function removeCurrency(c: CurrencyAccount) {
           </label>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="currencyDraft.is_default" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-            Výchozí účet pro tuto měnu (per kód lze mít vždy jen jeden)
+            {{ t('codebooks.is_default_account_hint') }}
           </label>
           <div class="flex justify-end gap-2 pt-2">
             <button @click="editingCurrency = null" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>

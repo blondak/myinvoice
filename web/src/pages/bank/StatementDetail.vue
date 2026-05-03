@@ -35,13 +35,9 @@ function statusBadge(s: string): string {
 }
 
 function statusLabel(s: string): string {
-  return ({
-    auto_exact: 'Auto OK',
-    auto_partial: 'Částečně',
-    manual: 'Ručně',
-    ignored: 'Ignorováno',
-    unmatched: 'Nespárováno',
-  } as Record<string, string>)[s] || s
+  const key = `bank.match_status.${s}`
+  const label = t(key)
+  return label === key ? s : label
 }
 
 function startMatch(tx: BankTransaction) {
@@ -59,7 +55,7 @@ async function confirmMatch() {
     matchingTx.value = null
     await load()
   } catch (e: any) {
-    matchError.value = apiErrorMessage(e, 'Párování selhalo')
+    matchError.value = apiErrorMessage(e, t('bank.match_failed'))
   }
 }
 
@@ -76,7 +72,7 @@ async function ignoreTx(tx: BankTransaction) {
   <div v-else-if="statement">
     <RouterLink to="/bank" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('bank.back') }}</RouterLink>
     <h1 class="text-2xl font-semibold mt-1">
-      Výpis {{ statement.statement_number }} — {{ formatDate(statement.statement_date) }}
+      {{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}
     </h1>
     <p class="text-sm text-neutral-500 mt-0.5">{{ t('bank.account') }}<span class="font-mono">{{ statement.account_number }}</span> · {{ statement.file_name }}
     </p>
@@ -103,18 +99,18 @@ async function ignoreTx(tx: BankTransaction) {
     <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <header class="px-5 py-3 border-b border-neutral-200">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Transakce ({{ statement.transactions.length }})
+          {{ t('bank.transactions') }} ({{ statement.transactions.length }})
         </h2>
       </header>
       <table class="w-full text-sm">
         <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
           <tr>
-            <th class="px-3 py-2 text-left font-medium">Datum</th>
+            <th class="px-3 py-2 text-left font-medium">{{ t('bank.date') }}</th>
             <th class="px-3 py-2 text-right font-medium">{{ t('bank.amount') }}</th>
-            <th class="px-3 py-2 text-left font-medium">VS / KS</th>
-            <th class="px-3 py-2 text-left font-medium">Protistrana</th>
-            <th class="px-3 py-2 text-left font-medium">Faktura</th>
-            <th class="px-3 py-2 text-center font-medium">Stav</th>
+            <th class="px-3 py-2 text-left font-medium">{{ t('bank.vs_ks') }}</th>
+            <th class="px-3 py-2 text-left font-medium">{{ t('bank.counterparty') }}</th>
+            <th class="px-3 py-2 text-left font-medium">{{ t('bank.invoice') }}</th>
+            <th class="px-3 py-2 text-center font-medium">{{ t('invoice.status_label') }}</th>
             <th class="px-3 py-2 w-32"></th>
           </tr>
         </thead>
@@ -150,11 +146,11 @@ async function ignoreTx(tx: BankTransaction) {
             <td class="px-3 py-2 text-right text-xs">
               <button v-if="tx.match_status === 'unmatched' || tx.match_status === 'auto_partial'"
                 @click="startMatch(tx)" class="cursor-pointer text-primary-600 hover:text-primary-700 mr-2">
-                Spárovat
+                {{ t('bank.match') }}
               </button>
               <button v-if="tx.match_status === 'unmatched'" @click="ignoreTx(tx)"
                 class="cursor-pointer text-neutral-500 hover:text-neutral-700">
-                Ignorovat
+                {{ t('bank.ignore') }}
               </button>
             </td>
           </tr>
@@ -166,13 +162,13 @@ async function ignoreTx(tx: BankTransaction) {
     <div v-if="matchingTx" class="fixed inset-0 bg-neutral-900/40 z-50 flex items-center justify-center p-4" @click.self="matchingTx = null">
       <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-5">
         <h3 class="text-lg font-semibold mb-3">{{ t('bank.manual_match_title') }}</h3>
-        <label class="block text-sm font-medium text-neutral-700 mb-1">Variabilní symbol faktury</label>
+        <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank.invoice_vs') }}</label>
         <input v-model="matchVarsymbol" type="text" inputmode="numeric"
           placeholder="2603001" autofocus
           @keyup.enter="confirmMatch"
           class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono mb-2" />
         <p class="text-xs text-neutral-500 mb-4">
-          Pokud transakce má VS, je tu předvyplněný. Můžeš ho upravit (např. když klient zadal špatný VS).
+          {{ t('bank.vs_hint') }}
         </p>
         <div v-if="matchError" class="rounded-md bg-danger-50 border border-danger-500/40 px-3 py-2 text-sm text-danger-500 mb-3">
           {{ matchError }}

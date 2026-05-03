@@ -48,7 +48,7 @@ function toggleSelected(id: number) {
 
 async function bulkReissue() {
   if (selectedIds.value.length === 0) return
-  if (!confirm(`Klonovat ${selectedIds.value.length} faktur do dalšího měsíce?\n\nPopisky položek se posunou (např. „3/2026" → „4/2026"). Vytvoří koncepty — žádný se neodešle ani nevystaví automaticky.`)) return
+  if (!confirm(t('invoice.bulk_clone_confirm', { n: selectedIds.value.length }))) return
   bulkBusy.value = true
   try {
     const r = await invoicesApi.bulkReissue(selectedIds.value, { increment_month_in_descriptions: true })
@@ -169,7 +169,7 @@ async function bulkSend() {
     toast.warning(t('invoice.bulk_send_no_eligible'))
     return
   }
-  if (!confirm(`Odeslat ${list.length} faktur klientům?\n\nE-mail půjde na hlavní adresu klienta + fakturační e-maily zakázky. Pokud klient nemá e-mail, bude faktura přeskočena.`)) return
+  if (!confirm(t('invoice.bulk_send_confirm', { n: list.length }))) return
   bulkBusy.value = true
   let okCount = 0
   const errors: string[] = []
@@ -424,7 +424,7 @@ const yearOptions = computed(() => {
         <header class="sticky top-16 z-[5] flex items-center justify-between bg-neutral-50/95 backdrop-blur border border-neutral-200 rounded-t-lg px-4 py-2.5 mb-0">
           <div class="flex items-center gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-700">{{ formatMonth(g.month) }}</h2>
-            <span class="text-xs text-neutral-500">{{ g.count }} {{ g.count === 1 ? 'doklad' : g.count < 5 ? 'doklady' : 'dokladů' }}</span>
+            <span class="text-xs text-neutral-500">{{ g.count }} {{ g.count === 1 ? t('invoice.doc_1') : (g.count < 5 ? t('invoice.doc_2_4') : t('invoice.doc_5plus')) }}</span>
           </div>
           <div class="flex items-center gap-3 text-xs">
             <span v-for="t in g.totals_per_currency" :key="t.currency" class="font-mono">

@@ -85,8 +85,8 @@ async function onFileSelected(e: Event) {
 
     <div v-if="lastResult" class="rounded-md px-4 py-2 text-sm mb-4"
       :class="lastResult.duplicate ? 'bg-warning-50 border border-warning-500/40 text-warning-600' : 'bg-success-50 border border-success-500/40 text-success-600'">
-      <span v-if="lastResult.duplicate">Tento výpis už byl naimportován (statement #{{ lastResult.statement_id }}).</span>
-      <span v-else>Importováno: {{ lastResult.transactions }} transakcí, automaticky spárováno {{ lastResult.matched }}.</span>
+      <span v-if="lastResult.duplicate">{{ t('bank.import_duplicate', { id: lastResult.statement_id }) }}</span>
+      <span v-else>{{ t('bank.import_done', { transactions: lastResult.transactions, matched: lastResult.matched }) }}</span>
     </div>
 
     <div v-if="error" class="rounded-md px-4 py-2 text-sm mb-4 bg-danger-50 border border-danger-500/40 text-danger-500">

@@ -48,7 +48,7 @@ async function downloadExport() {
     a.remove()
     URL.revokeObjectURL(a.href)
   } catch (e: any) {
-    error.value = e?.message || 'Stažení selhalo'
+    error.value = e?.message || t('export.download_failed')
   } finally {
     downloading.value = false
   }
@@ -56,8 +56,7 @@ async function downloadExport() {
 
 const monthLabel = (m: string): string => {
   const [y, mm] = m.split('-')
-  const months = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen',
-                  'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec']
+  const months = t('common.months_long') as unknown as string[]
   return `${months[Number(mm) - 1]} ${y}`
 }
 </script>

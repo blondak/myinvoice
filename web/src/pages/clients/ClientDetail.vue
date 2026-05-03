@@ -264,7 +264,7 @@ async function deleteClient() {
                 }">{{ p.status }}</span>
             </td>
             <td class="px-4 py-3 text-right font-mono">{{ p.hourly_rate.toLocaleString('cs') }} {{ p.currency }}/h</td>
-            <td class="px-4 py-3 text-center">{{ p.payment_due_days }} dní</td>
+            <td class="px-4 py-3 text-center">{{ t('client.due_days_n', { n: p.payment_due_days }) }}</td>
             <td class="px-4 py-3 font-mono text-xs text-neutral-500">{{ p.project_number || '—' }}</td>
             <td class="px-4 py-3 text-right whitespace-nowrap">
               <RouterLink :to="`/projects/${p.id}`"

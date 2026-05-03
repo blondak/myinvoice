@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Chart, DoughnutController, ArcElement, Tooltip, Legend } from 'chart.js'
 
 Chart.register(DoughnutController, ArcElement, Tooltip, Legend)
@@ -7,23 +8,20 @@ Chart.register(DoughnutController, ArcElement, Tooltip, Legend)
 const props = defineProps<{ counts: Record<string, number> }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 let chart: Chart | null = null
+const { t, locale } = useI18n()
 
 const palette: Record<string, string> = {
-  paid:      '#4CAF7A',  // success green
-  sent:      '#5C45A0',  // primary
-  reminded:  '#E8A547',  // warning amber
-  issued:    '#A99CD8',  // primary light
-  cancelled: '#D45B5B',  // danger
-  draft:     '#A7A0BA',  // neutral
+  paid:      '#4CAF7A',
+  sent:      '#5C45A0',
+  reminded:  '#E8A547',
+  issued:    '#A99CD8',
+  cancelled: '#D45B5B',
+  draft:     '#A7A0BA',
 }
 
-const labels: Record<string, string> = {
-  paid: 'Zaplaceno',
-  sent: 'Odesláno',
-  reminded: 'Upomenuto',
-  issued: 'Vystaveno (neodesláno)',
-  cancelled: 'Stornováno',
-  draft: 'Koncept',
+function statusLabel(k: string): string {
+  if (k === 'issued') return t('status.issued_not_sent')
+  return t(`status.${k}`)
 }
 
 const slice = computed(() => {
@@ -34,7 +32,7 @@ const slice = computed(() => {
   for (const k of order) {
     const v = props.counts?.[k] ?? 0
     if (v > 0) {
-      labelArr.push(labels[k] || k)
+      labelArr.push(statusLabel(k))
       valueArr.push(v)
       colorArr.push(palette[k] || '#A99CD8')
     }
@@ -77,11 +75,12 @@ function build() {
 onMounted(build)
 onBeforeUnmount(() => chart?.destroy())
 watch(() => props.counts, build, { deep: true })
+watch(() => locale.value, build)
 </script>
 
 <template>
   <div v-if="slice.labelArr.length === 0" class="text-sm text-neutral-400 text-center py-12">
-    žádná data
+    {{ t('common.no_data') }}
   </div>
   <div v-else class="relative h-64">
     <canvas ref="canvas"></canvas>

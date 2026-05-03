@@ -40,7 +40,7 @@ async function submit() {
   // Enter v inputu submitne form i s disabled buttonem → bez tohoto guardu by
   // 1. pokus šel s prázdným tokenem → 400 captcha_failed.
   if (captchaEnabled.value && !turnstile.token.value) {
-    error.value = 'Počkej prosím, dokud se nenačte CAPTCHA…'
+    error.value = t('auth.captcha_loading')
     return
   }
   error.value = ''

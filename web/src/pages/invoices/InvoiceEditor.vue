@@ -344,7 +344,7 @@ function removeWrItem(idx: number) {
 function openWorkReport() {
   if (wrItems.value.length === 0) {
     const date = (form.value.tax_date || form.value.issue_date || '').slice(0, 7) // YYYY-MM
-    wrTitle.value = date ? `Výkaz víceprací — ${date}` : 'Výkaz víceprací'
+    wrTitle.value = date ? t('invoice.wr_title_with_date', { date }) : t('invoice.work_report')
     addWrItem()
   }
   wrOpen.value = true
@@ -360,7 +360,7 @@ function pushWrToInvoiceItem() {
   const totalAmount = wrTotalAmount.value
   const avgRate = totalHours > 0 ? Math.round((totalAmount / totalHours) * 100) / 100 : 0
   const defaultVatId = vatRates.value.find(v => v.is_default)?.id ?? vatRates.value[0]?.id ?? 1
-  const description = wrTitle.value || 'Výkaz víceprací'
+  const description = wrTitle.value || t('invoice.work_report')
 
   // 1. Položka se shodným popisem → sync (aktualizace hodin/sazby).
   // 2. Jinak prázdná položka (z blankItem na nové faktuře) → naplň ji, ne push.
@@ -399,7 +399,7 @@ async function deleteWorkReport() {
     } catch (e: any) {
       // 404 = výkaz v DB neexistuje (nový), pokračuj s lokálním clear
       if (e?.response?.status !== 404) {
-        error.value = apiErrorMessage(e, 'Smazání výkazu selhalo')
+        error.value = apiErrorMessage(e, t('invoice.wr_delete_failed'))
         return
       }
     }
@@ -418,16 +418,19 @@ function checkWorkReportSync(): string | null {
   const totalHours = Math.round(wrTotalHours.value * 100) / 100
   const totalAmount = Math.round(wrTotalAmount.value * 100) / 100
   const avgRate = totalHours > 0 ? Math.round((totalAmount / totalHours) * 100) / 100 : 0
-  const description = (wrTitle.value || (locale.value === 'cs' ? 'Výkaz víceprací' : 'Work report')).trim()
+  const description = (wrTitle.value || t('invoice.work_report')).trim()
   if (description === '') return null
 
   const ccy = currencies.value.find(c => c.id === form.value.currency_id)?.code || ''
   const item = form.value.items.find(it => (it.description || '').trim() === description)
 
   if (!item) {
-    return locale.value === 'cs'
-      ? `Výkaz „${description}" obsahuje ${totalHours} h za ${totalAmount.toLocaleString('cs')} ${ccy}, ale není zapsán jako položka faktury.\n\nPokračovat bez přenosu výkazu do faktury?`
-      : `Work report "${description}" has ${totalHours}h for ${totalAmount.toLocaleString('en-US')} ${ccy}, but is not listed as an invoice item.\n\nContinue without transferring the work report to the invoice?`
+    return t('invoice.wr_not_in_items_confirm', {
+      description,
+      hours: totalHours,
+      amount: totalAmount.toLocaleString(locale.value === 'cs' ? 'cs' : 'en-US'),
+      ccy,
+    })
   }
 
   const itemQty = Number(item.quantity) || 0
@@ -436,9 +439,16 @@ function checkWorkReportSync(): string | null {
   const rateDiff = Math.abs(itemRate - avgRate) > 0.01
 
   if (qtyDiff || rateDiff) {
-    return locale.value === 'cs'
-      ? `Výkaz se liší od přenesené položky faktury:\n\n• Výkaz:   ${totalHours} h × ${avgRate.toLocaleString('cs')} = ${totalAmount.toLocaleString('cs')} ${ccy}\n• Položka: ${itemQty} h × ${itemRate.toLocaleString('cs')} = ${(itemQty * itemRate).toLocaleString('cs')} ${ccy}\n\nPokračovat bez aktualizace položky?`
-      : `Work report differs from invoice item:\n\n• Report: ${totalHours}h × ${avgRate} = ${totalAmount} ${ccy}\n• Item:   ${itemQty}h × ${itemRate} = ${(itemQty * itemRate)} ${ccy}\n\nContinue without updating the item?`
+    const loc = locale.value === 'cs' ? 'cs' : 'en-US'
+    return t('invoice.wr_diff_confirm', {
+      hours: totalHours,
+      rate: avgRate.toLocaleString(loc),
+      amount: totalAmount.toLocaleString(loc),
+      itemQty,
+      itemRate: itemRate.toLocaleString(loc),
+      itemAmount: (itemQty * itemRate).toLocaleString(loc),
+      ccy,
+    })
   }
   return null
 }
@@ -497,13 +507,13 @@ async function submit() {
         }, isForce.value)
       } catch (e: any) {
         // Faktura je uložená, výkaz ne — nepokračuj v redirectu, ať uživatel nepřijde o data ve formuláři
-        error.value = apiErrorMessage(e, locale.value === 'cs' ? 'Uložení výkazu selhalo' : 'Work report save failed')
+        error.value = apiErrorMessage(e, t('invoice.wr_save_failed'))
         return
       }
     }
     router.push(`/invoices/${saved.id}`)
   } catch (e: any) {
-    error.value = apiErrorMessage(e, locale.value === 'cs' ? 'Uložení selhalo' : 'Save failed')
+    error.value = apiErrorMessage(e, t('common.save_failed'))
   } finally {
     submitting.value = false
   }
@@ -511,12 +521,12 @@ async function submit() {
 
 async function deleteDraft() {
   if (!invoiceId.value) return
-  if (!confirm(locale.value === 'cs' ? 'Smazat koncept faktury?' : 'Delete invoice draft?')) return
+  if (!confirm(t('invoice.delete_draft_confirm'))) return
   try {
     await invoicesApi.delete(invoiceId.value)
     router.push('/invoices')
   } catch (e: any) {
-    error.value = apiErrorMessage(e, locale.value === 'cs' ? 'Smazání selhalo' : 'Delete failed')
+    error.value = apiErrorMessage(e, t('common.delete_failed'))
   }
 }
 </script>
@@ -581,13 +591,11 @@ async function deleteDraft() {
               <!-- VIES výsledek -->
               <div v-if="viesResult" class="mt-1 text-xs flex items-start gap-1.5">
                 <template v-if="viesResult.status === 'checking'">
-                  <span class="text-neutral-500">⏳ Ověřuji DIČ {{ viesResult.dic }} v systému VIES…</span>
+                  <span class="text-neutral-500">{{ t('invoice.vies.checking', { dic: viesResult.dic }) }}</span>
                 </template>
                 <template v-else-if="viesResult.status === 'valid'">
                   <svg class="w-4 h-4 text-success-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                  <span class="text-success-600">{{ t('common.dic') }} <span class="font-mono font-semibold">{{ viesResult.dic }}</span> ověřeno ve VIES
-                    <span v-if="viesResult.name" class="text-neutral-500"> — {{ viesResult.name }}</span>
-                  </span>
+                  <span class="text-success-600">{{ t('invoice.vies.valid', { dic: viesResult.dic }) }}<span v-if="viesResult.name" class="text-neutral-500"> — {{ viesResult.name }}</span></span>
                 </template>
                 <template v-else-if="viesResult.status === 'invalid'">
                   <svg class="w-4 h-4 text-danger-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -636,7 +644,7 @@ async function deleteDraft() {
         </div>
 
         <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
-          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">Datumy</h3>
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.dates_section') }}</h3>
           <div class="space-y-3">
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.issue_date') }} *</label>
@@ -647,7 +655,7 @@ async function deleteDraft() {
               <input v-model="form.tax_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
             </div>
             <div v-else class="rounded-md bg-accent-50 border border-accent-100 p-3 text-sm text-accent-600">
-              {{ locale === 'cs' ? 'Zálohová faktura nemá DUZP. Daňový doklad k záloze se vystaví po platbě.' : 'Proforma has no tax point. The tax document is issued after payment.' }}
+              {{ t('invoice.proforma_no_tax_point') }}
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.due_date') }} *</label>
@@ -669,7 +677,7 @@ async function deleteDraft() {
           <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
             <tr>
               <th class="px-3 py-2 text-left font-medium w-8"></th>
-              <th class="px-3 py-2 text-left font-medium">Popis</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('invoice.items_table.description') }}</th>
               <th class="px-3 py-2 text-right font-medium w-20">{{ t('invoice.items_table.qty') }}</th>
               <th class="px-3 py-2 text-left font-medium w-16">{{ t('invoice.items_table.unit') }}</th>
               <th class="px-3 py-2 text-right font-medium w-32">{{ t('invoice.items_table.unit_price') }}</th>
@@ -738,11 +746,11 @@ async function deleteDraft() {
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.summary') }}</h3>
           <dl class="space-y-1.5 text-sm">
             <div v-for="b in computed_totals.breakdown" :key="b.rate" class="flex justify-between text-neutral-600">
-              <dt>Základ {{ formatPercent(b.rate) }}</dt>
+              <dt>{{ t('invoice.totals.base') }} {{ formatPercent(b.rate) }}</dt>
               <dd class="font-mono">{{ formatMoney(b.base, form.currency) }}</dd>
             </div>
             <div v-for="b in computed_totals.breakdown" :key="'v'+b.rate" v-show="b.vat > 0" class="flex justify-between text-neutral-600">
-              <dt>DPH {{ formatPercent(b.rate) }}</dt>
+              <dt>{{ t('invoice.totals.vat') }} {{ formatPercent(b.rate) }}</dt>
               <dd class="font-mono">{{ formatMoney(b.vat, form.currency) }}</dd>
             </div>
             <div class="flex justify-between border-t border-neutral-200 pt-2 mt-2 font-semibold">
@@ -845,7 +853,7 @@ async function deleteDraft() {
             </tbody>
           </table>
           <p class="text-xs text-neutral-500">
-            Výkaz se vytiskne na druhou stránku PDF faktury. Pokud je vyplněný, položku faktury si nastav ručně (např. „Vícepráce {{ wrTitle }} — celkem {{ wrTotalHours.toFixed(2) }} h × {{ wrItems[0]?.rate || 0 }} {{ form.currency }}").
+            {{ t('invoice.wr_hint', { title: wrTitle, hours: wrTotalHours.toFixed(2), rate: wrItems[0]?.rate || 0, currency: form.currency }) }}
           </p>
         </div>
       </div>

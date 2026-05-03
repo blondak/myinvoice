@@ -85,7 +85,7 @@ function goPage(delta: number) {
       <button @click="load" class="cursor-pointer h-9 px-3 border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
         {{ t('activity_log.refresh') }}
       </button>
-      <span class="ml-auto text-xs text-neutral-500">Celkem {{ total }} záznamů · strana {{ currentPage }} / {{ totalPages }}</span>
+      <span class="ml-auto text-xs text-neutral-500">{{ t('activity_log.total', { n: total, p: currentPage, tp: totalPages }) }}</span>
     </div>
 
     <div v-if="loading" class="text-center text-neutral-500 py-12 text-sm">{{ t('common.loading') }}</div>
@@ -129,12 +129,12 @@ function goPage(delta: number) {
       <div class="border-t border-neutral-200 p-3 flex items-center justify-between">
         <button @click="goPage(-1)" :disabled="filter.offset === 0"
           class="cursor-pointer h-8 px-3 border border-neutral-300 rounded text-sm disabled:opacity-30 hover:bg-neutral-50">
-          ← Předchozí
+          {{ t('common.previous') }}
         </button>
         <span class="text-xs text-neutral-500">{{ t('common.page') }} {{ currentPage }} / {{ totalPages }}</span>
         <button @click="goPage(1)" :disabled="currentPage >= totalPages"
           class="cursor-pointer h-8 px-3 border border-neutral-300 rounded text-sm disabled:opacity-30 hover:bg-neutral-50">
-          Další →
+          {{ t('common.next') }} →
         </button>
       </div>
     </div>

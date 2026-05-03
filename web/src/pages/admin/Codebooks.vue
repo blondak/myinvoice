@@ -199,10 +199,10 @@ async function deleteCountry(c: Country) {
           <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
             <tr>
               <th class="px-3 py-2 text-left font-medium">{{ t('codebooks.code') }}</th>
-              <th class="px-3 py-2 text-left font-medium">Účet (label)</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('codebooks.account_label') }}</th>
               <th class="px-3 py-2 text-center font-medium">{{ t('codebooks.decimals') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.account_cz') }} / {{ t('settings.iban') }}</th>
-              <th class="px-3 py-2 text-center font-medium">Výchozí</th>
+              <th class="px-3 py-2 text-center font-medium">{{ t('common.default') }}</th>
               <th class="px-3 py-2 text-center font-medium">{{ t('settings.active') }}</th>
               <th class="px-3 py-2 w-32"></th>
             </tr>
@@ -346,7 +346,7 @@ async function deleteCountry(c: Country) {
             <div><label class="block text-sm font-medium mb-1">{{ t('codebooks.name_en') }}</label>
               <input v-model="currencyDraft.name_en" type="text" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" /></div>
           </div>
-          <div><label class="block text-sm font-medium mb-1">Název účtu (label) *</label>
+          <div><label class="block text-sm font-medium mb-1">{{ t('codebooks.account_label_required') }}</label>
             <input v-model="currencyDraft.label" type="text" placeholder="CZK — Fio Bank"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" /></div>
           <div><label class="block text-sm font-medium mb-1">{{ t('settings.currency_account_cz') }}</label>
@@ -367,7 +367,7 @@ async function deleteCountry(c: Country) {
           </label>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="currencyDraft.is_default" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-            Výchozí účet pro tuto měnu (per kód lze mít vždy jen jeden)
+            {{ t('codebooks.is_default_account_hint') }}
           </label>
           <div class="flex justify-end gap-2 pt-2">
             <button @click="currencyOpen = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>

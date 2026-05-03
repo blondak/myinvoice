@@ -210,7 +210,7 @@ function roleBadge(role: string): string {
           <div class="flex justify-end gap-2 pt-2">
             <button @click="showForm = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>
             <button @click="save" class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">
-              {{ form.id === null ? 'Vytvořit' : 'Uložit' }}
+              {{ form.id === null ? t('common.create') : t('common.save') }}
             </button>
           </div>
         </div>

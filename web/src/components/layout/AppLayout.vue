@@ -328,7 +328,7 @@ function onClickOutside() { settingsOpen.value = false }
     <div v-if="supplierStore.hasMultiple && supplierStore.currentSupplier" class="bg-primary-50 border-b border-primary-100">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-1.5 text-xs text-primary-700 flex items-center gap-2">
         <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"/></svg>
-        <span class="flex-1 min-w-0 truncate">{{ t('supplier.active_label') }}: <strong class="font-semibold">{{ supplierStore.currentSupplier.company_name }}</strong><span v-if="supplierStore.currentSupplier.ic" class="font-mono text-primary-600 ml-1">(IČ {{ supplierStore.currentSupplier.ic }})</span></span>
+        <span class="flex-1 min-w-0 truncate">{{ t('supplier.active_label') }}: <strong class="font-semibold">{{ supplierStore.currentSupplier.company_name }}</strong><span v-if="supplierStore.currentSupplier.ic" class="font-mono text-primary-600 ml-1">({{ t('common.ic') }} {{ supplierStore.currentSupplier.ic }})</span></span>
         <SupplierSwitcher />
       </div>
     </div>

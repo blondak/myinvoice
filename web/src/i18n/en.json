@@ -31,7 +31,11 @@
     "totp_setup_step2": "2. Enter the 6-digit code from the app to activate.",
     "totp_enable_btn": "Activate TOTP",
     "totp_enabled_done": "TOTP activated. You'll be prompted for a code on next login.",
-    "totp_disable_hint": "To disable, contact an admin (reset is done manually in DB)."
+    "totp_disable_hint": "To disable, contact an admin (reset is done manually in DB).",
+    "captcha_loading": "Please wait until CAPTCHA loads…",
+    "captcha_failed": "CAPTCHA failed, try again.",
+    "too_many_attempts": "Too many attempts. Try again later.",
+    "login_failed": "Login failed."
   },
   "approval_inbox": {
     "title": "Approvals inbox",
@@ -74,7 +78,12 @@
     "sort_revenue": "Revenue (desc)",
     "sort_last_activity": "Last activity",
     "revenue": "Revenue",
-    "last_activity": "Last activity"
+    "last_activity": "Last activity",
+    "other": "Other",
+    "save_failed": "Save failed",
+    "delete_failed": "Delete failed",
+    "months_short": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "months_long": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
   },
   "invoice": {
     "title": "Invoices",
@@ -293,6 +302,19 @@
       "service_unavailable": "VIES service unavailable",
       "verify_error": "Verification error"
     },
+    "wr_title_with_date": "Work report — {date}",
+    "wr_delete_failed": "Work report delete failed",
+    "wr_save_failed": "Work report save failed",
+    "wr_not_in_items_confirm": "Work report \"{description}\" has {hours}h for {amount} {ccy}, but is not listed as an invoice item.\n\nContinue without transferring the work report to the invoice?",
+    "wr_diff_confirm": "Work report differs from invoice item:\n\n• Report: {hours}h × {rate} = {amount} {ccy}\n• Item:   {itemQty}h × {itemRate} = {itemAmount} {ccy}\n\nContinue without updating the item?",
+    "wr_hint": "The work report prints on a second page of the invoice PDF. If filled, set the invoice item manually (e.g. \"Extra work {title} — total {hours}h × {rate} {currency}\").",
+    "proforma_no_tax_point": "Proforma has no tax point. The tax document is issued after payment.",
+    "bulk_clone_confirm": "Clone {n} invoices to next month?\n\nItem descriptions will shift (e.g. \"3/2026\" → \"4/2026\"). Drafts are created — none will be sent or issued automatically.",
+    "bulk_send_confirm": "Send {n} invoices to clients?\n\nE-mail goes to the client's main address + project billing emails. If the client has no email, the invoice will be skipped.",
+    "doc_1": "document",
+    "doc_2_4": "documents",
+    "doc_5plus": "documents",
+    "dates_section": "Dates",
     "modals": {
       "mark_paid_title": "Mark as paid",
       "mark_paid_date": "Payment date",
@@ -314,7 +336,8 @@
   },
   "status": {
     "draft": "Draft", "issued": "Issued", "sent": "Sent",
-    "reminded": "Reminded", "paid": "Paid", "cancelled": "Cancelled"
+    "reminded": "Reminded", "paid": "Paid", "cancelled": "Cancelled",
+    "issued_not_sent": "Issued (not sent)"
   },
   "supplier": {
     "active_label": "Working as",
@@ -397,7 +420,11 @@
     "no_short": "no",
     "company": "Company",
     "email": "Email",
-    "reverse_charge_short": "RC"
+    "reverse_charge_short": "RC",
+    "vies_lookup_failed": "VIES lookup failed",
+    "lookup_in_registries": "Lookup in registries",
+    "dic_valid": "{dic} is valid — {name}",
+    "dic_invalid": "{dic} is invalid or does not exist"
   },
   "project": {
     "title": "Projects",
@@ -481,7 +508,13 @@
       "manual": "Manual",
       "ignored": "Ignored",
       "unmatched": "Unmatched"
-    }
+    },
+    "match_failed": "Match failed",
+    "statement_title": "Statement {number} — {date}",
+    "invoice_vs": "Invoice variable symbol",
+    "vs_hint": "If the transaction has a VS, it's prefilled. You can edit it (e.g. when the client entered the wrong VS).",
+    "import_duplicate": "This statement has already been imported (statement #{id}).",
+    "import_done": "Imported: {transactions} transactions, automatically matched {matched}."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -547,7 +580,14 @@
     "pohoda_account_code": "Account code",
     "pohoda_centre_code": "Centre",
     "pohoda_activity_code": "Activity",
-    "pohoda_contract_code": "Contract"
+    "pohoda_contract_code": "Contract",
+    "account_th": "Account (name)",
+    "add_account_prompt": "New account name for {code} (e.g. „{code} — Fio Bank\"):",
+    "add_account_default_label": "{code} — new account",
+    "delete_account_confirm": "Delete {label}? This is irreversible.",
+    "add_another_account": "Add another account:",
+    "edit_currency_label_full": "Edit currency: {label}",
+    "account_label_form": "Account name (label)"
   },
   "codebooks": {
     "title": "Codebooks",
@@ -577,7 +617,10 @@
     "is_eu_label": "EU member",
     "in_use_currency": "Used in {n} invoices",
     "in_use_vat": "Used on {n} invoice items",
-    "in_use_country": "Used {n}×"
+    "in_use_country": "Used {n}×",
+    "account_label": "Account (label)",
+    "account_label_required": "Account name (label) *",
+    "is_default_account_hint": "Default account for this currency (only one per code)"
   },
   "users": {
     "title": "Users",
@@ -660,7 +703,8 @@
     "type_credit_only": "Credit notes only",
     "download": "Download ZIP",
     "preparing": "Preparing ZIP…",
-    "hint": "PDFs are refreshed before export if the cache is stale. Larger archives may take a few seconds."
+    "hint": "PDFs are refreshed before export if the cache is stale. Larger archives may take a few seconds.",
+    "download_failed": "Download failed"
   },
   "setup": {
     "title": "Initial setup",

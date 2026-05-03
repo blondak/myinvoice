@@ -95,7 +95,7 @@ function openInvoice(id: number) {
       <p class="text-neutral-500 mb-6">{{ t('common.no_data') }}</p>
       <div class="flex justify-center gap-3">
         <RouterLink to="/clients/new" class="px-4 h-10 inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
-          + Nový klient
+          {{ t('client.new') }}
         </RouterLink>
         <RouterLink to="/invoices/new" class="px-4 h-10 inline-flex items-center border border-neutral-300 text-neutral-700 hover:bg-neutral-50 text-sm font-medium rounded-md">
           {{ t('invoice.new') }}

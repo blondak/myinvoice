@@ -81,7 +81,7 @@ async function loadFromAres() {
   try {
     const result = await clientsApi.lookupAres(form.value.ic)
     if (!result.found || !result.data) {
-      error.value = 'IČ nenalezeno v ARES'
+      error.value = t('supplier.ares_not_found')
       return
     }
     const d = result.data
@@ -92,7 +92,7 @@ async function loadFromAres() {
     form.value.zip = d.zip
     form.value.country_iso2 = d.country_iso2 || 'CZ'
   } catch (e: any) {
-    error.value = e?.response?.data?.error?.message || 'ARES lookup selhal'
+    error.value = e?.response?.data?.error?.message || t('supplier.ares_failed')
   } finally {
     aresLoading.value = false
   }
@@ -116,7 +116,7 @@ async function checkVies() {
       }
     }
   } catch (e: any) {
-    error.value = e?.response?.data?.error?.message || 'VIES lookup selhal'
+    error.value = e?.response?.data?.error?.message || t('client.vies_lookup_failed')
   } finally {
     viesLoading.value = false
   }
@@ -158,7 +158,7 @@ async function submit() {
       <div class="p-5 space-y-4">
         <!-- Lookup helpers -->
         <div class="bg-primary-50 border border-primary-200 rounded-md p-3">
-          <div class="text-xs font-semibold text-primary-800 mb-2">{{ locale === 'cs' ? 'Načtení z registrů' : 'Lookup in registries' }}</div>
+          <div class="text-xs font-semibold text-primary-800 mb-2">{{ t('client.lookup_in_registries') }}</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('client.ic') }}</label>
@@ -184,8 +184,8 @@ async function submit() {
             </div>
           </div>
           <div v-if="viesResult" class="mt-2 text-xs">
-            <span v-if="viesResult.valid" class="text-primary-700">✓ {{ t('client.dic') }} {{ locale === 'cs' ? 'je platné' : 'is valid' }} — {{ viesResult.name }}</span>
-            <span v-else class="text-danger-500">✗ {{ t('client.dic') }} {{ locale === 'cs' ? 'není platné nebo neexistuje' : 'is invalid or does not exist' }}</span>
+            <span v-if="viesResult.valid" class="text-primary-700">✓ {{ t('client.dic_valid', { dic: t('client.dic'), name: viesResult.name }) }}</span>
+            <span v-else class="text-danger-500">✗ {{ t('client.dic_invalid', { dic: t('client.dic') }) }}</span>
           </div>
         </div>
 

@@ -31,7 +31,11 @@
     "totp_setup_step2": "2. Zadej 6místný kód, který aplikace zobrazí, pro aktivaci.",
     "totp_enable_btn": "Aktivovat TOTP",
     "totp_enabled_done": "TOTP aktivováno. Při dalším přihlášení budeš požádán o kód.",
-    "totp_disable_hint": "Pro deaktivaci kontaktuj admina (reset se provádí ručně v DB)."
+    "totp_disable_hint": "Pro deaktivaci kontaktuj admina (reset se provádí ručně v DB).",
+    "captcha_loading": "Počkej prosím, dokud se nenačte CAPTCHA…",
+    "captcha_failed": "CAPTCHA selhala, zkuste znovu.",
+    "too_many_attempts": "Příliš mnoho pokusů. Zkuste to později.",
+    "login_failed": "Přihlášení selhalo."
   },
   "approval_inbox": {
     "title": "Schvalování výkazů",
@@ -74,7 +78,12 @@
     "sort_revenue": "Obrat (sestupně)",
     "sort_last_activity": "Poslední aktivita",
     "revenue": "Obrat",
-    "last_activity": "Poslední aktivita"
+    "last_activity": "Poslední aktivita",
+    "other": "Ostatní",
+    "save_failed": "Uložení selhalo",
+    "delete_failed": "Smazání selhalo",
+    "months_short": ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"],
+    "months_long": ["leden", "únor", "březen", "duben", "květen", "červen", "červenec", "srpen", "září", "říjen", "listopad", "prosinec"]
   },
   "invoice": {
     "title": "Faktury",
@@ -293,6 +302,19 @@
       "service_unavailable": "VIES služba nedostupná",
       "verify_error": "Chyba při ověření"
     },
+    "wr_title_with_date": "Výkaz víceprací — {date}",
+    "wr_delete_failed": "Smazání výkazu selhalo",
+    "wr_save_failed": "Uložení výkazu selhalo",
+    "wr_not_in_items_confirm": "Výkaz „{description}\" obsahuje {hours} h za {amount} {ccy}, ale není zapsán jako položka faktury.\n\nPokračovat bez přenosu výkazu do faktury?",
+    "wr_diff_confirm": "Výkaz se liší od přenesené položky faktury:\n\n• Výkaz:   {hours} h × {rate} = {amount} {ccy}\n• Položka: {itemQty} h × {itemRate} = {itemAmount} {ccy}\n\nPokračovat bez aktualizace položky?",
+    "wr_hint": "Výkaz se vytiskne na druhou stránku PDF faktury. Pokud je vyplněný, položku faktury si nastav ručně (např. „Vícepráce {title} — celkem {hours} h × {rate} {currency}\").",
+    "proforma_no_tax_point": "Zálohová faktura nemá DUZP. Daňový doklad k záloze se vystaví po platbě.",
+    "bulk_clone_confirm": "Klonovat {n} faktur do dalšího měsíce?\n\nPopisky položek se posunou (např. „3/2026\" → „4/2026\"). Vytvoří koncepty — žádný se neodešle ani nevystaví automaticky.",
+    "bulk_send_confirm": "Odeslat {n} faktur klientům?\n\nE-mail půjde na hlavní adresu klienta + fakturační e-maily zakázky. Pokud klient nemá e-mail, bude faktura přeskočena.",
+    "doc_1": "doklad",
+    "doc_2_4": "doklady",
+    "doc_5plus": "dokladů",
+    "dates_section": "Datumy",
     "modals": {
       "mark_paid_title": "Označit jako zaplacené",
       "mark_paid_date": "Datum úhrady",
@@ -314,7 +336,8 @@
   },
   "status": {
     "draft": "Koncept", "issued": "Vystaveno", "sent": "Odesláno",
-    "reminded": "Upomínka", "paid": "Zaplaceno", "cancelled": "Storno"
+    "reminded": "Upomínka", "paid": "Zaplaceno", "cancelled": "Storno",
+    "issued_not_sent": "Vystaveno (neodesláno)"
   },
   "supplier": {
     "active_label": "Pracuješ jako",
@@ -397,7 +420,11 @@
     "no_short": "ne",
     "company": "Firma",
     "email": "Email",
-    "reverse_charge_short": "RC"
+    "reverse_charge_short": "RC",
+    "vies_lookup_failed": "VIES lookup selhal",
+    "lookup_in_registries": "Načtení z registrů",
+    "dic_valid": "{dic} je platné — {name}",
+    "dic_invalid": "{dic} není platné nebo neexistuje"
   },
   "project": {
     "title": "Zakázky",
@@ -481,7 +508,13 @@
       "manual": "Ručně",
       "ignored": "Ignorováno",
       "unmatched": "Nespárováno"
-    }
+    },
+    "match_failed": "Párování selhalo",
+    "statement_title": "Výpis {number} — {date}",
+    "invoice_vs": "Variabilní symbol faktury",
+    "vs_hint": "Pokud transakce má VS, je tu předvyplněný. Můžeš ho upravit (např. když klient zadal špatný VS).",
+    "import_duplicate": "Tento výpis už byl naimportován (statement #{id}).",
+    "import_done": "Importováno: {transactions} transakcí, automaticky spárováno {matched}."
   },
   "dashboard": {
     "title": "Přehled",
@@ -547,7 +580,14 @@
     "pohoda_account_code": "Účet (kód)",
     "pohoda_centre_code": "Středisko",
     "pohoda_activity_code": "Činnost",
-    "pohoda_contract_code": "Zakázka"
+    "pohoda_contract_code": "Zakázka",
+    "account_th": "Účet (název)",
+    "add_account_prompt": "Název nového účtu pro {code} (např. „{code} — Fio Bank\"):",
+    "add_account_default_label": "{code} — nový účet",
+    "delete_account_confirm": "Smazat {label}? Akce je nevratná.",
+    "add_another_account": "Přidat další účet:",
+    "edit_currency_label_full": "Editace měny: {label}",
+    "account_label_form": "Název účtu (label)"
   },
   "codebooks": {
     "title": "Číselníky",
@@ -577,7 +617,10 @@
     "is_eu_label": "Členský stát EU",
     "in_use_currency": "Použito v {n} fakturách",
     "in_use_vat": "Použito na {n} položkách faktur",
-    "in_use_country": "Použito {n}×"
+    "in_use_country": "Použito {n}×",
+    "account_label": "Účet (label)",
+    "account_label_required": "Název účtu (label) *",
+    "is_default_account_hint": "Výchozí účet pro tuto měnu (per kód lze mít vždy jen jeden)"
   },
   "users": {
     "title": "Uživatelé",
@@ -660,7 +703,8 @@
     "type_credit_only": "Pouze dobropisy",
     "download": "Stáhnout ZIP",
     "preparing": "Připravuji ZIP…",
-    "hint": "PDF se před exportem aktualizuje, pokud cache není svěží. Větší archivy mohou trvat několik sekund."
+    "hint": "PDF se před exportem aktualizuje, pokud cache není svěží. Větší archivy mohou trvat několik sekund.",
+    "download_failed": "Stažení selhalo"
   },
   "setup": {
     "title": "Úvodní nastavení",
