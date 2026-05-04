@@ -10,6 +10,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Repository\WorkReportRepository;
+use MyInvoice\Service\Invoice\SnapshotBuilder;
 use MyInvoice\Service\Qr\QrPaymentGenerator;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
@@ -33,6 +34,7 @@ final class InvoicePdfRenderer
         private readonly Config $config,
         private readonly QrPaymentGenerator $qr,
         private readonly WorkReportRepository $workReports,
+        private readonly SnapshotBuilder $snapshots,
     ) {}
 
     /**
@@ -64,6 +66,13 @@ final class InvoicePdfRenderer
         if (!$forceRegenerate && $isFresh($cachedPath)) {
             $this->updatePdfPath($invoiceId, $cachedPath);
             return $cachedPath;
+        }
+
+        // Force regenerate = také obnov supplier/client/bank snapshoty z live dat.
+        // (Snapshoty jsou primární zdroj pro issued+ faktury — bez tohoto by se
+        // změny v supplier/client tabulkách neprojevily ani po regenerate.)
+        if ($forceRegenerate) {
+            $invoice = $this->refreshSnapshots($invoice);
         }
 
         $rendered = $this->renderHtmlAndCss($invoice);
@@ -173,7 +182,7 @@ final class InvoicePdfRenderer
             'bank'              => $bankData,
             'qr_data_uri'       => $qrUri,
             'locale'            => $locale,
-            'doc_type_label'    => $this->docTypeLabel($invoice, $locale),
+            'doc_type_label'    => $this->docTypeLabel($invoice, $locale, $supplierData),
             'doc_title'         => $this->docTitle($invoice),
             'parent_varsymbol'  => $this->parentVarsymbol($invoice),
             'work_report'       => $this->workReports->findByInvoice((int) $invoice['id']),
@@ -257,19 +266,20 @@ final class InvoicePdfRenderer
         return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
     }
 
-    private function docTypeLabel(array $invoice, string $locale): string
+    private function docTypeLabel(array $invoice, string $locale, array $supplier = []): string
     {
+        $isVatPayer = (bool) ($supplier['is_vat_payer'] ?? true);
         $labels = [
             'cs' => [
-                'invoice'      => 'Faktura — daňový doklad',
-                'proforma'     => 'Zálohová faktura — není daňový doklad',
-                'credit_note'  => 'Opravný daňový doklad',
+                'invoice'      => $isVatPayer ? 'Faktura — daňový doklad' : 'Faktura',
+                'proforma'     => 'Zálohová faktura',
+                'credit_note'  => $isVatPayer ? 'Opravný daňový doklad' : 'Opravná faktura',
                 'cancellation' => 'Storno (interní)',
             ],
             'en' => [
-                'invoice'      => 'Invoice — Tax document',
-                'proforma'     => 'Proforma invoice — Not a tax document',
-                'credit_note'  => 'Credit note — Tax adjustment',
+                'invoice'      => $isVatPayer ? 'Invoice — Tax document' : 'Invoice',
+                'proforma'     => 'Proforma invoice',
+                'credit_note'  => $isVatPayer ? 'Credit note — Tax adjustment' : 'Credit note',
                 'cancellation' => 'Cancellation (internal)',
             ],
         ];
@@ -307,6 +317,45 @@ final class InvoicePdfRenderer
             return null;
         }
         return $logoPath;
+    }
+
+    /**
+     * Resnapshot supplier/client/bank z live dat a uloží do invoices. Volá se při
+     * forceRegenerate, aby `regenerate=1` propsalo i změny v supplier/client/banku.
+     * Drafty (bez existujících snapshotů) přeskoč — ty stejně renderují z live.
+     *
+     * @return array  invoice array s aktualizovanými snapshoty (in-memory)
+     */
+    private function refreshSnapshots(array $invoice): array
+    {
+        $hasAny = !empty($invoice['supplier_snapshot'])
+            || !empty($invoice['client_snapshot'])
+            || !empty($invoice['bank_snapshot']);
+        if (!$hasAny) return $invoice;
+
+        try {
+            $built = $this->snapshots->build(
+                (int) $invoice['client_id'],
+                (int) $invoice['currency_id'],
+                (int) ($invoice['supplier_id'] ?? 0),
+            );
+        } catch (\Throwable) {
+            // Pokud klient/dodavatel neexistuje (smazaný), zachovej původní snapshot.
+            return $invoice;
+        }
+
+        $supplierJson = json_encode($built['supplier'], JSON_UNESCAPED_UNICODE);
+        $clientJson   = json_encode($built['client'], JSON_UNESCAPED_UNICODE);
+        $bankJson     = $built['bank'] !== null ? json_encode($built['bank'], JSON_UNESCAPED_UNICODE) : null;
+
+        $this->db->pdo()->prepare(
+            'UPDATE invoices SET supplier_snapshot = ?, client_snapshot = ?, bank_snapshot = ? WHERE id = ?'
+        )->execute([$supplierJson, $clientJson, $bankJson, (int) $invoice['id']]);
+
+        $invoice['supplier_snapshot'] = $supplierJson;
+        $invoice['client_snapshot']   = $clientJson;
+        $invoice['bank_snapshot']     = $bankJson;
+        return $invoice;
     }
 
     /**

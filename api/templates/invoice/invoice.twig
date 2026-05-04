@@ -49,10 +49,6 @@
         {% if supplier.ic %}{{ t('IČ', 'Reg. No.') }}: {{ supplier.ic }}<br>{% endif %}
         {% if supplier.dic %}{{ t('DIČ', 'VAT ID') }}: {{ supplier.dic }}{% endif %}
       </div>
-      {% if not supplier.is_vat_payer %}
-        <div class="spacer-2">&nbsp;</div>
-        <div style="font-size:8pt;color:#7A748C;">{{ t('Není plátce DPH', 'Not a VAT payer') }}</div>
-      {% endif %}
     </td>
     <td>
       <h2>{{ t('Odběratel', 'Customer') }}</h2>
@@ -81,7 +77,12 @@
     <td class="meta-label">{{ t('Var. symbol', 'Var. symbol') }}</td>
     <td class="meta-value mono">{{ invoice.varsymbol|default('—') }}</td>
   </tr>
-  {% if invoice.tax_date %}
+  {% if not supplier.is_vat_payer %}
+  <tr>
+    <td class="meta-label">{{ t('DPH', 'VAT') }}</td>
+    <td class="meta-value" colspan="3">{{ t('Není plátce DPH', 'Not a VAT payer') }}</td>
+  </tr>
+  {% elseif invoice.tax_date and invoice.invoice_type != 'proforma' %}
   <tr>
     <td class="meta-label">{{ t('DUZP', 'Tax point') }}</td>
     <td class="meta-value">{{ invoice.tax_date|date(date_format) }}</td>
@@ -208,6 +209,7 @@
     </td>
     <td class="right">
       <table class="totals-table">
+        {% if supplier.is_vat_payer and invoice.invoice_type != 'proforma' %}
         {% for b in invoice.vat_breakdown %}
         <tr>
           <td class="tot-label">{{ t('Základ', 'Base') }} {{ b.rate|number_format(b.rate == b.rate|round(0) ? 0 : 2, decimal_sep, thousand_sep) }}&nbsp;%</td>
@@ -228,6 +230,7 @@
           <td class="tot-label">{{ t('DPH celkem', 'Total VAT') }}</td>
           <td class="tot-num nowrap">{{ invoice.totals.vat|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
         </tr>
+        {% endif %}
         <tr class="grand">
           <td class="tot-label">{{ t('Celkem', 'Total') }}</td>
           <td class="tot-num nowrap">{{ invoice.totals.with_vat|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
@@ -268,6 +271,7 @@
       </span>
     </td>
   </tr>
+  {% if supplier.is_vat_payer and invoice.invoice_type != 'proforma' %}
   {% for b in invoice.czk_recap.breakdown %}
   <tr>
     <td class="tot-label">{{ t('Základ', 'Base') }} {{ b.rate|number_format(b.rate == b.rate|round(0) ? 0 : 2, decimal_sep, thousand_sep) }}&nbsp;%</td>
@@ -288,6 +292,7 @@
     <td class="tot-label">{{ t('DPH celkem', 'Total VAT') }}</td>
     <td class="tot-num nowrap">{{ invoice.czk_recap.total_vat_czk|number_format(2, decimal_sep, thousand_sep) }} CZK</td>
   </tr>
+  {% endif %}
   <tr class="grand">
     <td class="tot-label">{{ t('Celkem', 'Total') }}</td>
     <td class="tot-num nowrap">{{ invoice.czk_recap.total_with_vat_czk|number_format(2, decimal_sep, thousand_sep) }} CZK</td>
