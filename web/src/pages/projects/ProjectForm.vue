@@ -70,6 +70,9 @@ onMounted(async () => {
       form.value.client_id = cid
       form.value.currency_id = client.value.currency_default_id
       form.value.payment_due_days = client.value.payment_due_default ?? 7
+      if (client.value.hourly_rate && client.value.hourly_rate > 0) {
+        form.value.hourly_rate = client.value.hourly_rate
+      }
     } else {
       router.push('/clients')
     }
