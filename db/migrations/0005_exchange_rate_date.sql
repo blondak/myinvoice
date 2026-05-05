@@ -8,5 +8,5 @@
 SET NAMES utf8mb4;
 
 ALTER TABLE invoices
-  ADD COLUMN exchange_rate_date DATE NULL DEFAULT NULL
+  ADD COLUMN IF NOT EXISTS exchange_rate_date DATE NULL DEFAULT NULL
     AFTER exchange_rate;

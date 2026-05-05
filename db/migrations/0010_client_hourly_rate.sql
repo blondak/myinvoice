@@ -7,5 +7,5 @@
 SET NAMES utf8mb4;
 
 ALTER TABLE clients
-  ADD COLUMN hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  ADD COLUMN IF NOT EXISTS hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00
     AFTER payment_due_default;
