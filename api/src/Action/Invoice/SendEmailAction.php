@@ -9,6 +9,7 @@ use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Repository\InvoiceAttachmentRepository;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\IpMatcher;
@@ -31,6 +32,7 @@ final class SendEmailAction
         private readonly IpMatcher $ipMatcher,
         private readonly Config $config,
         private readonly PdfArchiveService $pdfArchive,
+        private readonly InvoiceAttachmentRepository $attachments,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -86,6 +88,25 @@ final class SendEmailAction
         $locale = (string) ($invoice['language'] ?? 'cs');
         $vars = $this->varsBuilder->build($invoice, false, $locale);
 
+        // Hlavní PDF + volitelné uživatelské přílohy (jen invoice/proforma/credit_note,
+        // ne upomínky — tento send flow se použije jen tady).
+        $supplierId = (int) ($invoice['supplier_id'] ?? 0);
+        $emailAttachments = [
+            ['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf'],
+        ];
+        $extraAttachments = $this->attachments->listForInvoice($id);
+        $sentAttachmentIds = [];
+        foreach ($extraAttachments as $att) {
+            $path = $this->attachments->pathFor($supplierId, $id, (string) $att['filename']);
+            if (!is_file($path)) continue;
+            $emailAttachments[] = [
+                'path'        => $path,
+                'name'        => (string) $att['original_name'],
+                'contentType' => (string) $att['mime_type'],
+            ];
+            $sentAttachmentIds[] = (int) $att['id'];
+        }
+
         try {
             $this->mailer->sendTemplate(
                 'invoice_send',
@@ -95,7 +116,7 @@ final class SendEmailAction
                 $subjectOverride,
                 $cc,
                 $bcc,
-                [['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf']],
+                $emailAttachments,
             );
         } catch (\Throwable $e) {
             return Json::error($response, 'send_failed', 'Email se nepodařilo odeslat: ' . $e->getMessage(), 502);
@@ -116,6 +137,7 @@ final class SendEmailAction
             'to' => $to, 'cc' => $cc, 'bcc' => $bcc,
             'pdf_path' => basename($pdfPath),
             'pdf_archive_id' => $archiveId,
+            'attachment_ids' => $sentAttachmentIds,
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         return Json::ok($response, [

@@ -375,6 +375,29 @@ export const invoicesApi = {
       { status, rejection_reason: rejectionReason || null },
     ).then(r => r.data),
 
+  // Volitelné přílohy k dokladu (přibalí se při odeslání faktury / proformy / dobropisu)
+  listAttachments: (invoiceId: number) =>
+    api.get<{ items: InvoiceAttachment[] }>(`/invoices/${invoiceId}/attachments`).then(r => r.data.items),
+  uploadAttachments: (invoiceId: number, files: File[]) => {
+    const fd = new FormData()
+    for (const f of files) fd.append('file[]', f, f.name)
+    return api.post<{ created: number[]; items: InvoiceAttachment[]; total_size: number }>(
+      `/invoices/${invoiceId}/attachments`,
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    ).then(r => r.data)
+  },
+  deleteAttachment: (invoiceId: number, attachmentId: number) =>
+    api.delete<{ deleted: number }>(`/invoices/${invoiceId}/attachments/${attachmentId}`).then(r => r.data),
+  attachmentUrl: (invoiceId: number, attachmentId: number, download: boolean = false) => {
+    const sid = localStorage.getItem('myinvoice.current_supplier_id')
+    const params = new URLSearchParams()
+    if (download) params.set('download', '1')
+    if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    const qs = params.toString()
+    return `/api/invoices/${invoiceId}/attachments/${attachmentId}${qs ? '?' + qs : ''}`
+  },
+
   // Work report (výkaz víceprací)
   getWorkReport: (invoiceId: number) =>
     api.get<WorkReport | null>(`/invoices/${invoiceId}/work-report`).then(r => r.data),
@@ -386,6 +409,18 @@ export const invoicesApi = {
     api.delete<{ deleted: true }>(`/invoices/${invoiceId}/work-report`, {
       params: force ? { force: 1 } : undefined,
     }).then(r => r.data),
+}
+
+export interface InvoiceAttachment {
+  id: number
+  invoice_id: number
+  filename: string
+  original_name: string
+  size_bytes: number
+  sha256: string
+  mime_type: string
+  uploaded_by: number | null
+  uploaded_at: string
 }
 
 export interface WorkReportItem {

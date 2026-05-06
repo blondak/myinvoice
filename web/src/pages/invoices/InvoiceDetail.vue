@@ -2,7 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus } from '@/api/invoices'
+import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment } from '@/api/invoices'
+import { apiErrorMessage } from '@/api/errors'
 import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass } from '@/composables/useFormat'
 import { useAuthStore } from '@/stores/auth'
 import { useSupplierStore } from '@/stores/supplier'
@@ -49,6 +50,10 @@ const approvalRejectReason = ref('')
 
 const activity = ref<Array<{ id: number; user_email: string | null; user_name: string | null; action: string; payload: any; ip: string | null; created_at: string }>>([])
 const pdfHistory = ref<Array<{ id: number; filename: string; size_bytes: number; sha256: string; was_sent: boolean; sent_to: string[] | null; reason: string; archived_at: string }>>([])
+const attachments = ref<InvoiceAttachment[]>([])
+const attachmentsBusy = ref(false)
+const attachmentsDragOver = ref(false)
+const attachmentInput = ref<HTMLInputElement | null>(null)
 const workReport = ref<WorkReport | null>(null)
 const wrHasDates = computed(() => !!workReport.value?.items.some(i => !!i.work_date))
 
@@ -66,6 +71,53 @@ async function load() {
   invoicesApi.listPdfs(Number(route.params.id))
     .then(items => { pdfHistory.value = items })
     .catch(() => {})
+  invoicesApi.listAttachments(Number(route.params.id))
+    .then(items => { attachments.value = items })
+    .catch(() => {})
+}
+
+function attachmentsAvailable(inv: Invoice | null): boolean {
+  if (!inv) return false
+  return ['invoice', 'proforma', 'credit_note'].includes(inv.invoice_type)
+}
+
+async function uploadAttachmentFiles(files: File[]) {
+  if (!invoice.value || files.length === 0) return
+  attachmentsBusy.value = true
+  try {
+    const r = await invoicesApi.uploadAttachments(invoice.value.id, files)
+    attachments.value = r.items
+    toast.success(t('invoice.attachments.upload_done', { n: r.created.length }))
+  } catch (e: any) {
+    toast.error(apiErrorMessage(e, t('invoice.attachments.upload_failed')))
+  } finally {
+    attachmentsBusy.value = false
+    if (attachmentInput.value) attachmentInput.value.value = ''
+  }
+}
+
+async function onAttachmentInputChange(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  await uploadAttachmentFiles(files)
+}
+
+async function onAttachmentDrop(ev: DragEvent) {
+  ev.preventDefault()
+  attachmentsDragOver.value = false
+  const files = ev.dataTransfer?.files ? Array.from(ev.dataTransfer.files) : []
+  await uploadAttachmentFiles(files)
+}
+
+async function deleteAttachment(att: InvoiceAttachment) {
+  if (!invoice.value) return
+  if (!window.confirm(t('invoice.attachments.confirm_delete', { name: att.original_name }))) return
+  try {
+    await invoicesApi.deleteAttachment(invoice.value.id, att.id)
+    attachments.value = attachments.value.filter(a => a.id !== att.id)
+  } catch (e: any) {
+    toast.error(apiErrorMessage(e, t('invoice.attachments.delete_failed')))
+  }
 }
 
 function pdfReasonLabel(reason: string): string {
@@ -1025,6 +1077,78 @@ async function updateApprovalStatus() {
       </div>
     </div>
 
+    <!-- Přílohy emailu (PDF/Office/obrázky se přibalí při odeslání faktury) -->
+    <div v-if="invoice && attachmentsAvailable(invoice)"
+         class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+      <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            {{ t('invoice.attachments.title') }}
+          </h3>
+          <p class="text-xs text-neutral-500 mt-0.5">{{ t('invoice.attachments.hint') }}</p>
+        </div>
+        <span class="text-xs text-neutral-400">{{ attachments.length }}</span>
+      </header>
+
+      <ul v-if="attachments.length > 0" class="divide-y divide-neutral-100">
+        <li v-for="a in attachments" :key="a.id" class="px-5 py-2.5 text-sm flex items-center gap-3">
+          <svg class="w-4 h-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M15.172 7l-6.586 6.586a2 2 0 1 0 2.828 2.828l6.414-6.414a4 4 0 1 0-5.656-5.656L5.05 11.05a6 6 0 1 0 8.486 8.486L20 13"/>
+          </svg>
+          <span class="text-neutral-700 text-xs flex-1 truncate" :title="a.original_name">{{ a.original_name }}</span>
+          <span class="text-neutral-400 text-xs whitespace-nowrap">{{ formatBytes(a.size_bytes) }}</span>
+          <span class="text-neutral-400 text-xs whitespace-nowrap hidden md:inline">
+            {{ a.uploaded_at.replace('T', ' ').slice(0, 16) }}
+          </span>
+          <a :href="invoicesApi.attachmentUrl(invoice!.id, a.id, false)" target="_blank"
+             class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            {{ t('common.view') }}
+          </a>
+          <a :href="invoicesApi.attachmentUrl(invoice!.id, a.id, true)"
+             class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            {{ t('common.download') }}
+          </a>
+          <button @click="deleteAttachment(a)" type="button"
+                  class="text-xs text-danger-500 hover:text-danger-600 cursor-pointer inline-flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M10 11v6m4-6v6m1 5H9a2 2 0 0 1-2-2V7h10v13a2 2 0 0 1-2 2zM5 7h14l-1-3H6L5 7z"/>
+            </svg>
+            {{ t('common.delete') }}
+          </button>
+        </li>
+      </ul>
+
+      <div class="px-5 py-3"
+           :class="attachmentsDragOver ? 'bg-primary-50' : 'bg-neutral-50/50'"
+           @dragover.prevent="attachmentsDragOver = true"
+           @dragleave.prevent="attachmentsDragOver = false"
+           @drop="onAttachmentDrop">
+        <label class="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 cursor-pointer">
+          <input ref="attachmentInput" type="file" multiple
+                 class="hidden"
+                 @change="onAttachmentInputChange" />
+          <span class="inline-flex items-center justify-center px-3 h-9 text-sm border border-primary-300 rounded-md text-primary-600 hover:bg-primary-50">
+            <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            {{ attachmentsBusy ? t('invoice.attachments.uploading') : t('invoice.attachments.add') }}
+          </span>
+          <span class="text-xs text-neutral-500">{{ t('invoice.attachments.drop_here') }}</span>
+        </label>
+      </div>
+    </div>
+
     <!-- Historie PDF -->
     <div v-if="pdfHistory.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
@@ -1073,8 +1197,10 @@ async function updateApprovalStatus() {
       </ul>
     </div>
 
-    <!-- Sekundární akce — pod fakturou (Test odeslání + admin/destrukční) -->
-    <div v-if="!isDraft || requiresApproval" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+    <!-- Sekundární akce — pod fakturou (Test odeslání + admin/destrukční).
+         Pro draft zobrazujeme kvůli „Test odeslání" + odkazu na klienta;
+         vnitřní tlačítka mají vlastní v-if podmínky. -->
+    <div v-if="invoice" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.more_actions') }}</h3>
       <div class="flex flex-wrap gap-2">
         <RouterLink :to="`/clients/${invoice.client_id}`"
@@ -1101,7 +1227,7 @@ async function updateApprovalStatus() {
           {{ busy === 'send-test-reminder' ? '…' : t('invoice.send_test_reminder') }}
         </button>
 
-        <button v-if="isAdmin && !['cancellation'].includes(invoice.invoice_type)" @click="editIssued" :disabled="busy !== null"
+        <button v-if="isAdmin && !isDraft && !['cancellation'].includes(invoice.invoice_type)" @click="editIssued" :disabled="busy !== null"
           class="cursor-pointer px-3 h-9 text-sm border border-warning-500/50 text-warning-600 hover:bg-warning-50 rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/></svg>
           {{ t('invoice.edit_admin') }}

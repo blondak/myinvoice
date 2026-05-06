@@ -9,6 +9,7 @@ use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Repository\InvoiceAttachmentRepository;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\IpMatcher;
@@ -36,6 +37,7 @@ final class SendTestEmailAction
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
         private readonly Connection $db,
+        private readonly InvoiceAttachmentRepository $attachments,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -69,6 +71,21 @@ final class SendTestEmailAction
         $locale = (string) ($invoice['language'] ?? 'cs');
         $vars = $this->varsBuilder->build($invoice, true, $locale);
 
+        // Test send — přibalíme i uživatelské přílohy, ať uživatel vidí, co reálně odejde.
+        $supplierId = (int) ($invoice['supplier_id'] ?? 0);
+        $emailAttachments = [
+            ['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf'],
+        ];
+        foreach ($this->attachments->listForInvoice($id) as $att) {
+            $path = $this->attachments->pathFor($supplierId, $id, (string) $att['filename']);
+            if (!is_file($path)) continue;
+            $emailAttachments[] = [
+                'path'        => $path,
+                'name'        => (string) $att['original_name'],
+                'contentType' => (string) $att['mime_type'],
+            ];
+        }
+
         try {
             $this->mailer->sendTemplate(
                 'invoice_send',
@@ -78,11 +95,7 @@ final class SendTestEmailAction
                 null,
                 [],
                 [],
-                [[
-                    'path' => $pdfPath,
-                    'name' => basename($pdfPath),
-                    'contentType' => 'application/pdf',
-                ]],
+                $emailAttachments,
             );
         } catch (\Throwable $e) {
             return Json::error($response, 'send_failed', 'Email se nepodařilo odeslat: ' . $e->getMessage(), 502);

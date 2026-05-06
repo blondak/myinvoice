@@ -254,6 +254,17 @@
         "backfill_sent": "Doplněno zpětně"
       }
     },
+    "attachments": {
+      "title": "Přílohy emailu",
+      "hint": "Tyto soubory se přibalí k PDF faktury při odeslání klientovi (ne k upomínce). Max 10 MiB na soubor, 20 MiB celkem.",
+      "add": "Přidat přílohu",
+      "drop_here": "nebo přetáhni soubory sem",
+      "uploading": "Nahrávám…",
+      "upload_done": "Nahráno: {n}",
+      "upload_failed": "Nahrání přílohy selhalo.",
+      "delete_failed": "Smazání přílohy selhalo.",
+      "confirm_delete": "Opravdu smazat přílohu „{name}“?"
+    },
     "bulk_reissue": "Vystavit znovu ({n})",
     "bulk_send": "Odeslat klientovi ({n})",
     "edit_title": "Upravit fakturu",
