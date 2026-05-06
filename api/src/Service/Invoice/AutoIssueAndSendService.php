@@ -59,39 +59,21 @@ final class AutoIssueAndSendService
         $issued = false;
         // 1. Vystavit pokud draft
         if ($invoice['status'] === 'draft') {
-            $issueDate = new \DateTimeImmutable($invoice['issue_date']);
-            $supplierId = (int) $invoice['supplier_id'];
-            $varsymbol = $this->varsymbol->next($supplierId, $invoice['invoice_type'], $issueDate);
-            $snapshots = $this->snapshots->build(
-                (int) $invoice['client_id'],
-                (int) $invoice['currency_id'],
-                $supplierId,
-            );
-            $stmt = $this->db->pdo()->prepare(
-                'UPDATE invoices SET
-                    varsymbol         = ?,
-                    client_snapshot   = ?,
-                    supplier_snapshot = ?,
-                    bank_snapshot     = ?,
-                    status            = "issued"
-                 WHERE id = ? AND status = "draft"'
-            );
-            $stmt->execute([
-                $varsymbol,
-                json_encode($snapshots['client'],   JSON_UNESCAPED_UNICODE),
-                json_encode($snapshots['supplier'], JSON_UNESCAPED_UNICODE),
-                $snapshots['bank'] !== null ? json_encode($snapshots['bank'], JSON_UNESCAPED_UNICODE) : null,
-                $invoiceId,
-            ]);
+            // VS + snapshoty — pokud už nebyly alokované předem (request-approval flow),
+            // alokuj teď.
+            $invoice = $this->allocateVarsymbolAndSnapshots($invoiceId);
+            $this->db->pdo()->prepare(
+                'UPDATE invoices SET status = "issued" WHERE id = ? AND status = "draft"'
+            )->execute([$invoiceId]);
             $issued = true;
             $this->logger->log('invoice.issued', $userId, 'invoice', $invoiceId, [
-                'varsymbol'   => $varsymbol,
+                'varsymbol'   => $invoice['varsymbol'],
                 'auto_reason' => 'work_report_approved',
             ], $ip, $ua);
             $this->stats->recomputeForInvoiceId($invoiceId);
-            // Invalidate cache: draft PDF (s pdf_path = "Faktura-draft-NN.pdf") by zůstal
-            // platný a renderer by vrátil starý draft PDF místo nového se správným
-            // varsymbolem, snapshoty a všemi 2. stránkami (např. výkazem víceprací).
+            // Re-invalidate i po flipu na 'issued' — kdyby si někdo mezi alokací VS
+            // a tímto blokem vyrenderoval Faktura-VS.pdf jako draft (bez "issued"
+            // metadat), nahradíme ho čerstvým renderem.
             $this->renderer->invalidate($invoiceId, 'invalidate_issue');
             $invoice = $this->repo->find($invoiceId);
         }
@@ -149,6 +131,68 @@ final class AutoIssueAndSendService
         ], $ip, $ua);
 
         return ['issued' => $issued, 'sent_to' => $to, 'varsymbol' => $invoice['varsymbol'] ?? null];
+    }
+
+    /**
+     * Alokuje varsymbol + zafixuje supplier/client/bank snapshoty na faktuře, pokud
+     * ještě neexistují. Status zůstává 'draft'.
+     *
+     * Volá se ze dvou míst:
+     *  - RequestApprovalAction: před odesláním žádosti o schválení, aby Vykaz-XYZ.pdf
+     *    obsahoval reálný varsymbol (ne "draft-NN") a aby snapshoty odpovídaly stavu
+     *    v okamžiku, kdy klient schvaluje (kdyby se mezitím editoval supplier/klient).
+     *  - run() (níže): pokud schválení proběhlo bez prior request-approval (např.
+     *    admin manuálně klikl "Schváleno"), alokuj teď.
+     *
+     * Idempotentní: pokud má faktura už VS, vrátí ji beze změny.
+     *
+     * @return array  čerstvá faktura (post-alokace)
+     */
+    public function allocateVarsymbolAndSnapshots(int $invoiceId): array
+    {
+        $invoice = $this->repo->find($invoiceId);
+        if ($invoice === null) {
+            throw new \RuntimeException("Invoice #$invoiceId not found");
+        }
+        if (!empty($invoice['varsymbol'])) {
+            return $invoice;
+        }
+        if ($invoice['status'] !== 'draft') {
+            // Non-draft bez VS by neměl existovat; nic nealokujeme, vrať jak je.
+            return $invoice;
+        }
+
+        $issueDate  = new \DateTimeImmutable($invoice['issue_date']);
+        $supplierId = (int) $invoice['supplier_id'];
+        $varsymbol  = $this->varsymbol->next($supplierId, $invoice['invoice_type'], $issueDate);
+        $snapshots  = $this->snapshots->build(
+            (int) $invoice['client_id'],
+            (int) $invoice['currency_id'],
+            $supplierId,
+        );
+
+        $stmt = $this->db->pdo()->prepare(
+            'UPDATE invoices SET
+                varsymbol         = ?,
+                client_snapshot   = ?,
+                supplier_snapshot = ?,
+                bank_snapshot     = ?
+             WHERE id = ? AND status = "draft" AND varsymbol IS NULL'
+        );
+        $stmt->execute([
+            $varsymbol,
+            json_encode($snapshots['client'],   JSON_UNESCAPED_UNICODE),
+            json_encode($snapshots['supplier'], JSON_UNESCAPED_UNICODE),
+            $snapshots['bank'] !== null ? json_encode($snapshots['bank'], JSON_UNESCAPED_UNICODE) : null,
+            $invoiceId,
+        ]);
+        // Cache invalidace: dosavadní pdf_path mířil na "Faktura-draft-NN.pdf",
+        // nový cachePath bude "Faktura-VS.pdf". Stará kopie je jen draft preview
+        // (žádný odeslaný doklad) — smaž ji bez archive entry, ať historie
+        // neobsahuje šum.
+        $this->renderer->invalidate($invoiceId, 'invalidate_allocate', archive: false);
+
+        return $this->repo->find($invoiceId);
     }
 
     /** Stejná logika jako SendEmailAction::resolveRecipients. */

@@ -505,11 +505,12 @@ function pushWrToInvoiceItem() {
 
   // 1. Položka se shodným popisem → sync (aktualizace hodin/sazby).
   // 2. Jinak prázdná položka (z blankItem na nové faktuře) → naplň ji, ne push.
+  //    Cena se ignoruje — blankItem default cenu předvyplňuje z project.hourly_rate
+  //    (nebo client.hourly_rate fallback), takže placeholder typicky cenu má.
   // 3. Jinak nová položka.
   const existing = form.value.items.find(it => (it.description || '').trim() === description.trim())
   const empty = !existing
-    ? form.value.items.find(it => (it.description || '').trim() === ''
-        && (Number(it.unit_price_without_vat) || 0) === 0)
+    ? form.value.items.find(it => (it.description || '').trim() === '')
     : undefined
   const target = existing || empty
 

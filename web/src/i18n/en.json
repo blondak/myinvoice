@@ -270,10 +270,13 @@
         "sent": "Sent",
         "update": "Invoice edited",
         "issue": "Issued",
+        "allocate": "Invoice number allocated",
         "workreport": "Work report changed",
         "currency": "Bank details changed",
         "manual": "Manual invalidation",
-        "backfill_sent": "Backfilled"
+        "backfill_sent": "Backfilled",
+        "approval_request": "Approval requested",
+        "approval_reminder": "Approval reminder sent"
       }
     },
     "attachments": {

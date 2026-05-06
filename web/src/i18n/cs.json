@@ -270,10 +270,13 @@
         "sent": "Odesláno",
         "update": "Úprava faktury",
         "issue": "Vystavení",
+        "allocate": "Alokace čísla faktury",
         "workreport": "Změna výkazu",
         "currency": "Změna bank. údajů",
         "manual": "Ruční invalidace",
-        "backfill_sent": "Doplněno zpětně"
+        "backfill_sent": "Doplněno zpětně",
+        "approval_request": "Žádost o schválení výkazu",
+        "approval_reminder": "Upomínka schválení výkazu"
       }
     },
     "attachments": {

@@ -35,6 +35,7 @@ use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Mail\ApprovalEmailVarsBuilder;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Pdf\PdfArchiveService;
 use MyInvoice\Service\Pdf\WorkReportPdfRenderer;
 
 // Parse args
@@ -68,6 +69,8 @@ $mailer = $container->get(Mailer::class);
 $varsBuilder = $container->get(ApprovalEmailVarsBuilder::class);
 /** @var ActivityLogger $logger */
 $logger = $container->get(ActivityLogger::class);
+/** @var PdfArchiveService $pdfArchive */
+$pdfArchive = $container->get(PdfArchiveService::class);
 
 $days = $daysOverride ?? (int) $config->get('approval.reminder_after_days', 5);
 $maxReminders = (int) $config->get('approval.max_reminders', 3);
@@ -166,10 +169,15 @@ foreach ($candidates as $inv) {
             [['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf']],
         );
 
+        // Archivuj odeslaný výkaz — viz RequestApprovalAction.
+        $sentToAll = array_values(array_unique(array_merge($to, $bcc)));
+        $archiveId = $pdfArchive->archiveCopy($invId, $pdfPath, 'approval_reminder', wasSent: true, sentTo: $sentToAll);
+
         $repo->markApprovalReminderSent($invId);
         $logger->log('invoice.approval_reminder_sent', null, 'invoice', $invId, [
             'to' => $to, 'bcc' => $bcc,
             'reminder_n' => ((int) $inv['approval_reminder_count']) + 1,
+            'pdf_archive_id' => $archiveId,
         ]);
 
         $report['sent']++;

@@ -375,7 +375,7 @@ final class InvoicePdfRenderer
      * Reason je uložen do invoice_pdfs.reason a pomáhá v UI rozlišit,
      * proč se historická verze archivovala (edit / issue / workreport / ...).
      */
-    public function invalidate(int $invoiceId, string $reason = 'invalidate_manual'): void
+    public function invalidate(int $invoiceId, string $reason = 'invalidate_manual', bool $archive = true): void
     {
         $invoice = $this->repo->find($invoiceId);
         if ($invoice === null) return;
@@ -385,10 +385,14 @@ final class InvoicePdfRenderer
             $this->cachePath($invoice),
         ]));
         foreach ($paths as $p) {
-            if (is_file($p)) {
+            if (!is_file($p)) continue;
+            if ($archive) {
                 // Archivuj místo unlink — zachová verzi pro audit a UI historii.
                 // archive() přesune soubor do _archive/ (atomic rename, fallback copy+unlink).
                 $this->archive->archive($invoiceId, $p, $reason);
+            } else {
+                // Pro draft cache (např. před alokací VS): jen smaž, bez archive entry.
+                @unlink($p);
             }
         }
         $this->db->pdo()->prepare('UPDATE invoices SET pdf_path = NULL, pdf_generated_at = NULL WHERE id = ?')

@@ -210,24 +210,21 @@ async function submit(decision: 'approve' | 'reject') {
                   <tr>
                     <th class="px-4 py-2 text-left font-medium">{{ tt('Popis', 'Description') }}</th>
                     <th v-if="wrHasDates" class="px-3 py-2 text-left font-medium w-28">{{ tt('Datum', 'Date') }}</th>
-                    <th class="px-3 py-2 text-right font-medium w-20">{{ tt('Hodin', 'Hours') }}</th>
-                    <th class="px-3 py-2 text-right font-medium w-28">{{ tt('Sazba', 'Rate') }}</th>
-                    <th class="px-4 py-2 text-right font-medium w-32">{{ tt('Celkem', 'Total') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-24 whitespace-nowrap">{{ tt('Hodin', 'Hours') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-40 whitespace-nowrap">{{ tt('Sazba', 'Rate') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                   <tr v-for="it in data.work_report.items" :key="it.id">
                     <td class="px-4 py-2 whitespace-pre-wrap text-neutral-800">{{ it.description }}</td>
                     <td v-if="wrHasDates" class="px-3 py-2 whitespace-nowrap text-neutral-600">{{ fmtDate(it.work_date) }}</td>
-                    <td class="px-3 py-2 text-right font-mono">{{ fmtHours(it.hours) }}</td>
-                    <td class="px-3 py-2 text-right font-mono">{{ fmtMoney(it.rate, data.invoice.currency) }}</td>
-                    <td class="px-4 py-2 text-right font-mono">{{ fmtMoney(it.total_amount, data.invoice.currency) }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtHours(it.hours) }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(it.rate, data.invoice.currency) }}</td>
                   </tr>
                   <tr class="bg-neutral-50 font-semibold">
                     <td class="px-4 py-2 text-right" :colspan="wrHasDates ? 2 : 1">{{ tt('Celkem', 'Total') }}</td>
-                    <td class="px-3 py-2 text-right font-mono">{{ fmtHours(data.work_report.total_hours) }} h</td>
-                    <td></td>
-                    <td class="px-4 py-2 text-right font-mono">{{ fmtMoney(data.work_report.total_amount, data.invoice.currency) }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtHours(data.work_report.total_hours) }} h</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(data.work_report.total_amount, data.invoice.currency) }}</td>
                   </tr>
                 </tbody>
               </table>

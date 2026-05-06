@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] — 2026-05-06
+
+### Added
+
+- **Alokace varsymbolu při žádosti o schválení výkazu** —
+  `POST /api/invoices/{id}/request-approval` teď před odesláním emailu
+  alokuje varsymbol a zafixuje supplier/client/bank snapshoty (status
+  zůstává `draft`). Důsledky: příloha v emailu je `Vykaz-2605004.pdf`
+  místo `Vykaz-draft-299.pdf`, schvalovací email obsahuje reálné číslo
+  faktury a snapshoty odpovídají stavu v okamžiku, kdy klient schvaluje.
+  Idempotentní — `AutoIssueAndSendService::run()` allocate přeskočí,
+  pokud už VS existuje.
+- **Archivace odeslaného výkazu do PDF historie faktury** — `Vykaz-XYZ.pdf`
+  poslaný klientovi ke schválení (`RequestApprovalAction`) i v upomínkách
+  (`cron-send-approval-reminders.php`) se teď archivuje s flagem
+  `was_sent=true` a seznamem příjemců. V UI historie PDF se zobrazí jako
+  „Žádost o schválení výkazu" / „Upomínka schválení výkazu" → klient.
+- **Rozšířený `incrementMonthInString()` pro klonování faktur** — kromě
+  původního `M/YYYY` rozpozná i `YYYY-MM`, `YYYY/MM`, `MM.YYYY`,
+  `MM-YYYY`. Padding: ISO formát (`YYYY-MM`) paduje vždy
+  (`2025-12` → `2026-01`), month-first formáty padují jen když uživatel
+  napsal leading zero (`12/2025` → `1/2026`, `01-2026` → `02-2026`).
+  Plné datumy (`2026-05-15`, `20.5.2026`) jsou chráněné lookaroundy
+  a neinkrementují se. Krytí 9 nových unit testů.
+
+### Changed
+
+- **„Přenést do faktury" na výkazu víceprací** — detekce prázdné
+  placeholder položky v `pushWrToInvoiceItem()` ignoruje cenu.
+  `blankItem()` na nové faktuře předvyplňuje cenu z `project.hourly_rate`,
+  takže původní podmínka `price=0` placeholder nezachytila a vytvořila
+  se duplicitní položka. Po opravě se placeholder nahradí daty z výkazu.
+- **Veřejná schvalovací stránka (`ApprovalPublic.vue`)** — odstraněn
+  per-řádkový sloupec „Celkem" v tabulce výkazu, řádky ukazují jen
+  Popis / Datum / Hodin / Sazba. Sumarizace zůstává v patičce. Zvětšené
+  šířky číselných sloupců + `whitespace-nowrap` — částka s `CZK` se
+  nezalomí na 2 řádky.
+- **`InvoicePdfRenderer::invalidate()`** dostala 3. parametr
+  `bool $archive = true`. Při `archive=false` se cached PDF jen
+  `unlink()`ne bez záznamu v `invoice_pdfs`. Použito v
+  `allocateVarsymbolAndSnapshots()` — draft preview PDF před alokací VS
+  je pomocný cache, ne odeslaný doklad, archivace by tvořila šum.
+
 ## [2.0.1] — 2026-05-06
 
 ### Fixed

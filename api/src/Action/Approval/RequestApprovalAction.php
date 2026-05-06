@@ -11,9 +11,11 @@ use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
+use MyInvoice\Service\Invoice\AutoIssueAndSendService;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Mail\ApprovalEmailVarsBuilder;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Pdf\PdfArchiveService;
 use MyInvoice\Service\Pdf\WorkReportPdfRenderer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -28,7 +30,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *  - projekt vyžaduje requires_work_report_approval
  *
  * Effects:
- *  - vygeneruje approval_token, status='requested'
+ *  - alokuje varsymbol a zafixuje supplier/client/bank snapshoty (status zůstává 'draft')
+ *  - vygeneruje approval_token, approval_status='requested'
  *  - pošle email invoice_approval na project_billing_emails (fallback client_main_email)
  *  - jako příloha jen PDF výkazu (Vykaz-XYZ.pdf), ne celá faktura
  *  - audit: invoice.approval_requested
@@ -44,6 +47,8 @@ final class RequestApprovalAction
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
         private readonly Config $config,
+        private readonly AutoIssueAndSendService $autoIssue,
+        private readonly PdfArchiveService $pdfArchive,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -64,6 +69,15 @@ final class RequestApprovalAction
         $to = $this->resolveApprovalRecipients($invoice);
         if (empty($to)) {
             return Json::error($response, 'no_recipients', 'Zakázka nemá fakturační email a klient nemá hlavní email.', 400);
+        }
+
+        // Alokuj varsymbol + snapshoty PŘED renderem PDF, aby Vykaz-XYZ.pdf
+        // obsahoval reálné číslo (ne "draft-NN") a aby snapshoty odpovídaly stavu
+        // v okamžiku, kdy klient výkaz schvaluje.
+        try {
+            $invoice = $this->autoIssue->allocateVarsymbolAndSnapshots($id);
+        } catch (\Throwable $e) {
+            return Json::error($response, 'allocation_failed', 'Nepodařilo se alokovat číslo faktury: ' . $e->getMessage(), 500);
         }
 
         // Render PDF výkazu (Vykaz-XYZ.pdf)
@@ -107,11 +121,23 @@ final class RequestApprovalAction
             return Json::error($response, 'send_failed', 'Email se nepodařilo odeslat: ' . $e->getMessage(), 502);
         }
 
+        // Archivuj odeslaný výkaz do PDF historie faktury — důkaz toho, co klient dostal
+        // ke schválení. wasSent=true + sent_to → v UI se zobrazí "Odesláno klientovi".
+        $sentToAll = array_values(array_unique(array_merge($to, $bcc)));
+        $archiveId = $this->pdfArchive->archiveCopy(
+            $id,
+            $pdfPath,
+            'approval_request',
+            wasSent: true,
+            sentTo: $sentToAll,
+        );
+
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('invoice.approval_requested', $user['id'] ?? null, 'invoice', $id, [
             'to' => $to,
             'pdf_path' => basename($pdfPath),
+            'pdf_archive_id' => $archiveId,
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         return Json::ok($response, [
