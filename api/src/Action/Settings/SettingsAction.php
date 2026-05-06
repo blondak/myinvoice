@@ -105,12 +105,17 @@ final class SettingsAction
             ?: (int) $pdo->query("SELECT id FROM vat_rates ORDER BY id LIMIT 1")->fetchColumn();
 
         $pdo->beginTransaction();
+        $fkSuspended = false;
         try {
-            // 1. Insert supplier (default_currency_id placeholder, opravíme po insertu currencies)
-            //    Použijeme libovolnou existující currency_id pro inicializaci, pak nahradíme.
+            // 1. Insert supplier (default_currency_id placeholder, opravíme po insertu currencies).
+            //    Cyklický FK supplier.default_currency_id ↔ currencies.supplier_id: pokud už existuje
+            //    nějaká currency (alespoň jeden supplier v DB), použijeme ji jako bootstrap placeholder.
+            //    Při prvním supplier po deferred-supplier setupu currencies tabulka je prázdná
+            //    → fallback na SET FOREIGN_KEY_CHECKS = 0 (stejný trik jako SetupAction::insertSupplier).
             $bootstrapCurId = (int) $pdo->query("SELECT id FROM currencies ORDER BY id LIMIT 1")->fetchColumn();
             if ($bootstrapCurId === 0) {
-                throw new \RuntimeException('V DB neexistuje žádná currency — fresh install vyžaduje setup.php.');
+                $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+                $fkSuspended = true;
             }
 
             $stmt = $pdo->prepare(
@@ -134,7 +139,7 @@ final class SettingsAction
                 $this->nullable($b, 'phone'),
                 $this->nullable($b, 'web'),
                 $this->nullable($b, 'tagline'),
-                $bootstrapCurId,
+                $bootstrapCurId ?: 0,
                 $defaultVatId ?: 1,
                 (int) ($b['default_payment_due_days'] ?? 14),
                 (float) ($b['default_hourly_rate'] ?? 1500.00),
@@ -154,9 +159,16 @@ final class SettingsAction
             $pdo->prepare('UPDATE supplier SET default_currency_id = ? WHERE id = ?')
                 ->execute([$newDefaultCurId, $newSupplierId]);
 
+            if ($fkSuspended) {
+                $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+                $fkSuspended = false;
+            }
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
+            if ($fkSuspended) {
+                $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+            }
             return Json::error($response, 'create_failed', 'Vytvoření supplier selhalo: ' . $e->getMessage(), 500);
         }
 
