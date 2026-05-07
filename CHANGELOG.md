@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.4] — 2026-05-07
+
+### Fixed
+
+- **`docker-update.{sh,ps1}` špatně detekoval mode** — když uživatel instaloval
+  přes `docker-ghcr.{sh,ps1}` (registry mode, používá
+  `docker-compose.production.yml`), update detekoval podle defaultního
+  `docker-compose.yml`, který má `build:` blok (dev compose), a spadl do
+  source mode. To způsobilo: 1) zbytečný `git pull`, 2) lokální build
+  duplicitního `myinvoice:latest` image vedle `ghcr.io/radekhulan/myinvoice`,
+  3) `docker compose up -d` bez `-f production.yml` switchnul stack na
+  lokální build. Fix: detekce preferuje skutečně **RUNNING** stack
+  (`docker compose -f production.yml ps app`), `COMPOSE_ARGS` se propagují
+  do všech compose volání ve skriptu (pull/build/up/ps/exec).
+
 ## [2.1.3] — 2026-05-07
 
 ### Fixed
