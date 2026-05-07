@@ -18,6 +18,21 @@ git clone <repo-url> myinvoice
 cd myinvoice
 ```
 
+> **WSL2 / Linux po klonu:** pokud `./cmd/docker-ghcr.sh` hlásí
+> `Permission denied` nebo `/usr/bin/env: 'bash\r': No such file…`,
+> má tvůj git zapnutý `core.autocrlf=true`, který na checkoutu konvertuje
+> LF → CRLF. Oprav jednorázově existující soubory a vypni autocrlf
+> globálně (na Linuxu nikdy nemá být zapnutý):
+>
+> ```bash
+> sed -i 's/\r$//' cmd/*.sh
+> chmod +x cmd/*.sh
+> git config --global core.autocrlf input
+> ```
+>
+> Repo má `.gitattributes` s `*.sh text eol=lf`, takže příští `git clone`
+> bude LF i bez tohoto kroku.
+
 Pak si vyber variantu podle toho, jestli chceš stavět image lokálně, nebo
 si stáhnout pre-built z GHCR.
 
