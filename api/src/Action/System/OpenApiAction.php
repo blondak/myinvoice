@@ -51,8 +51,9 @@ final class OpenApiAction
     * { box-sizing: border-box; }
     html { font-size: 16px; }
     html, body { overflow-x: hidden; }
+    :root { --hh: 72px; }
     body {
-      margin: 0; padding: 72px 0 0 0;
+      margin: 0; padding: var(--hh) 0 0 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
       color: var(--text);
       background: var(--bg);
@@ -69,13 +70,14 @@ final class OpenApiAction
       -webkit-backdrop-filter: saturate(180%) blur(14px);
       border-bottom: 1px solid var(--border);
       box-shadow: 0 6px 22px rgba(59, 45, 131, 0.08), 0 1px 0 rgba(59, 45, 131, 0.04);
-      height: 72px;
+      min-height: var(--hh);
       box-sizing: border-box;
     }
     .site-header .row {
-      height: 100%;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      min-height: var(--hh);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
       justify-content: space-between;
+      padding: 10px 0;
     }
     .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
     .brand:hover { text-decoration: none; }
@@ -109,9 +111,9 @@ final class OpenApiAction
     #redoc-container .menu-content {
       position: fixed !important;
       left: 0 !important;
-      top: 72px !important;
+      top: var(--hh) !important;
       width: 320px !important;
-      height: calc(100vh - 72px) !important;
+      height: calc(100vh - var(--hh)) !important;
       transform: none !important;
       box-shadow: 1px 0 0 var(--border);
       z-index: 50;
@@ -127,7 +129,7 @@ final class OpenApiAction
     body::before {
       content: '';
       position: fixed;
-      top: 72px; right: 0; bottom: 0;
+      top: var(--hh); right: 0; bottom: 0;
       width: calc((100vw - 320px) * 0.42);
       background: #15131D;
       z-index: -1;
@@ -140,10 +142,12 @@ final class OpenApiAction
     }
     @media (max-width: 900px) {
       #redoc-container .menu-content { display: none !important; }
-      #redoc-container > div > div { padding-left: 0; }
+      #redoc-container .api-content { padding-left: 0 !important; }
+      body::before { display: none !important; }
     }
 
     @media (max-width: 640px) {
+      :root { --hh: 124px; }
       .brand .tag { display: none; }
       .nav-link span.lbl { display: none; }
     }
@@ -188,7 +192,7 @@ final class OpenApiAction
   <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
   <script>
     Redoc.init('/api/openapi.yaml', {
-      scrollYOffset: 72,
+      scrollYOffset: '.site-header',
       hideDownloadButton: false,
       expandResponses: '200,201',
       expandSingleSchemaField: true,
