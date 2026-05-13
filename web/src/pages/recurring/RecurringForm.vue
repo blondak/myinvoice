@@ -235,7 +235,7 @@ onMounted(async () => {
 
 async function submit() {
   error.value = ''
-  if (!form.value.client_id) { error.value = t('invoice.errors.client_required') ?? 'Klient je povinný'; return }
+  if (!form.value.client_id) { error.value = 'Klient je povinný'; return }
   if (!form.value.name.trim()) { error.value = t('recurring.name_required'); return }
   if (form.value.items.length === 0) { error.value = t('recurring.items_required'); return }
   if (form.value.auto_send_email && !form.value.auto_issue) {
@@ -321,7 +321,7 @@ async function submit() {
               :model-value="form.project_id"
               @update:model-value="(v) => { form.project_id = v }"
               :options="projects.map(p => ({ value: p.id, label: p.name }))"
-              :placeholder="t('invoice.no_project') ?? '— bez zakázky —'"
+              :placeholder="t('invoice.no_project')"
               :disabled="!form.client_id"
             />
           </div>
@@ -415,17 +415,17 @@ async function submit() {
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('recurring.items') }}</h3>
           <button type="button" @click="addItem"
             class="cursor-pointer px-2 h-8 text-xs border border-primary-300 text-primary-700 rounded hover:bg-primary-50">
-            + {{ t('invoice.add_item') ?? 'Položka' }}
+            {{ t('invoice.add_item') }}
           </button>
         </div>
         <table class="w-full text-sm">
           <thead class="text-xs text-neutral-500">
             <tr>
-              <th class="text-left">{{ t('invoice.description') ?? 'Popis' }}</th>
-              <th class="text-right" style="width:8%">{{ t('invoice.qty') ?? 'Mn.' }}</th>
-              <th class="text-left" style="width:8%">{{ t('invoice.unit') ?? 'Jed.' }}</th>
-              <th class="text-right" style="width:15%">{{ t('invoice.unit_price') ?? 'Cena/j' }}</th>
-              <th class="text-left" style="width:14%">DPH</th>
+              <th class="text-left">{{ t('invoice.items_table.description') }}</th>
+              <th class="text-right" style="width:8%">{{ t('invoice.items_table.qty') }}</th>
+              <th class="text-left" style="width:8%">{{ t('invoice.items_table.unit') }}</th>
+              <th class="text-right" style="width:15%">{{ t('invoice.items_table.unit_price') }}</th>
+              <th class="text-left" style="width:14%">{{ t('invoice.items_table.vat') ?? 'DPH' }}</th>
               <th style="width:30px"></th>
             </tr>
           </thead>

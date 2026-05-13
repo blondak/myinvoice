@@ -222,10 +222,10 @@ async function removeAction() {
         <table v-else class="w-full text-sm">
           <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
-              <th class="text-left px-4 py-2 font-medium">{{ t('invoice.description') ?? 'Popis' }}</th>
-              <th class="text-right px-4 py-2 font-medium">{{ t('invoice.qty') ?? 'Mn.' }}</th>
-              <th class="text-left px-4 py-2 font-medium">{{ t('invoice.unit') ?? 'Jed.' }}</th>
-              <th class="text-right px-4 py-2 font-medium">{{ t('invoice.unit_price') ?? 'Cena/j' }}</th>
+              <th class="text-left px-4 py-2 font-medium">{{ t('invoice.items_table.description') }}</th>
+              <th class="text-right px-4 py-2 font-medium">{{ t('invoice.items_table.qty') }}</th>
+              <th class="text-left px-4 py-2 font-medium">{{ t('invoice.items_table.unit') }}</th>
+              <th class="text-right px-4 py-2 font-medium">{{ t('invoice.items_table.unit_price') }}</th>
               <th class="text-center px-4 py-2 font-medium">DPH</th>
             </tr>
           </thead>
