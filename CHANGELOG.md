@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.8] — 2026-05-18
+
+### Security
+
+- **PDF import — zip-bomb hardening (defense-in-depth).** `PdfIsdocExtractor`
+  v 3.6.7 volal `gzuncompress()` a `gzinflate()` bez parametru `$max_length`.
+  Útočník s admin/accountant rolí mohl vyrobit PDF s extrémně-redundant
+  FlateDecode streamem (typicky 20 MiB nul = ~20 KiB compressed) a teoreticky
+  vyčerpat memory PHP procesu během dekomprese. Post-check
+  `strlen($inflated) > MAX_DECOMPRESSED_BYTES` proběhl až po alokaci, takže
+  byl k ničemu. Riziko bylo zmírněné existujícími upload limity (20 MiB/file,
+  50 MiB total, admin/accountant gate), ale ne odstraněné.
+
+  Fix: `gzuncompress($stream, MAX_DECOMPRESSED_BYTES)` a obdobně pro
+  `gzinflate` — dekomprese se zastaví na 10 MiB a vrátí `false`. Doplněn
+  regression test `testRejectsZipBombFlateDecodeStream` (20 MiB nul jako
+  vstup, ověření že memory delta extrakce < 15 MiB).
+
 ## [3.6.7] — 2026-05-18
 
 ### Added

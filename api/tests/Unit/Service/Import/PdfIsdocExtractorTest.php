@@ -78,6 +78,35 @@ final class PdfIsdocExtractorTest extends TestCase
         self::assertNull($this->extractor->extract($pdf));
     }
 
+    public function testRejectsZipBombFlateDecodeStream(): void
+    {
+        // SECURITY: PDF s extrémně-redundant FlateDecode streamem, který by se
+        // bez `max_length` rozbalil na >10 MiB. gzuncompress se zastaví na
+        // MAX_DECOMPRESSED_BYTES (10 MiB), takže nedojde k OOM a extract()
+        // vrátí null (žádný platný ISDOC).
+        // 20 MiB nuly se zkomprimují na cca 20 KiB — perfektní zip-bomb test.
+        $bomb = str_repeat("\0", 20 * 1024 * 1024);
+        $compressed = gzcompress($bomb);
+        self::assertLessThan(100 * 1024, strlen($compressed), 'kompresní poměr musí být velmi vysoký pro relevantní test');
+        $length = strlen($compressed);
+
+        $pdf = "%PDF-1.7\n"
+            . "1 0 obj\n<< /Type /Filespec /F (bomb.isdoc) /UF (bomb.isdoc) /EF << /F 2 0 R >> >>\nendobj\n"
+            . "2 0 obj\n<< /Type /EmbeddedFile /Filter /FlateDecode /Length $length >>\nstream\n"
+            . $compressed
+            . "\nendstream\nendobj\n"
+            . "trailer << /Root 1 0 R >>\n%%EOF\n";
+
+        // Volání musí proběhnout v rozumném čase a paměti (ne hodit OutOfMemoryError).
+        $startMem = memory_get_usage();
+        $result = $this->extractor->extract($pdf);
+        $endMem = memory_get_usage();
+
+        self::assertNull($result, 'zip-bomb stream nesmí projít');
+        // Defense in depth: ověř, že jsme nealokovali plných 20 MiB při extrakci.
+        self::assertLessThan(15 * 1024 * 1024, $endMem - $startMem, 'extrakce nesmí alokovat dekomprimovaný obsah');
+    }
+
     public function testHandlesOctetStreamSubtypeWithoutFalseStreamMatch(): void
     {
         // Regression: iDoklad dává EmbeddedFile Subtype `application/octet-stream`,

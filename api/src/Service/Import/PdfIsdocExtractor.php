@@ -204,21 +204,24 @@ final class PdfIsdocExtractor
     /**
      * Nadekomprimuje FlateDecode stream. Vrátí UTF-8 XML nebo null, pokud
      * dekomprese selže nebo výsledek překračuje limit.
+     *
+     * SECURITY: `$max_length` parametr u gzuncompress/gzinflate (PHP ≥8.0)
+     * zastaví dekompresi na MAX_DECOMPRESSED_BYTES. Bez něj by útočník mohl
+     * vyrobit PDF se zip-bomb FlateDecode streamem (např. 100 KiB compressed
+     * → 1+ GiB decompressed) a vyčerpat memory PHP procesu. Post-check
+     * strlen() už by byl pozdě — alokace proběhla.
      */
     private function tryInflate(string $stream): ?string
     {
         // PDF FlateDecode = zlib-formatted data (header 0x78 0x9C/0xDA atd.).
         // gzuncompress odpovídá tomuto formátu.
-        $inflated = @gzuncompress($stream);
+        $inflated = @gzuncompress($stream, self::MAX_DECOMPRESSED_BYTES);
         if ($inflated === false) {
             // Fallback: někdy je stream už raw deflate (bez zlib hlavičky).
-            $inflated = @gzinflate($stream);
+            $inflated = @gzinflate($stream, self::MAX_DECOMPRESSED_BYTES);
             if ($inflated === false) {
                 return null;
             }
-        }
-        if (strlen($inflated) > self::MAX_DECOMPRESSED_BYTES) {
-            return null;
         }
         return $inflated;
     }
