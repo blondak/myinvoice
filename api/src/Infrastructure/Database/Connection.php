@@ -6,12 +6,18 @@ namespace MyInvoice\Infrastructure\Database;
 
 use MyInvoice\Infrastructure\Config\Config;
 use PDO;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 final class Connection
 {
     private ?PDO $pdo = null;
+    private readonly LoggerInterface $logger;
 
-    public function __construct(private readonly Config $config) {}
+    public function __construct(private readonly Config $config, ?LoggerInterface $logger = null)
+    {
+        $this->logger = $logger ?? new NullLogger();
+    }
 
     public function pdo(): PDO
     {
@@ -25,12 +31,12 @@ final class Connection
 
             $dsn = "mysql:host={$host};port={$port};dbname={$name};charset={$charset}";
 
-            $this->pdo = new PDO($dsn, $user, $pass, [
+            $this->pdo = new LoggingPdo($dsn, $user, $pass, [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
                 PDO::ATTR_STRINGIFY_FETCHES  => false,
-            ]);
+            ], $this->logger);
 
             $this->pdo->exec("SET time_zone = '+01:00'");
         }

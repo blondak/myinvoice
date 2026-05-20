@@ -18,8 +18,9 @@ use MyInvoice\Service\Validation\InvoiceAmountPolicy;
  *
  * Kroky:
  *   1. Vytvoří draft (klon šablony — client, project, currency, language,
- *      payment_method, reverse_charge, notes; položky se zkopírují s opt.
- *      regex inkrementem měsíce v popisu — viz MonthIncrementer).
+ *      payment_method, reverse_charge, notes; položky se zkopírují s volitelnou
+ *      synchronizací M/YYYY v popisu k DUZP/issue_date — viz MonthSynchronizer).
+ *      tax_date_mode řídí DUZP — same_as_issue (default) nebo previous_month_last_day.
  *   2. Recompute totals (InvoiceCalculator).
  *   3. Aplikuje ČNB kurz, pokud měna != CZK (ExchangeRateApplier).
  *   4. Pokud auto_issue=true:
@@ -69,6 +70,10 @@ final class RecurringInvoiceGenerator
         }
 
         $issueDate = $forcedIssueDate ?? (string) $template['next_run_date'];
+
+        // Cron volá s $userId=null — fallback na autora šablony, aby invoices.created_by
+        // (NOT NULL) i activity_log měly konzistentní audit.
+        $userId ??= (int) $template['created_by'];
 
         // Validate state — paused/expired by neměl cron volat, ale RunNow může
         if ($template['status'] === 'expired') {
@@ -158,7 +163,9 @@ final class RecurringInvoiceGenerator
 
         $type = (string) ($template['invoice_type'] ?? 'invoice');
         $dueDate = date('Y-m-d', strtotime($issueDate . ' +' . (int) $template['payment_due_days'] . ' days'));
-        $taxDate = $type === 'proforma' ? null : $issueDate;
+        $taxDate = $type === 'proforma'
+            ? null
+            : self::computeTaxDate($issueDate, (string) ($template['tax_date_mode'] ?? 'same_as_issue'));
 
         $pdo->beginTransaction();
         try {
@@ -189,10 +196,12 @@ final class RecurringInvoiceGenerator
             ]);
             $newId = (int) $pdo->lastInsertId();
 
-            // Item-level month-increment podle frequency × interval (default 1, lze vypnout flagem)
-            $monthsToIncrement = $template['increment_month_in_descriptions']
-                ? PeriodicityCalculator::monthsFor((string) $template['frequency'])
-                : 0;
+            // Description sync — M/YYYY v popisu se synchronizuje k DUZP (tax_date)
+            // pokud existuje, jinak k issue_date (proforma). Flag increment_month_in_descriptions
+            // řídí, jestli se sync vůbec aplikuje (legacy název zachován pro DB compat).
+            $syncTarget = $template['increment_month_in_descriptions']
+                ? new \DateTimeImmutable($taxDate ?? $issueDate)
+                : null;
 
             $itemStmt = $pdo->prepare(
                 'INSERT INTO invoice_items
@@ -207,8 +216,8 @@ final class RecurringInvoiceGenerator
             // Pozn.: BulkReissue ukládá `vat_rate_snapshot` z položky source faktury — my v šabloně
             // snapshot nedržíme, takže necháme 0 a recompute si poradí.
             foreach ($template['items'] as $item) {
-                $description = $monthsToIncrement !== 0
-                    ? MonthIncrementer::increment((string) $item['description'], $monthsToIncrement)
+                $description = $syncTarget !== null
+                    ? MonthSynchronizer::syncTo((string) $item['description'], $syncTarget)
                     : (string) $item['description'];
 
                 $itemStmt->execute([
@@ -276,5 +285,23 @@ final class RecurringInvoiceGenerator
         ], $ip, $ua);
 
         return $varsymbol;
+    }
+
+    /**
+     * Spočítá DUZP (tax_date) podle režimu šablony.
+     *
+     *   same_as_issue           → tax_date = issue_date (původní chování)
+     *   previous_month_last_day → tax_date = poslední den měsíce předcházejícího issue_date
+     *                             (typický CZ scénář "fakturuji 1.6. za květen, DUZP 31.5.")
+     */
+    private static function computeTaxDate(string $issueDate, string $mode): string
+    {
+        $d = new \DateTimeImmutable($issueDate);
+        return match ($mode) {
+            'previous_month_last_day' => $d->modify('first day of this month')
+                                           ->modify('-1 day')
+                                           ->format('Y-m-d'),
+            default => $issueDate, // 'same_as_issue' a unknown mode (fail-safe)
+        };
     }
 }

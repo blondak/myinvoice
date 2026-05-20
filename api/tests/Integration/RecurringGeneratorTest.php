@@ -206,16 +206,15 @@ final class RecurringGeneratorTest extends TestCase
         $itemRows = $items->fetchAll(PDO::FETCH_ASSOC);
         $this->assertCount(2, $itemRows);
 
-        // Měsíční inkrement v popisu (monthly = +1 měsíc; popis šablony obsahoval current month)
+        // Description sync — M/YYYY se synchronizuje k tax_date (= issue_date při default
+        // tax_date_mode='same_as_issue'). Popis šablony "Hosting 5/2026" generuje
+        // "Hosting 5/2026" pokud issue_date spadá do 5/2026, ne "Hosting 6/2026".
         $currentMonth = (int) (new \DateTimeImmutable($today))->format('n');
-        $expectedMonth = $currentMonth === 12 ? 1 : $currentMonth + 1;
-        $expectedYear = $currentMonth === 12
-            ? (int) (new \DateTimeImmutable($today))->format('Y') + 1
-            : (int) (new \DateTimeImmutable($today))->format('Y');
+        $currentYear  = (int) (new \DateTimeImmutable($today))->format('Y');
         $this->assertStringContainsString(
-            "Hosting {$expectedMonth}/{$expectedYear}",
+            "Hosting {$currentMonth}/{$currentYear}",
             $itemRows[0]['description'],
-            'increment_month_in_descriptions má posunout M/YYYY v popisu',
+            'description sync má synchronizovat M/YYYY na měsíc DUZP/issue_date',
         );
 
         // Šablona má posunutý next_run_date a last_run_date
@@ -273,6 +272,58 @@ final class RecurringGeneratorTest extends TestCase
         $data = $row->fetch(PDO::FETCH_ASSOC);
         $this->assertSame('draft', $data['status']);
         $this->assertNull($data['varsymbol']);
+    }
+
+    public function testGeneratorPreviousMonthLastDayTaxDateMode(): void
+    {
+        // Šablona s tax_date_mode='previous_month_last_day': fakturuje se 1.6. za 5/2026,
+        // DUZP = 31.5.2026, popis položky se synchronizuje na "5/2026" (ne issue date 6/2026).
+        $issueDate = '2026-06-01';
+
+        $tplId = $this->repo->create([
+            'supplier_id'    => $this->supplierId,
+            'client_id'      => $this->clientId,
+            'name'           => 'TEST recurring tax_date previous-month (PHPUnit)',
+            'frequency'      => 'monthly',
+            'end_of_month'   => false,
+            'anchor_date'    => $issueDate,
+            'next_run_date'  => $issueDate,
+            'invoice_type'   => 'invoice',
+            'currency_id'    => $this->currencyId,
+            'language'       => 'cs',
+            'payment_method' => 'bank_transfer',
+            'payment_due_days' => 14,
+            'tax_date_mode'  => 'previous_month_last_day',
+            'increment_month_in_descriptions' => true,
+            'auto_issue'     => true,
+            'auto_send_email'=> false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Hosting 06/2026',  // šablona může mít libovolný měsíc — sync to přepíše
+            'quantity' => 1.0,
+            'unit' => 'měs',
+            'unit_price_without_vat' => 500.00,
+            'vat_rate_id' => $this->vatRateId,
+            'order_index' => 0,
+        ]]);
+
+        $result = $this->generator->generate($tplId, $issueDate, $this->userId, '127.0.0.1', 'phpunit');
+        $this->createdInvoiceIds[] = $result['invoice_id'];
+
+        $row = $this->db->pdo()->prepare(
+            "SELECT i.issue_date, i.tax_date, ii.description
+               FROM invoices i
+               JOIN invoice_items ii ON ii.invoice_id = i.id
+              WHERE i.id = ?"
+        );
+        $row->execute([$result['invoice_id']]);
+        $data = $row->fetch(PDO::FETCH_ASSOC);
+
+        $this->assertSame('2026-06-01', $data['issue_date']);
+        $this->assertSame('2026-05-31', $data['tax_date'], 'DUZP musí být poslední den předchozího měsíce');
+        $this->assertStringContainsString('05/2026', $data['description'], 'Popis se musí synchronizovat na měsíc DUZP (5/2026), ne issue date (6/2026)');
     }
 
     public function testGeneratorRejectsTemplateWithNonPositiveAmountToPay(): void

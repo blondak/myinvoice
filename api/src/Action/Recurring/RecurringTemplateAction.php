@@ -280,6 +280,11 @@ final class RecurringTemplateAction
         if (!in_array($paymentMethod, ['bank_transfer', 'card', 'cash', 'other'], true)) {
             $err['payment_method'][] = 'Neplatný způsob úhrady';
         }
+        if (array_key_exists('tax_date_mode', $data) && $data['tax_date_mode'] !== null && $data['tax_date_mode'] !== '') {
+            if (!in_array((string) $data['tax_date_mode'], ['same_as_issue', 'previous_month_last_day'], true)) {
+                $err['tax_date_mode'][] = 'Neplatný režim DUZP';
+            }
+        }
         // auto_send_email vyžaduje auto_issue (nelze poslat draft)
         if (!empty($data['auto_send_email']) && empty($data['auto_issue'])) {
             $err['auto_send_email'][] = 'Automatické odeslání vyžaduje automatické vystavení.';

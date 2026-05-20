@@ -78,7 +78,7 @@ final class Bootstrap
             },
 
             ResponseFactory::class => fn () => new ResponseFactory(),
-            Connection::class      => fn (ContainerInterface $c) => new Connection($c->get(Config::class)),
+            Connection::class      => fn (ContainerInterface $c) => new Connection($c->get(Config::class), $c->get(LoggerInterface::class)),
             RedisProbe::class      => fn (ContainerInterface $c) => new RedisProbe($c->get(Config::class)),
             RedisFactory::class    => fn (ContainerInterface $c) => new RedisFactory($c->get(Config::class)),
         ]);

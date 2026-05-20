@@ -66,7 +66,12 @@ final class InvoicePdfRenderer
         if (!$forceRegenerate && $invoice['pdf_path'] && $isFresh($invoice['pdf_path'])) {
             return $invoice['pdf_path'];
         }
-        if (!$forceRegenerate && $isFresh($cachedPath)) {
+        // cachePath fallback je orphan-recovery (pdf_path je null, ale soubor leží na
+        // deterministické cestě). MUSÍ vyžadovat pdf_generated_at NOT NULL — jinak
+        // by invalidate() s uzamčeným souborem (Windows: PDF otevřené v prohlížeči →
+        // rename a unlink selžou) skončila s pdf_path=NULL ale původní soubor zůstal
+        // na disku, a tahle větev by ho zde znovu pickla → stale PDF.
+        if (!$forceRegenerate && !empty($invoice['pdf_generated_at']) && $isFresh($cachedPath)) {
             $this->updatePdfPath($invoiceId, $cachedPath);
             return $cachedPath;
         }

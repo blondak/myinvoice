@@ -49,6 +49,14 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
   U non-bank-transfer se v PDF i e-mailu nezobrazí QR kód ani bankovní
   spojení.
 - **Splatnost** — počet dnů od vystavení
+- **DUZP** *(plátci DPH)* — režim, kterým se počítá datum uskutečnění
+  zdanitelného plnění z `issue_date`:
+    - **Stejné jako datum vystavení** *(default)* — DUZP = vystavení.
+      Zachovává původní chování pro existující šablony.
+    - **Poslední den předchozího měsíce** — typický CZ scénář „fakturuji
+      1.6. za květnové služby". Faktura má vystavení 1.6.2026, ale DUZP
+      31.5.2026. Měsíc v popiscích položek se synchronizuje k DUZP, takže
+      „Hosting 05/2026" zůstane „05/2026" i když je vystavena 1.6.
 
 ### 14.2.3 Položky
 
@@ -59,10 +67,14 @@ se sama přizpůsobí.
 
 ### 14.2.4 Sekce „Automatizace"
 
-- **Posouvat měsíc v popiscích položek** — pokud je v popisu vzorec `M/YYYY`
-  (např. „Hosting 3/2026"), automaticky se posune o periodu (u monthly o
-  +1 měsíc, u quarterly o +3 měsíce, atd.). Vyhne se plným datům typu
-  `2026-05-15` (nezamění je s month-year párem).
+- **Synchronizovat měsíc v popiscích položek s DUZP** — pokud je v popisu
+  vzorec `M/YYYY` (např. „Hosting 03/2026"), automaticky se **nahradí**
+  měsícem/rokem z DUZP (`tax_date`) generované faktury — případně z
+  `issue_date` u proform, které DUZP nemají. Sync je idempotentní:
+  šablonový popis „Hosting 03/2026" generuje „Hosting 05/2026" pokud DUZP
+  spadá do 5/2026, a „Hosting 06/2026" pokud do 6/2026 — bez kumulativního
+  driftu. Pattern detektor zvládá `M/YYYY`, `YYYY-MM`, `M.YYYY`, `M-YYYY`
+  a varianty; plná data typu `2026-05-15` chrání lookaround a nemění je.
 - **Po vygenerování rovnou vystavit** — cron rovnou přidělí číslo faktury
   z šablony číslování dodavatele a zafixuje snapshoty klienta/dodavatele/
   bankovního spojení (status = `issued`). Pokud vypneš, vygeneruje se jen
@@ -86,6 +98,13 @@ fakturace.
 
 V seznamu šablon je u každé tlačítko **Pozastavit / Obnovit** a **Vygenerovat
 teď** (jednorázový manuál run — užitečné pro testování nastavení).
+
+Klik na **Vygenerovat teď** otevře modal s **date pickerem** pro datum
+vystavení. Default je dnešní datum (ne `next_run_date` z šablony), aby
+opakovaný klik nevyrobil budoucně-datovanou fakturu. Pod inputem se zobrazí
+plánovaný cron termín pro orientaci; pokud zvolíš datum v budoucnu, modal
+upozorní žlutým warningem, že daňově by `issue_date` mělo odpovídat reálnému
+datu vystavení.
 
 ## 14.4 Cron
 

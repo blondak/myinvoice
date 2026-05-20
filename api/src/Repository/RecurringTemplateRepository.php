@@ -139,9 +139,9 @@ final class RecurringTemplateRepository
             (supplier_id, client_id, project_id, name,
              frequency, day_of_month, end_of_month, anchor_date, end_date, next_run_date,
              invoice_type, currency_id, language, payment_method, reverse_charge,
-             payment_due_days, note_above_items, note_below_items,
+             payment_due_days, tax_date_mode, note_above_items, note_below_items,
              increment_month_in_descriptions, auto_issue, auto_send_email, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -161,6 +161,7 @@ final class RecurringTemplateRepository
             (string) ($data['payment_method'] ?? 'bank_transfer'),
             !empty($data['reverse_charge']) ? 1 : 0,
             (int) ($data['payment_due_days'] ?? 14),
+            self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             !empty($data['increment_month_in_descriptions']) ? 1 : 0,
@@ -184,7 +185,7 @@ final class RecurringTemplateRepository
                 anchor_date = ?, end_date = ?,
                 next_run_date = CASE WHEN last_run_date IS NULL THEN ? ELSE next_run_date END,
                 invoice_type = ?, currency_id = ?, language = ?, payment_method = ?,
-                reverse_charge = ?, payment_due_days = ?,
+                reverse_charge = ?, payment_due_days = ?, tax_date_mode = ?,
                 note_above_items = ?, note_below_items = ?,
                 increment_month_in_descriptions = ?, auto_issue = ?, auto_send_email = ?
               WHERE id = ?';
@@ -204,6 +205,7 @@ final class RecurringTemplateRepository
             (string) ($data['payment_method'] ?? 'bank_transfer'),
             !empty($data['reverse_charge']) ? 1 : 0,
             (int) ($data['payment_due_days'] ?? 14),
+            self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             !empty($data['increment_month_in_descriptions']) ? 1 : 0,
@@ -211,6 +213,12 @@ final class RecurringTemplateRepository
             !empty($data['auto_send_email']) ? 1 : 0,
             $id,
         ]);
+    }
+
+    private static function normalizeTaxDateMode(mixed $value): string
+    {
+        $v = is_string($value) ? $value : '';
+        return $v === 'previous_month_last_day' ? 'previous_month_last_day' : 'same_as_issue';
     }
 
     public function replaceItems(int $templateId, array $items): void

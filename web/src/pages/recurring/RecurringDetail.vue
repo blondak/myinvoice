@@ -112,12 +112,30 @@ async function resumeAction() {
   } finally { busy.value = false }
 }
 
-async function runNowAction() {
+const runNowModal = ref(false)
+const runNowDate = ref('')
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function openRunNow() {
   if (!tpl.value) return
-  if (!confirm(t('recurring.run_now_confirm', { name: tpl.value.name, date: formatDate(tpl.value.next_run_date) }))) return
+  runNowDate.value = todayIso()
+  runNowModal.value = true
+}
+
+function closeRunNow() {
+  runNowModal.value = false
+}
+
+async function submitRunNow() {
+  if (!tpl.value) return
+  if (!runNowDate.value) return
+  runNowModal.value = false
   busy.value = true
   try {
-    const r = await recurringApi.runNow(id.value)
+    const r = await recurringApi.runNow(id.value, runNowDate.value)
     if (r.sent_to.length > 0) {
       toast.success(t('recurring.run_now_with_send', { varsymbol: r.varsymbol ?? `#${r.invoice_id}`, recipients: r.sent_to.join(', ') }))
     } else {
@@ -158,7 +176,7 @@ async function removeAction() {
           </span>
         </h1>
         <div class="flex flex-wrap gap-2">
-          <button v-if="tpl.status === 'active'" @click="runNowAction" :disabled="busy"
+          <button v-if="tpl.status === 'active'" @click="openRunNow" :disabled="busy"
             class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0 0 10 9.87v4.263a1 1 0 0 0 1.555.832l3.197-2.132a1 1 0 0 0 0-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
             {{ t('recurring.actions.run_now') }}
@@ -218,6 +236,7 @@ async function removeAction() {
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.language') }}</dt><dd>{{ tpl.language.toUpperCase() }}</dd></div>
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('payment_method.label') }}</dt><dd>{{ t('payment_method.' + tpl.payment_method) }}</dd></div>
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.payment_due_days') }}</dt><dd>{{ tpl.payment_due_days }}</dd></div>
+            <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.tax_date_mode') }}</dt><dd>{{ t('recurring.tax_date_mode_' + (tpl.tax_date_mode ?? 'same_as_issue')) }}</dd></div>
           </dl>
         </div>
 
@@ -337,6 +356,40 @@ async function removeAction() {
               <span class="font-mono">{{ formatDate(inv.issue_date) }}</span>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run Now modal — date picker s defaultem dnes; varování pokud uživatel zvolí
+         budoucí datum (issue_date = budoucnost je daňově problematické). -->
+    <div v-if="runNowModal && tpl" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <h2 class="text-lg font-semibold mb-1">{{ t('recurring.run_now_title') }}</h2>
+        <p class="text-sm text-neutral-600 mb-4">{{ tpl.name }}</p>
+
+        <label class="block text-sm">
+          <span class="text-neutral-700 font-medium">{{ t('recurring.run_now_issue_date_label') }}</span>
+          <input v-model="runNowDate" type="date"
+            class="mt-1 w-full h-10 px-3 border border-neutral-300 rounded-md" />
+        </label>
+
+        <p class="mt-2 text-xs text-neutral-500">
+          {{ t('recurring.run_now_next_scheduled', { date: formatDate(tpl.next_run_date) }) }}
+        </p>
+
+        <div v-if="runNowDate > todayIso()" class="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
+          {{ t('recurring.run_now_future_warning') }}
+        </div>
+
+        <div class="mt-5 flex justify-end gap-2">
+          <button @click="closeRunNow" type="button"
+            class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">
+            {{ t('common.cancel') }}
+          </button>
+          <button @click="submitRunNow" type="button" :disabled="!runNowDate || busy"
+            class="cursor-pointer h-9 px-3 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ t('recurring.run_now_submit') }}
+          </button>
         </div>
       </div>
     </div>

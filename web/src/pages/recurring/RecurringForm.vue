@@ -57,6 +57,7 @@ const form = ref<{
   payment_method: 'bank_transfer' | 'card' | 'cash' | 'other'
   reverse_charge: boolean
   payment_due_days: number
+  tax_date_mode: 'same_as_issue' | 'previous_month_last_day'
   note_above_items: string
   note_below_items: string
   increment_month_in_descriptions: boolean
@@ -78,6 +79,7 @@ const form = ref<{
   payment_method: 'bank_transfer',
   reverse_charge: false,
   payment_due_days: 14,
+  tax_date_mode: 'same_as_issue',
   note_above_items: '',
   note_below_items: '',
   increment_month_in_descriptions: true,
@@ -333,6 +335,7 @@ onMounted(async () => {
         payment_method: tpl.payment_method,
         reverse_charge: tpl.reverse_charge,
         payment_due_days: tpl.payment_due_days,
+        tax_date_mode: tpl.tax_date_mode ?? 'same_as_issue',
         note_above_items: tpl.note_above_items ?? '',
         note_below_items: tpl.note_below_items ?? '',
         increment_month_in_descriptions: tpl.increment_month_in_descriptions,
@@ -386,6 +389,7 @@ async function submit() {
       payment_method: form.value.payment_method,
       reverse_charge: form.value.reverse_charge,
       payment_due_days: form.value.payment_due_days,
+      tax_date_mode: form.value.tax_date_mode,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
       increment_month_in_descriptions: form.value.increment_month_in_descriptions,
@@ -577,6 +581,15 @@ async function submit() {
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('recurring.payment_due_days') }}</label>
             <input v-model.number="form.payment_due_days" type="number" min="0"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('recurring.tax_date_mode') }}</label>
+            <select v-model="form.tax_date_mode"
+              class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white">
+              <option value="same_as_issue">{{ t('recurring.tax_date_mode_same_as_issue') }}</option>
+              <option value="previous_month_last_day">{{ t('recurring.tax_date_mode_previous_month_last_day') }}</option>
+            </select>
+            <p class="mt-1 text-xs text-neutral-500">{{ t('recurring.tax_date_mode_hint') }}</p>
           </div>
         </div>
       </div>

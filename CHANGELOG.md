@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.9] — 2026-05-20
+
+### Added
+
+- **Pravidelné fakturace — režim DUZP (`tax_date_mode`).** Nové pole v šabloně
+  s hodnotami `same_as_issue` (default — zachovává původní chování) a
+  `previous_month_last_day`. Při režimu „poslední den předchozího měsíce" se
+  generovaná faktura vystaví dnes, ale DUZP se nastaví na poslední den
+  předcházejícího měsíce — typický CZ scénář „fakturuji 1.6. za květnové
+  služby, DUZP 31.5.". Migrace `0025_recurring_tax_date_mode.sql`, UI selectbox
+  v editoru šablony, manuál § 14.2.2.
+
+- **„Vygenerovat teď" — date picker s defaultem dnes.** Místo `confirm()`
+  dialogu se otevře modal s `<input type="date">`. Default je dnešní datum,
+  ne `next_run_date` z šablony — opakovaný klik na tlačítko už nevyrobí
+  budoucně-datovanou fakturu (tax-wise problematické). Hint pod inputem
+  zobrazuje plánovaný cron termín; pokud uživatel zvolí datum v budoucnu,
+  zobrazí se žluté varování.
+
+- **Systémové logování DB chyb.** Nové třídy
+  `LoggingPdo` / `LoggingPdoStatement` / `DbErrorLogger` —
+  PDO subclass, který přes `ATTR_STATEMENT_CLASS` transparentně zachytí každou
+  `PDOException` v `prepare()/exec()/query()/execute()`. Loguje strukturovaný
+  záznam přes existující Monolog (`log/app-YYYY-MM-DD.log`) s polem
+  `{sqlstate, sql, params, caller}`, kde `caller` je první frame mimo
+  `Infrastructure\Database` namespace (= skutečný Repository/Action/cron).
+  Citlivé parametry (sloupce `password`, `token`, `secret`, `totp_secret`,
+  `recovery_codes`) jsou v logu nahrazeny `*** params hidden ***`. Žádné
+  callery se neupravují — `$pdo->prepare(...)->execute(...)` se loguje
+  automaticky.
+
+### Fixed
+
+- **Pravidelné fakturace — popisek položky se synchronizuje s DUZP, ne
+  inkrementuje +1.** Dosud generator slepě přičítal +N měsíců k popisu
+  šablony (`PeriodicityCalculator::monthsFor(frequency)`), takže šablona
+  „Hosting 05/2026" generovala fakturu „Hosting 06/2026" hned v 1. cyklu —
+  a další cykly opakovaly stejnou hodnotu, protože šablonový popis se nikdy
+  nemění. Nová třída `MonthSynchronizer::syncTo($desc, $taxDate)` najde
+  pattern `M/YYYY` a **nahradí** ho měsícem/rokem z DUZP (`tax_date`),
+  případně z `issue_date` u proform. Sync je idempotentní a deterministický:
+  faktura na 5/2026 vždy řekne „05/2026", faktura na 6/2026 vždy „06/2026".
+  Aktualizován i existující PHPUnit test + přidán test pro
+  `previous_month_last_day` mode.
+
+- **Pravidelné fakturace — cron padal na NOT NULL `created_by`.** Při
+  generování z cronu byl `$userId = null` (cron nemá session), což končilo
+  `SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'created_by'
+  cannot be null` a žádná z due šablon se nevygenerovala. Fix: pokud
+  `$userId` není explicitně předán (cron kontext), fallback na
+  `template['created_by']` (autor šablony) — invoices.created_by i
+  activity_log mají konzistentní audit.
+
+- **PDF cache — po `Upravit (admin)` se vrátil starý PDF, dokud uživatel
+  nepřidal `?regenerate=1`.** Windows file-lock: PDF otevřené v Chromu
+  zabránilo `invalidate()` přesunout starý soubor do `_archive/`
+  (rename/unlink silently selhaly kvůli `@`). DB UPDATE `pdf_path=NULL,
+  pdf_generated_at=NULL` proběhl, ale stale soubor zůstal na deterministické
+  `cachePath()`, kde ho cachePath fallback v `render()` znovu zachytil a
+  vrátil. Fix: branch fallbacku teď vyžaduje
+  `!empty($invoice['pdf_generated_at'])`, takže po invalidate (která ten
+  sloupec nastaví na NULL) se orphan už nezachytí a render projde do
+  regenerace.
+
 ## [3.6.8] — 2026-05-18
 
 ### Security
