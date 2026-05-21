@@ -1,0 +1,78 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Action\Crm;
+
+use MyInvoice\Http\Json;
+use MyInvoice\Http\SupplierGuard;
+use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Service\Crm\CrmAggregationService;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+
+/**
+ * CRM dashboard endpoints.
+ *
+ *   GET /api/crm/overview                                — KPI cards (this month vs last vs YTD)
+ *   GET /api/crm/monthly?months=12&currency=CZK          — chart data (12 měsíců breakdown)
+ *   GET /api/crm/top-clients?months=12&limit=10          — top klienti by revenue
+ *   GET /api/crm/top-vendors?months=12&limit=10          — top vendoři by costs
+ *   POST /api/crm/recompute                              — manual trigger sp_recompute (admin)
+ *
+ * Permissions: všechny GET pro all roles, recompute jen admin.
+ */
+final class CrmDashboardAction
+{
+    public function __construct(
+        private readonly CrmAggregationService $crm,
+    ) {}
+
+    public function overview(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        return Json::ok($response, $this->crm->overview($supplierId));
+    }
+
+    public function monthly(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $months = max(1, min(36, (int) ($q['months'] ?? 12)));
+        $currency = isset($q['currency']) ? (string) $q['currency'] : null;
+        return Json::ok($response, $this->crm->monthlyHistory($supplierId, $months, $currency));
+    }
+
+    public function topClients(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $months = max(1, min(36, (int) ($q['months'] ?? 12)));
+        $limit  = max(1, min(50, (int) ($q['limit'] ?? 10)));
+        $currency = isset($q['currency']) ? (string) $q['currency'] : null;
+        return Json::ok($response, $this->crm->topClients($supplierId, $months, $limit, $currency));
+    }
+
+    public function topVendors(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $months = max(1, min(36, (int) ($q['months'] ?? 12)));
+        $limit  = max(1, min(50, (int) ($q['limit'] ?? 10)));
+        $currency = isset($q['currency']) ? (string) $q['currency'] : null;
+        return Json::ok($response, $this->crm->topVendors($supplierId, $months, $limit, $currency));
+    }
+
+    public function recompute(Request $request, Response $response): Response
+    {
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        if (($user['role'] ?? '') !== 'admin') {
+            return Json::error($response, 'forbidden', 'Pouze admin.', 403);
+        }
+        $supplierId = SupplierGuard::currentId($request);
+        $start = microtime(true);
+        $this->crm->recompute($supplierId);
+        $elapsedMs = (int) ((microtime(true) - $start) * 1000);
+        return Json::ok($response, ['ok' => true, 'elapsed_ms' => $elapsedMs]);
+    }
+}

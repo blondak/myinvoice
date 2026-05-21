@@ -4,7 +4,7 @@
     "dashboard": "Dashboard", "invoices": "Invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Charts", "bank": "Bank", "system": "System",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "crm": "CRM (BI dashboard)", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "purchase_invoices": "Received invoices", "purchase_export": "Export", "vendors": "Vendors"
   },
@@ -1395,6 +1395,31 @@
     "preparing": "Preparing ZIP…",
     "hint": "PDFs are refreshed before export if the cache is stale. Larger archives may take a few seconds.",
     "download_failed": "Download failed"
+  },
+  "crm": {
+    "title": "CRM dashboard",
+    "subtitle": "Revenue, costs, profit, top clients and vendors.",
+    "last_n_months": "Last {n} months",
+    "monthly_trend": "Monthly trend",
+    "top_clients": "TOP clients",
+    "top_vendors": "TOP vendors",
+    "no_data": "No data — import invoices first.",
+    "no_data_hint": "After your first invoices/expenses, click Recompute.",
+    "no_data_vendors": "No received invoices — import in Purchases section.",
+    "no_chart_data": "No chart data for this period.",
+    "recompute": "Recompute",
+    "recompute_now": "Recompute now",
+    "recompute_hint": "Refresh pre-aggregated monthly summary (sp_recompute) — picks up latest invoices.",
+    "recompute_done": "Recomputed in {ms} ms.",
+    "kpi": {
+      "revenue": "Revenue",
+      "costs": "Costs",
+      "profit": "Profit",
+      "margin": "margin",
+      "this_month": "This month",
+      "invoices": "inv.",
+      "purchases": "exp."
+    }
   },
   "integrations": {
     "title": "External integrations",
