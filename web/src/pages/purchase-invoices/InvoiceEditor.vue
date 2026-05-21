@@ -354,6 +354,24 @@ function onPdfError(_code: string, message: string) {
   toast.error(message)
 }
 
+/**
+ * "Nahradit PDF" — smaže existing přílohy server-side a otevře dropzone pro nový upload.
+ * Pokud user neuploadne nic, faktura zůstane bez PDF (lze pak nahrát kdykoli).
+ */
+async function onReplacePdf() {
+  if (isEdit.value && invoiceId.value && existingPdf.value) {
+    try {
+      await purchaseInvoicesApi.deletePdf(invoiceId.value)
+    } catch (e) {
+      toast.error(apiErrorMessage(e))
+      return
+    }
+  }
+  existingPdf.value = null
+  pendingPdfFile.value = null
+  dropzoneVisible.value = true
+}
+
 async function submit() {
   if (submitting.value) return
   submitting.value = true
@@ -476,7 +494,7 @@ function fieldErr(key: string): string | null {
           </a>
           <button
             type="button"
-            @click="dropzoneVisible = true; existingPdf = null"
+            @click="onReplacePdf"
             class="cursor-pointer px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             {{ t('purchase_invoice.pdf.replace') }}

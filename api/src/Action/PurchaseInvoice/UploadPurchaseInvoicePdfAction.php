@@ -63,7 +63,12 @@ final class UploadPurchaseInvoicePdfAction
             return Json::error($response, 'upload_failed', 'Nahrání selhalo (kód ' . $file->getError() . ').', 400);
         }
 
+        // PSR-7 getSize() někdy vrací 0/null (Slim 4 chunked upload) — fallback na stream size.
         $size = (int) ($file->getSize() ?? 0);
+        if ($size <= 0) {
+            $stream = $file->getStream();
+            $size = (int) ($stream->getSize() ?? 0);
+        }
         if ($size <= 0) {
             return Json::error($response, 'empty_file', 'Soubor je prázdný.', 400);
         }
@@ -149,6 +154,12 @@ final class UploadPurchaseInvoicePdfAction
                 return Json::error($response, 'store_failed', 'Nepodařilo se uložit soubor.', 500);
             }
             @unlink($tmpPath);
+        }
+
+        // Authoritative size — z actual disk file (PSR-7 getSize() někdy vrací 0 v Slim 4)
+        $diskSize = (int) @filesize($finalPath);
+        if ($diskSize > 0) {
+            $size = $diskSize;
         }
 
         // Persist metadata. Pdf_path je relativní k archive_storage root, aby byl portable
