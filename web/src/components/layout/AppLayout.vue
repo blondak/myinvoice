@@ -66,10 +66,16 @@ const navSections = computed<NavSection[]>(() => {
   const sections: NavSection[] = [
     { items: [{ to: '/', label: t('nav.dashboard'), icon: ICONS.dashboard }] },
     {
+      // Vše co se týká vystavování faktur klientům — klienti/zakázky/schvalování/exporty
+      // patří v životním cyklu jednoho prodeje (klient → zakázka → faktura → schválení → export pro účetní).
       title: t('nav.section_sales'),
       items: [
-        { to: '/invoices',  label: t('nav.invoices'),  icon: ICONS.invoices },
-        { to: '/recurring', label: t('nav.recurring'), icon: ICONS.recurring },
+        { to: '/invoices',         label: t('nav.invoices'),   icon: ICONS.invoices },
+        { to: '/recurring',        label: t('nav.recurring'),  icon: ICONS.recurring },
+        { to: '/clients',          label: t('nav.clients'),    icon: ICONS.clients },
+        { to: '/projects',         label: t('nav.projects'),   icon: ICONS.projects },
+        ...(isAdmin ? [{ to: '/admin/approvals', label: t('nav.approvals'), icon: ICONS.approvals }] : []),
+        ...(isAdmin ? [{ to: '/admin/export',    label: t('nav.exports'),   icon: ICONS.exports   }] : []),
       ],
     },
     {
@@ -85,27 +91,19 @@ const navSections = computed<NavSection[]>(() => {
         { to: '/stats', label: t('nav.stats'), icon: ICONS.stats },
       ],
     },
-    {
-      title: t('nav.section_clients'),
-      items: [
-        { to: '/clients',  label: t('nav.clients'),  icon: ICONS.clients },
-        { to: '/projects', label: t('nav.projects'), icon: ICONS.projects },
-      ],
-    },
   ]
 
   if (isAdmin) {
+    // Suppliers (multi-tenant firmy) jsou teď přístupné jako první tab v Codebooks.
+    // Sjednocený "Import" pokrývá vystavené i přijaté faktury (admin/import s tabs).
     sections.push({
       title: t('nav.system'),
       items: [
         { to: '/admin/settings',         label: t('nav.settings'),        icon: ICONS.settings },
-        { to: '/admin/suppliers',        label: t('nav.suppliers'),       icon: ICONS.suppliers },
         { to: '/admin/codebooks',        label: t('nav.codebooks'),       icon: ICONS.codebooks },
         { to: '/admin/import',           label: t('nav.imports'),         icon: ICONS.imports },
-        { to: '/admin/export',           label: t('nav.exports'),         icon: ICONS.exports },
         { to: '/admin/users',            label: t('nav.users'),           icon: ICONS.users },
         { to: '/admin/email-templates',  label: t('nav.email_templates'), icon: ICONS.email },
-        { to: '/admin/approvals',        label: t('nav.approvals'),       icon: ICONS.approvals },
         { to: '/admin/activity-log',     label: t('nav.log'),             icon: ICONS.log },
         { to: '/admin/cron-jobs',        label: t('nav.cron_jobs'),       icon: ICONS.cron },
         { to: '/admin/update',           label: t('nav.updates'),         icon: ICONS.updates },
@@ -118,6 +116,8 @@ const navSections = computed<NavSection[]>(() => {
 
 function isActive(to: string): boolean {
   if (to === '/') return route.path === '/'
+  // /admin/suppliers je nyní dostupné jako první tab v Codebooks → aktivuje Codebooks položku
+  if (to === '/admin/codebooks' && route.path.startsWith('/admin/suppliers')) return true
   return route.path.startsWith(to)
 }
 

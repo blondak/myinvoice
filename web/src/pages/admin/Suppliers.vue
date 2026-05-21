@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
 import { suppliersApi, type SupplierListItem, type SupplierCreatePayload } from '@/api/suppliers'
@@ -118,6 +119,9 @@ function switchTo(id: number) {
 
 <template>
   <div>
+    <RouterLink to="/admin/codebooks" class="text-sm text-neutral-600 hover:text-primary-700 inline-block mb-2">
+      ← {{ t('nav.codebooks') }}
+    </RouterLink>
     <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
       <div>
         <h1 class="text-2xl font-semibold">{{ t('supplier.title') }}</h1>

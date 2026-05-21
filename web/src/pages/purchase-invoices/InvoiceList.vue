@@ -8,15 +8,15 @@ import {
   type PurchaseListMeta,
   type PurchaseInvoiceStatus,
   type PurchaseDocumentKind,
-  type InboxScanResult,
 } from '@/api/purchaseInvoices'
 import { formatMoney, formatDate, formatMonth } from '@/composables/useFormat'
-import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const { t } = useI18n()
 const router = useRouter()
-const toast = useToast()
 
 const groups = ref<PurchaseMonthGroup[]>([])
 const meta = ref<PurchaseListMeta>({ total: 0 })
@@ -29,10 +29,7 @@ const filterUnpaid = ref(false)
 const filterOverdue = ref(false)
 const searchQ = ref('')
 
-// Scan inbox state
-const scanRunning = ref(false)
-const scanResult = ref<InboxScanResult | null>(null)
-const scanModalOpen = ref(false)
+// Scan inbox moved to /admin/import (admin/accountant only) — viz tab "Přijaté".
 
 // Export ZIP state
 const exportMonth = ref<string>((() => {
@@ -74,19 +71,7 @@ async function load() {
   }
 }
 
-async function runScan() {
-  scanRunning.value = true
-  scanResult.value = null
-  try {
-    scanResult.value = await purchaseInvoicesApi.scanInbox(false)
-    scanModalOpen.value = true
-    await load()
-  } catch (e: any) {
-    toast.error(apiErrorMessage(e))
-  } finally {
-    scanRunning.value = false
-  }
-}
+// scan-inbox flow přesunut do /admin/import (admin/accountant only).
 
 const statusBadgeClass = (s: PurchaseInvoiceStatus): string => {
   switch (s) {
@@ -119,16 +104,12 @@ const isOverdue = (dueDate: string, status: PurchaseInvoiceStatus): boolean => {
           class="cursor-pointer px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           :title="t('purchase_invoice.export.title')"
         >📦 {{ t('purchase_invoice.export.btn') }}</button>
-        <button
-          type="button"
-          @click="runScan"
-          :disabled="scanRunning"
-          class="cursor-pointer px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 disabled:opacity-50"
+        <RouterLink
+          v-if="auth.user?.role === 'admin' || auth.user?.role === 'accountant'"
+          to="/admin/import"
+          class="px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           :title="t('purchase_invoice.scan_inbox.title')"
-        >
-          <span v-if="scanRunning">…</span>
-          <span v-else>📥 {{ t('purchase_invoice.scan_inbox_btn') }}</span>
-        </button>
+        >📥 {{ t('purchase_invoice.scan_inbox_btn') }}</RouterLink>
         <RouterLink
           to="/purchase-invoices/new"
           class="px-3 py-1.5 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md"
@@ -252,32 +233,5 @@ const isOverdue = (dueDate: string, status: PurchaseInvoiceStatus): boolean => {
       </section>
     </div>
 
-    <!-- Scan result modal -->
-    <div v-if="scanModalOpen && scanResult" class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4" @click.self="scanModalOpen = false">
-      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
-        <header class="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
-          <h3 class="font-medium">{{ t('purchase_invoice.scan_inbox.title') }}</h3>
-          <button type="button" @click="scanModalOpen = false" class="cursor-pointer text-neutral-500 hover:text-neutral-700">✕</button>
-        </header>
-        <div class="p-4 space-y-3 overflow-y-auto">
-          <p class="text-sm">
-            {{ t('purchase_invoice.scan_inbox.result_summary', { created: scanResult.created, skipped: scanResult.skipped, failed: scanResult.failed }) }}
-          </p>
-          <p v-if="!scanResult.inbox_dir" class="text-sm text-amber-700 bg-amber-50 p-2 rounded">
-            {{ t('purchase_invoice.scan_inbox.no_dir') }}
-          </p>
-          <details v-if="scanResult.details.length > 0" class="text-xs">
-            <summary class="cursor-pointer text-neutral-600">{{ t('purchase_invoice.scan_inbox.details') }} ({{ scanResult.details.length }})</summary>
-            <ul class="mt-2 space-y-1 max-h-60 overflow-y-auto">
-              <li v-for="(d, i) in scanResult.details" :key="i" class="font-mono text-[11px]">
-                <span class="text-neutral-500">{{ d.status }}:</span>
-                <span class="ml-1">{{ d.file || '—' }}</span>
-                <span v-if="d.reason" class="ml-1 text-neutral-500">— {{ d.reason }}</span>
-              </li>
-            </ul>
-          </details>
-        </div>
-      </div>
-    </div>
   </div>
 </template>

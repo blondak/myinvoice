@@ -371,8 +371,12 @@ Buyer validation v `IsdocToPurchaseInvoiceMapper`: ISDOC's `AccountingCustomerPa
 **Endpoint změny:**
 - `POST /api/admin/import?kind=issued` — beze změny (BC)
 - `POST /api/admin/import?kind=purchase` — nová cesta
-- `POST /api/admin/import` (bez param) — nadále `kind=issued` (BC zachováno)
-- Auto-detection: pokud ZIP/multi-file obsahuje smíšené ISDOCy (některé adresované nám jako buyer, jiné jako supplier) → split podle dimenze, response per-kind counters.
+- `POST /api/admin/import?kind=auto` (default v fázi 2) — **auto-detekce per soubor**:
+  - Pokud ISDOC `<AccountingSupplierParty>` IČO == tenant supplier IČO → **vydaná** (my jsme dodavatel) → směr do `invoices`
+  - Pokud ISDOC `<AccountingCustomerParty>` IČO == tenant supplier IČO → **přijatá** (my jsme zákazník) → směr do `purchase_invoices`
+  - Pokud ani jeden nematchuje → skip s důvodem „ISDOC patří jinému plátci (vendor IČO: X, customer IČO: Y, tenant: Z)"
+- `POST /api/admin/import` (bez param) — `kind=auto` (UX wins)
+- Auto-detection v ZIP: per-soubor split, response report rozděluje counters do issued/purchase.
 
 **Frontend:**
 - `admin/Imports.vue` — top tabs „Vydané" / „Přijaté" + ikonky pro každý formát (ISDOC, Pohoda XML, PDF, iDoklad, Fakturoid). Drag & drop zóna na záložce stejná, ale `kind` se posílá v requestu.

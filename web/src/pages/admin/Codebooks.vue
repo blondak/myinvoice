@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type VatRate, type Country, type CurrencyAccount, type Unit } from '@/api/settings'
 import { useHotkey } from '@/composables/useHotkey'
 import { useToast } from '@/composables/useToast'
+
+const router = useRouter()
 
 const { t } = useI18n()
 const toast = useToast()
@@ -210,8 +213,19 @@ async function deleteCountry(c: Country) {
       <p class="text-sm text-neutral-500 mt-0.5">{{ t('codebooks.subtitle') }}</p>
     </div>
 
-    <!-- Tabs -->
+    <!-- Tabs — Dodavatelé jako první volba, redirect na samostatnou stránku /admin/suppliers -->
     <div class="border-b border-neutral-200 mb-4 flex gap-1">
+      <button
+        type="button"
+        @click="router.push('/admin/suppliers')"
+        class="cursor-pointer px-4 py-2 text-sm border-b-2 border-transparent text-neutral-600 hover:text-neutral-900 transition inline-flex items-center gap-1"
+        :title="t('nav.suppliers')"
+      >
+        {{ t('nav.suppliers') }}
+        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+        </svg>
+      </button>
       <button v-for="tt in (['currencies', 'vat', 'countries', 'units'] as const)" :key="tt"
         @click="tab = tt"
         class="cursor-pointer px-4 py-2 text-sm border-b-2 transition"

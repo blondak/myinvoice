@@ -70,19 +70,39 @@ final class PurchaseInvoiceInboxScanner
 
         $inboxReal = realpath($inboxDir);
         if ($inboxReal === false || !is_dir($inboxReal)) {
-            // Diagnostika: PHP user (z Apache/IIS) nemusí mít přístup ke cestě,
-            // i když existuje z hlediska uživatele (typicky user-specific OneDrive
-            // junction `C:/doc/...` nebo `C:/Users/X/Documents`).
+            // Diagnostika: PHP user (z Apache/IIS) nemusí mít přístup ke cestě.
+            // Vrátíme všechny relevantní info aby user věděl, kde grantnout práva.
+            $phpUser = function_exists('posix_getpwuid')
+                ? (posix_getpwuid(posix_geteuid())['name'] ?? 'unknown')
+                : (getenv('USERNAME') ?: get_current_user() ?: 'unknown');
+            $sapi = php_sapi_name();
             $exists = file_exists($inboxDir);
             $readable = $exists && is_readable($inboxDir);
-            $reason = 'Inbox adresář nelze otevřít z webového procesu.';
-            if (!$exists) {
-                $reason .= " Cesta neexistuje, NEBO PHP user (web server) k ní nemá přístup.";
-            } elseif (!$readable) {
-                $reason .= " Cesta existuje, ale není čitelná pro PHP user (web server).";
+
+            // Testuj postupně subdir-by-subdir kde se to láme (pomáhá najít chybějící práva)
+            $segments = preg_split('@[\\\\/]+@', trim($inboxDir, "\\/"));
+            $brokenAt = null;
+            $build = (str_starts_with($inboxDir, '/') ? '/' : '');
+            foreach ($segments ?: [] as $seg) {
+                $build .= $seg . DIRECTORY_SEPARATOR;
+                if (!file_exists($build)) {
+                    $brokenAt = rtrim($build, DIRECTORY_SEPARATOR);
+                    break;
+                }
             }
-            $reason .= ' Pozn.: PHP user často NENÍ tvůj Windows user. ' .
-                'Doporučení: použij cestu uvnitř webrootu (např. C:/inetpub/wwwroot/myinvoice.cz/inbox) nebo grantni read práva IIS user-u.';
+
+            $reason = "Inbox adresář nelze otevřít z PHP procesu (SAPI: {$sapi}, user: {$phpUser}). ";
+            if (!$exists) {
+                $reason .= "Cesta neexistuje pro tohoto usera";
+                if ($brokenAt !== null) $reason .= " — selhalo na: {$brokenAt}";
+                $reason .= '. ';
+            } elseif (!$readable) {
+                $reason .= 'Cesta existuje, ale není čitelná. ';
+            }
+            $reason .= "Řešení (PowerShell jako Admin): " .
+                "icacls \"{$inboxDir}\" /grant \"{$phpUser}:(OI)(CI)R\" /T " .
+                "— NEBO přesuň složku pod webroot (C:\\inetpub\\wwwroot\\myinvoice.cz\\inbox).";
+
             return $this->emptyResult($inboxDir, $dryRun, [[
                 'file' => $inboxDir,
                 'status' => 'inbox_missing',

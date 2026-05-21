@@ -1355,6 +1355,14 @@
     "download_failed": "Download failed"
   },
   "imports": {
+    "subtitle_unified": "Import both issued and received invoices in one place.",
+    "tab_issued": "Issued",
+    "tab_purchase": "Received",
+    "purchase_scan_title": "Scan inbox directory",
+    "purchase_scan_hint": "Drop vendor PDF/ISDOC invoices into the configured directory (cfg.php → purchase_invoice.inbox_dir) and trigger scan. System dedups via SHA-256, creates drafts from ISDOC (mapper in phase 2c).",
+    "purchase_scan_path_hint": "Path is configured in cfg.php. Recommended: C:/inetpub/wwwroot/myinvoice.cz/inbox (inside webroot, IIS user has read access).",
+    "purchase_manual_title": "Manual PDF upload",
+    "purchase_manual_hint": "Upload single invoice directly in the received invoice editor (drag & drop above form):",
     "title": "Imports",
     "subtitle": "Load issued invoices from Pohoda XML, ISDOC or PDF (PDF/A-3 with embedded ISDOC) into the system.",
     "supplier_required_title": "Supplier must already exist",

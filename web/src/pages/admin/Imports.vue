@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { uploadImport, type ImportReport, type ImportResultRow } from '@/api/imports'
+import { purchaseInvoicesApi, type InboxScanResult } from '@/api/purchaseInvoices'
+import { useToast } from '@/composables/useToast'
+import { apiErrorMessage } from '@/api/errors'
+
+type TabKey = 'issued' | 'purchase'
 
 const { t } = useI18n()
+const router = useRouter()
+const toast = useToast()
 
+const activeTab = ref<TabKey>('issued')
+
+// ── Vystavené (existující flow) ─────────────────────────────────────────────
 const files = ref<File[]>([])
 const uploading = ref(false)
 const error = ref('')
@@ -17,7 +28,6 @@ function onPick(e: Event) {
   report.value = null
   error.value = ''
 }
-
 function onDrop(e: DragEvent) {
   e.preventDefault()
   const dropped = e.dataTransfer?.files
@@ -26,7 +36,6 @@ function onDrop(e: DragEvent) {
   report.value = null
   error.value = ''
 }
-
 async function submit() {
   if (files.value.length === 0) return
   uploading.value = true
@@ -40,19 +49,37 @@ async function submit() {
     uploading.value = false
   }
 }
-
 function clear() {
   files.value = []
   report.value = null
   error.value = ''
 }
-
 const rows = computed<ImportResultRow[]>(() => report.value?.results ?? [])
 const statusBadge = (s: string) => {
-  if (s === 'created')  return 'bg-success-50 text-success-600 border-success-500/40'
-  // skipped uses warning palette below
-  if (s === 'skipped')  return 'bg-warning-50 text-warning-600 border-warning-500/40'
+  if (s === 'created') return 'bg-success-50 text-success-600 border-success-500/40'
+  if (s === 'skipped') return 'bg-warning-50 text-warning-600 border-warning-500/40'
   return 'bg-danger-50 text-danger-500 border-danger-500/40'
+}
+
+// ── Přijaté (scan inbox flow) ──────────────────────────────────────────────
+const scanRunning = ref(false)
+const scanResult = ref<InboxScanResult | null>(null)
+const scanDryRun = ref(false)
+async function runScan() {
+  scanRunning.value = true
+  scanResult.value = null
+  try {
+    scanResult.value = await purchaseInvoicesApi.scanInbox(scanDryRun.value)
+    toast.success(t('purchase_invoice.scan_inbox.result_summary', {
+      created: scanResult.value.created,
+      skipped: scanResult.value.skipped,
+      failed:  scanResult.value.failed,
+    }))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    scanRunning.value = false
+  }
 }
 </script>
 
@@ -60,11 +87,32 @@ const statusBadge = (s: string) => {
   <div>
     <div class="mb-4">
       <h1 class="text-2xl font-semibold">{{ t('imports.title') }}</h1>
-      <p class="text-sm text-neutral-500 mt-0.5">{{ t('imports.subtitle') }}</p>
+      <p class="text-sm text-neutral-500 mt-0.5">{{ t('imports.subtitle_unified') }}</p>
     </div>
 
-    <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm max-w-3xl">
-      <div class="space-y-4">
+    <!-- Tabs: Vystavené / Přijaté -->
+    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm max-w-3xl">
+      <div class="px-4 pt-2 border-b border-neutral-100 flex items-center gap-1">
+        <button
+          type="button"
+          @click="activeTab = 'issued'"
+          class="cursor-pointer px-3 py-2 text-sm border-b-2 transition"
+          :class="activeTab === 'issued'
+            ? 'border-primary-600 text-primary-700 font-medium'
+            : 'border-transparent text-neutral-600 hover:text-neutral-900'"
+        >{{ t('imports.tab_issued') }}</button>
+        <button
+          type="button"
+          @click="activeTab = 'purchase'"
+          class="cursor-pointer px-3 py-2 text-sm border-b-2 transition"
+          :class="activeTab === 'purchase'
+            ? 'border-primary-600 text-primary-700 font-medium'
+            : 'border-transparent text-neutral-600 hover:text-neutral-900'"
+        >{{ t('imports.tab_purchase') }}</button>
+      </div>
+
+      <!-- ════ Tab: Vystavené ════ -->
+      <div v-if="activeTab === 'issued'" class="p-5 space-y-4">
         <div class="rounded-md bg-warning-50 border border-warning-500/40 px-3 py-2 text-sm text-warning-600">
           <strong>{{ t('imports.supplier_required_title') }}:</strong>
           {{ t('imports.supplier_required_hint') }}
@@ -126,9 +174,78 @@ const statusBadge = (s: string) => {
 
         <p class="text-xs text-neutral-500">{{ t('imports.hint') }}</p>
       </div>
+
+      <!-- ════ Tab: Přijaté ════ -->
+      <div v-else class="p-5 space-y-4">
+        <div class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
+          <strong>{{ t('imports.purchase_scan_title') }}:</strong>
+          {{ t('imports.purchase_scan_hint') }}
+        </div>
+
+        <div class="border border-neutral-200 rounded-lg p-5 bg-neutral-50/50">
+          <div class="flex items-start gap-3 mb-3">
+            <svg class="w-6 h-6 text-primary-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7M3 7l2-3h14l2 3M3 7h18M8 11h8" />
+            </svg>
+            <div class="flex-1">
+              <h3 class="font-medium text-neutral-900">{{ t('purchase_invoice.scan_inbox.title') }}</h3>
+              <p class="text-xs text-neutral-500 mt-1">{{ t('imports.purchase_scan_path_hint') }}</p>
+            </div>
+          </div>
+
+          <label class="inline-flex items-center gap-2 text-sm mb-3">
+            <input v-model="scanDryRun" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+            <span>{{ t('purchase_invoice.scan_inbox.dry_run') }}</span>
+          </label>
+
+          <div class="flex gap-2">
+            <button
+              type="button"
+              @click="runScan"
+              :disabled="scanRunning"
+              class="cursor-pointer h-10 px-4 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md"
+            >
+              {{ scanRunning ? t('purchase_invoice.scan_inbox.running') : '📥 ' + t('purchase_invoice.scan_inbox.trigger') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Plus odkaz na PDF editor pro 1-by-1 upload (drag & drop přímo na faktuře) -->
+        <div class="rounded-md bg-neutral-50 border border-neutral-200 px-3 py-2 text-sm text-neutral-700">
+          <strong>{{ t('imports.purchase_manual_title') }}:</strong>
+          {{ t('imports.purchase_manual_hint') }}
+          <button type="button" @click="router.push('/purchase-invoices/new')"
+                  class="cursor-pointer ml-1 text-primary-700 hover:underline font-medium">
+            {{ t('purchase_invoice.new') }}
+          </button>
+        </div>
+
+        <!-- Scan result -->
+        <div v-if="scanResult" class="mt-4 bg-white border border-neutral-200 rounded-lg p-4">
+          <div class="flex flex-wrap items-center gap-4 mb-3 text-sm">
+            <div><span class="font-semibold text-success-600">{{ scanResult.created }}</span> {{ t('imports.summary_created') }}</div>
+            <div><span class="font-semibold text-warning-600">{{ scanResult.skipped }}</span> {{ t('imports.summary_skipped') }}</div>
+            <div><span class="font-semibold text-danger-500">{{ scanResult.failed }}</span> {{ t('imports.summary_failed') }}</div>
+          </div>
+          <p v-if="scanResult.inbox_dir" class="text-xs text-neutral-500 mb-2 font-mono">{{ scanResult.inbox_dir }}</p>
+          <details v-if="scanResult.details.length > 0" class="text-xs">
+            <summary class="cursor-pointer text-neutral-600 hover:text-neutral-900">
+              {{ t('purchase_invoice.scan_inbox.details') }} ({{ scanResult.details.length }})
+            </summary>
+            <ul class="mt-2 space-y-1 max-h-72 overflow-y-auto">
+              <li v-for="(d, i) in scanResult.details" :key="i" class="font-mono text-[11px] border-b border-neutral-50 py-1">
+                <span class="inline-block px-1.5 py-0.5 rounded text-[10px]" :class="statusBadge(d.status)">{{ d.status }}</span>
+                <span class="ml-1 text-neutral-700">{{ d.file ? d.file.split(/[/\\]/).pop() : '—' }}</span>
+                <span v-if="d.reason" class="ml-1 text-neutral-500">— {{ d.reason }}</span>
+              </li>
+            </ul>
+          </details>
+        </div>
+      </div>
     </div>
 
-    <div v-if="report" class="mt-6 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+    <!-- Vystavené report — pod stejný card boxu -->
+    <div v-if="activeTab === 'issued' && report" class="mt-6 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm max-w-3xl">
       <div class="flex items-center gap-4 mb-4 text-sm">
         <div><span class="font-semibold text-success-600">{{ report.summary.created }}</span> {{ t('imports.summary_created') }}</div>
         <div><span class="font-semibold text-warning-600">{{ report.summary.skipped }}</span> {{ t('imports.summary_skipped') }}</div>
