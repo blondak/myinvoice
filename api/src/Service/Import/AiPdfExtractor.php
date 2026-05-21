@@ -224,7 +224,29 @@ final class AiPdfExtractor
         }
         // Pro non-CZK currency: auto-apply ČNB kurz k tax_date (nebo issue_date).
         $this->applyCnbRate($id, $supplierId, $data);
+        // Pokud AI detekovala "NEPLAŤTE, JIŽ UHRAZENO" / "PAID" → mark as paid.
+        if (!empty($data['already_paid'])) {
+            $this->markAlreadyPaid($id, $supplierId);
+        }
         return $id;
+    }
+
+    /**
+     * Transition draft → received → paid pokud AI detekovala 'already paid' indikátor v PDF.
+     * Status NULL guard — silently skip pokud DB constraint zabrání.
+     */
+    private function markAlreadyPaid(int $id, int $supplierId): void
+    {
+        try {
+            // Draft → paid přímý update (skip 'received' intermediate — faktura už existuje
+            // v hotové stavu). UPDATE jen pokud aktuálně draft.
+            $this->db->pdo()->prepare(
+                "UPDATE purchase_invoices SET status = 'paid', paid_at = COALESCE(paid_at, CURDATE())
+                  WHERE id = ? AND supplier_id = ? AND status = 'draft'"
+            )->execute([$id, $supplierId]);
+        } catch (\Throwable) {
+            // Silent — extract success > status transition.
+        }
     }
 
     /**
