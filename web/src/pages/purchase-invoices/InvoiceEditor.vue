@@ -480,7 +480,8 @@ function fieldErr(key: string): string | null {
           </svg>
           <div>
             <div class="font-medium text-sm">{{ existingPdf.name }}</div>
-            <div class="text-xs text-neutral-500">{{ Math.round(existingPdf.size / 1024) }} KiB</div>
+            <div v-if="existingPdf.size > 0" class="text-xs text-neutral-500">{{ Math.round(existingPdf.size / 1024) }} KiB</div>
+            <div v-else class="text-xs text-neutral-400 font-mono">{{ existingPdf.hash?.slice(0, 12) }}…</div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -497,7 +498,7 @@ function fieldErr(key: string): string | null {
             @click="onReplacePdf"
             class="cursor-pointer px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
-            {{ t('purchase_invoice.pdf.replace') }}
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>
