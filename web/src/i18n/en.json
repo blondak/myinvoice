@@ -6,7 +6,7 @@
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
     "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
-    "purchase_invoices": "Received invoices", "vendors": "Vendors"
+    "purchase_invoices": "Received invoices", "purchase_export": "Export", "vendors": "Vendors"
   },
   "purchase_invoice": {
     "title": "Received invoices",
@@ -45,6 +45,13 @@
       "due_date": "Due date",
       "received_at": "Received on",
       "currency": "Invoice currency",
+      "currency_purchase_only": "for purchases only",
+      "currency_add_hint": "Add a currency for received invoices (created as inactive for issued)",
+      "currency_add_title": "Add currency",
+      "currency_add_iso_hint": "ISO 4217 code (3 letters), e.g. USD, GBP, CHF",
+      "currency_add_inactive_note": "Created as inactive (purchases only). If you want to issue invoices in it, activate it later in Settings and add a bank account.",
+      "currency_add_advanced_hint": "To activate (bank account, rate, decimals), go to",
+      "currency_inactive_hint": "This currency is inactive for issued invoices (no bank account). Only usable for received invoice tracking.",
       "exchange_rate": "Rate at tax date",
       "exchange_rate_load_cnb": "Load from ČNB",
       "exchange_rate_source": "Rate source",
@@ -98,6 +105,7 @@
       "mark_received": "Mark as received",
       "mark_booked": "Mark as booked",
       "mark_paid": "Mark as paid",
+      "mark_cancelled": "Cancel",
       "cancel": "Cancel",
       "delete": "Delete",
       "edit": "Edit",
@@ -150,10 +158,26 @@
       "reason": "Reason"
     },
     "export": {
+      "page_title": "Export received invoices",
+      "page_subtitle": "Download received invoices for a month in different formats for accountants.",
+      "format_label": "Format",
+      "fmt_pdf": "PDF ZIP",
+      "fmt_pdf_hint": "Original vendor PDFs (vendor archive)",
+      "fmt_pohoda": "Pohoda XML",
+      "fmt_pohoda_hint": "Stormware Pohoda — receivables import",
+      "fmt_isdoc": "ISDOC",
+      "fmt_isdoc_hint": "Czech e-invoicing standard",
       "title": "Download ZIP with vendor PDFs for the month",
       "btn": "Export",
-      "month_label": "Month (by tax date)",
+      "month_label": "Month",
+      "date_by_label": "Filter by",
       "hint": "Exports a ZIP with original vendor PDFs for the selected month. Invoices without archived PDF are skipped.",
+      "pdf_priority_title": "Vendor PDF priority",
+      "pdf_priority_hint": "ZIP contains archived original PDFs from vendors. Invoices without archived PDF are skipped (warning in X-Export-Warnings response header). Generating our own PDF from received invoice data comes in phase 5 of the fork integration plan.",
+      "coming_soon_title": "Coming soon",
+      "coming_in_phase": "phase {phase}",
+      "pohoda_coming_hint": "Pohoda XML export for received invoices will be available in phase 5 (after VAT classification per MFCR is added).",
+      "isdoc_coming_hint": "ISDOC export for received invoices will be available in phase 6 (along with EPO VAT reports).",
       "download": "Download"
     },
     "filters": {
@@ -388,7 +412,7 @@
   },
   "common": {
     "year": "Year", "month": "Month",
-    "loading": "Loading…", "save": "Save", "cancel": "Cancel",
+    "loading": "Loading…", "save": "Save", "cancel": "Cancel", "add": "Add",
     "delete": "Delete", "edit": "Edit", "back": "← Back", "yes": "Yes", "no": "No",
     "create": "Create", "search": "Search…", "no_data": "No data",
     "actions": "Actions", "detail": "Detail", "archive": "Archive", "restore": "Restore",

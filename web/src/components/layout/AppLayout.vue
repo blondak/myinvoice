@@ -81,7 +81,8 @@ const navSections = computed<NavSection[]>(() => {
     {
       title: t('nav.section_purchase'),
       items: [
-        { to: '/purchase-invoices', label: t('nav.purchase_invoices'), icon: ICONS.purchase },
+        { to: '/purchase-invoices',        label: t('nav.purchase_invoices'),  icon: ICONS.purchase },
+        { to: '/purchase-invoices/export', label: t('nav.purchase_export'),    icon: ICONS.exports },
       ],
     },
     {
@@ -118,6 +119,15 @@ function isActive(to: string): boolean {
   if (to === '/') return route.path === '/'
   // /admin/suppliers je nyní dostupné jako první tab v Codebooks → aktivuje Codebooks položku
   if (to === '/admin/codebooks' && route.path.startsWith('/admin/suppliers')) return true
+  // Pokud existuje delší `to` v menu, který by také matchoval (např. /purchase-invoices vs /purchase-invoices/export),
+  // aktivovat jen tu delší.
+  for (const section of navSections.value) {
+    for (const it of section.items) {
+      if (it.to !== to && it.to.startsWith(to + '/') && route.path.startsWith(it.to)) {
+        return false
+      }
+    }
+  }
   return route.path.startsWith(to)
 }
 

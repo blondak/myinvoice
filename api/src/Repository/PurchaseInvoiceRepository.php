@@ -665,7 +665,7 @@ final class PurchaseInvoiceRepository
 
     private function castInvoice(array $row): array
     {
-        foreach (['id', 'supplier_id', 'vendor_id', 'currency_id', 'payment_currency_id', 'created_by'] as $f) {
+        foreach (['id', 'supplier_id', 'vendor_id', 'currency_id', 'payment_currency_id', 'created_by', 'pdf_size_bytes'] as $f) {
             if (isset($row[$f]) && $row[$f] !== null) $row[$f] = (int) $row[$f];
         }
         $row['reverse_charge'] = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;

@@ -6,7 +6,7 @@
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé",
     "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
-    "purchase_invoices": "Přijaté faktury", "vendors": "Dodavatelé"
+    "purchase_invoices": "Přijaté faktury", "purchase_export": "Export", "vendors": "Dodavatelé"
   },
   "purchase_invoice": {
     "title": "Přijaté faktury",
@@ -45,6 +45,13 @@
       "due_date": "Splatnost",
       "received_at": "Datum přijetí",
       "currency": "Měna faktury",
+      "currency_purchase_only": "jen pro nákup",
+      "currency_add_hint": "Přidat novou měnu pro přijaté faktury (zakládá se jako neaktivní pro vystavené)",
+      "currency_add_title": "Přidat měnu",
+      "currency_add_iso_hint": "ISO 4217 kód (3 písmena), např. USD, GBP, CHF",
+      "currency_add_inactive_note": "Měna se založí jako neaktivní (jen pro nákup). Pokud v ní chceš vystavovat faktury, později ji aktivuj v Nastavení a doplň bankovní účet.",
+      "currency_add_advanced_hint": "Pro aktivaci (bankovní účet, kurz, decimals) přejdi do",
+      "currency_inactive_hint": "Tato měna je neaktivní pro vystavené faktury (žádný bankovní účet). Lze ji použít jen pro evidenci přijatých faktur.",
       "exchange_rate": "Kurz k DUZP",
       "exchange_rate_load_cnb": "Načíst z ČNB",
       "exchange_rate_source": "Zdroj kurzu",
@@ -98,6 +105,7 @@
       "mark_received": "Označit jako přijaté",
       "mark_booked": "Označit jako zaúčtované",
       "mark_paid": "Označit jako uhrazené",
+      "mark_cancelled": "Stornovat",
       "cancel": "Stornovat",
       "delete": "Smazat",
       "edit": "Upravit",
@@ -150,10 +158,26 @@
       "reason": "Důvod"
     },
     "export": {
+      "page_title": "Export přijatých faktur",
+      "page_subtitle": "Stáhnout přijaté faktury za měsíc v různých formátech pro účetní.",
+      "format_label": "Formát",
+      "fmt_pdf": "PDF ZIP",
+      "fmt_pdf_hint": "Originální PDF od dodavatelů (vendor archive)",
+      "fmt_pohoda": "Pohoda XML",
+      "fmt_pohoda_hint": "Stormware Pohoda — import přijatých dokladů",
+      "fmt_isdoc": "ISDOC",
+      "fmt_isdoc_hint": "Standard pro elektronickou fakturaci v ČR",
       "title": "Stáhnout ZIP s vendor PDF za měsíc",
       "btn": "Export",
-      "month_label": "Měsíc (podle DUZP)",
+      "month_label": "Měsíc",
+      "date_by_label": "Filtrovat podle",
       "hint": "Vyexportuje ZIP s originálními PDF od dodavatelů za zvolený měsíc. Faktury bez archivovaného PDF se přeskočí.",
+      "pdf_priority_title": "Priorita vendor PDF",
+      "pdf_priority_hint": "ZIP obsahuje archivované originální PDF od dodavatelů. Faktury bez archivovaného PDF se přeskočí (s warningem v X-Export-Warnings response header). Generování naší vlastní PDF kopie z dat přijaté faktury přijde ve fázi 5 plánu integrace.",
+      "coming_soon_title": "Připravujeme",
+      "coming_in_phase": "fáze {phase}",
+      "pohoda_coming_hint": "Pohoda XML export pro přijaté faktury bude dostupný v fázi 5 (po doplnění VAT klasifikace dle MFČR).",
+      "isdoc_coming_hint": "ISDOC export pro přijaté faktury bude dostupný v fázi 6 (společně s EPO výkazy DPH).",
       "download": "Stáhnout"
     },
     "filters": {
@@ -388,7 +412,7 @@
   },
   "common": {
     "year": "Rok", "month": "Měsíc",
-    "loading": "Načítám…", "save": "Uložit", "cancel": "Zrušit",
+    "loading": "Načítám…", "save": "Uložit", "cancel": "Zrušit", "add": "Přidat",
     "delete": "Smazat", "edit": "Upravit", "back": "← Zpět", "yes": "Ano", "no": "Ne",
     "create": "Vytvořit", "search": "Hledat…", "no_data": "Žádná data",
     "actions": "Akce", "detail": "Detail", "archive": "Archivovat", "restore": "Obnovit",

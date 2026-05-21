@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
+// RouterLink se používá i v Add Currency modalu — import už pokrývá
 import { useI18n } from 'vue-i18n'
 import {
   purchaseInvoicesApi,
@@ -145,15 +146,20 @@ async function addCurrency() {
   }
   addingCurrency.value = true
   try {
+    // Měna přidaná z editoru přijaté faktury slouží jen jako "měna dokladu" — nemáme v ní
+    // bankovní účet, nepoužívá se pro vystavované faktury. Proto is_active=false
+    // (skryje ji z dropdownů u vystavených). V editoru přijatých ji ukážeme s badgem.
+    // Pokud user chce měnu aktivovat pro vystavené (mám v ní reálný bankovní účet),
+    // přejde do Nastavení → Měny a vyplní bankovní detaily + označí is_active=true.
     await settingsApi.createCurrency({
       code,
-      label: `${code} — výchozí`,
+      label: `${code} — jen pro nákup`,
       symbol: code,
       name_cs: code,
       name_en: code,
       decimals: 2,
-      is_active: true,
-      is_default: true,
+      is_active: false,
+      is_default: false,
     })
     // Refresh list a vyber novou měnu
     currencies.value = await codebooksApi.currencies()
@@ -298,7 +304,7 @@ async function uploadPdfToInvoice(id: number, file: File) {
     existingPdf.value = {
       path: result.pdf_path,
       hash: result.pdf_hash,
-      size: result.pdf_size_bytes,
+      size: Number(result.pdf_size_bytes) || 0,
       name: result.pdf_original_name,
       uploadedAt: new Date().toISOString(),
     }
@@ -511,15 +517,21 @@ function fieldErr(key: string): string | null {
             <div class="flex items-center gap-2">
               <select v-model="form.currency_id" required class="flex-1 h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
                 <option :value="null">—</option>
-                <option v-for="c in currencyOptions" :key="c.id" :value="c.id">{{ c.code }}</option>
+                <option v-for="c in currencyOptions" :key="c.id" :value="c.id">
+                  {{ c.code }}{{ !c.is_active ? ' · ' + t('purchase_invoice.fields.currency_purchase_only') : '' }}
+                </option>
               </select>
               <button
                 type="button"
                 @click="showAddCurrency = true"
                 class="cursor-pointer h-10 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 whitespace-nowrap"
-                :title="t('purchase_invoice.fields.currency')"
+                :title="t('purchase_invoice.fields.currency_add_hint')"
               >+ měna</button>
             </div>
+            <p v-if="form.currency_id && !currencyOptions.find(c => c.id === form.currency_id)?.is_active"
+               class="text-xs text-neutral-500 mt-1">
+              {{ t('purchase_invoice.fields.currency_inactive_hint') }}
+            </p>
           </div>
           <ExchangeRateInput
             v-if="showExchangeRate"
@@ -659,8 +671,8 @@ function fieldErr(key: string): string | null {
     <!-- Quick-add currency modal -->
     <div v-if="showAddCurrency" class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4" @click.self="showAddCurrency = false">
       <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-5 space-y-3">
-        <h3 class="font-medium">Přidat měnu</h3>
-        <p class="text-xs text-neutral-500">ISO 4217 kód (3 písmena), např. USD, GBP, CHF</p>
+        <h3 class="font-medium">{{ t('purchase_invoice.fields.currency_add_title') }}</h3>
+        <p class="text-xs text-neutral-500">{{ t('purchase_invoice.fields.currency_add_iso_hint') }}</p>
         <input
           v-model="newCurrencyCode"
           type="text"
@@ -670,14 +682,18 @@ function fieldErr(key: string): string | null {
           placeholder="USD"
           autofocus
         />
+        <div class="rounded-md bg-warning-50 border border-warning-500/40 px-3 py-2 text-xs text-warning-600">
+          {{ t('purchase_invoice.fields.currency_add_inactive_note') }}
+        </div>
         <div class="flex items-center justify-end gap-2 pt-2">
-          <button type="button" @click="showAddCurrency = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">Zrušit</button>
+          <button type="button" @click="showAddCurrency = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>
           <button type="button" @click="addCurrency" :disabled="addingCurrency" class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md disabled:opacity-50">
-            {{ addingCurrency ? '…' : 'Přidat' }}
+            {{ addingCurrency ? '…' : t('common.add') }}
           </button>
         </div>
         <p class="text-xs text-neutral-500 pt-1 border-t border-neutral-100">
-          Pro správu měn (kurz, bankovní účet, decimals) přejdi do <a href="/admin/settings" class="text-primary-700 hover:underline">Nastavení → Měny</a>.
+          {{ t('purchase_invoice.fields.currency_add_advanced_hint') }}
+          <RouterLink to="/admin/codebooks" class="text-primary-700 hover:underline">{{ t('nav.codebooks') }}</RouterLink>.
         </p>
       </div>
     </div>
