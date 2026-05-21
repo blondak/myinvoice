@@ -256,4 +256,255 @@ final class CrmAggregationService
         $stmt->execute([$supplierId]);
         return array_column($stmt->fetchAll(\PDO::FETCH_ASSOC), 'currency');
     }
+
+    /**
+     * Aging buckets pro nezaplacené vystavené faktury.
+     * Klasifikuje po splatnosti: not_due, 0-30, 31-60, 61-90, 90+
+     *
+     * @return list<array{bucket:string, currency:string, count:int, total:float}>
+     */
+    public function agingReceivables(int $supplierId): array
+    {
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        $sql = "
+            SELECT
+                CASE
+                    WHEN i.due_date > ? THEN 'not_due'
+                    WHEN DATEDIFF(?, i.due_date) <= 30  THEN 'overdue_30'
+                    WHEN DATEDIFF(?, i.due_date) <= 60  THEN 'overdue_60'
+                    WHEN DATEDIFF(?, i.due_date) <= 90  THEN 'overdue_90'
+                    ELSE 'overdue_90_plus'
+                END AS bucket,
+                COALESCE(c.code, 'CZK') AS currency,
+                COUNT(*) AS cnt,
+                SUM(COALESCE(i.total_with_vat, 0)) AS total
+              FROM invoices i
+         LEFT JOIN currencies c ON c.id = i.currency_id
+             WHERE i.supplier_id = ?
+               AND i.status IN ('issued', 'sent', 'reminded')
+               AND i.invoice_type != 'proforma'
+          GROUP BY bucket, currency
+          ORDER BY currency, FIELD(bucket, 'not_due', 'overdue_30', 'overdue_60', 'overdue_90', 'overdue_90_plus')
+        ";
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute([$today, $today, $today, $today, $supplierId]);
+        return array_map(fn ($r) => [
+            'bucket'   => (string) $r['bucket'],
+            'currency' => (string) $r['currency'],
+            'count'    => (int) $r['cnt'],
+            'total'    => (float) $r['total'],
+        ], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Aging buckets pro nezaplacené přijaté faktury (závazky).
+     */
+    public function agingPayables(int $supplierId): array
+    {
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        $sql = "
+            SELECT
+                CASE
+                    WHEN pi.due_date > ? THEN 'not_due'
+                    WHEN DATEDIFF(?, pi.due_date) <= 30  THEN 'overdue_30'
+                    WHEN DATEDIFF(?, pi.due_date) <= 60  THEN 'overdue_60'
+                    WHEN DATEDIFF(?, pi.due_date) <= 90  THEN 'overdue_90'
+                    ELSE 'overdue_90_plus'
+                END AS bucket,
+                COALESCE(c.code, 'CZK') AS currency,
+                COUNT(*) AS cnt,
+                SUM(COALESCE(pi.amount_to_pay, pi.total_with_vat, 0)) AS total
+              FROM purchase_invoices pi
+         LEFT JOIN currencies c ON c.id = pi.currency_id
+             WHERE pi.supplier_id = ?
+               AND pi.status IN ('received', 'booked')
+          GROUP BY bucket, currency
+          ORDER BY currency, FIELD(bucket, 'not_due', 'overdue_30', 'overdue_60', 'overdue_90', 'overdue_90_plus')
+        ";
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute([$today, $today, $today, $today, $supplierId]);
+        return array_map(fn ($r) => [
+            'bucket'   => (string) $r['bucket'],
+            'currency' => (string) $r['currency'],
+            'count'    => (int) $r['cnt'],
+            'total'    => (float) $r['total'],
+        ], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * DSO (Days Sales Outstanding) za posledních N měsíců.
+     * Vrátí průměrný počet dní mezi issue_date a paid_at u zaplacených faktur.
+     *
+     * @return array{avg_days:float, sample_size:int, period_months:int}
+     */
+    public function daysSalesOutstanding(int $supplierId, int $monthsBack = 12): array
+    {
+        $start = (new \DateTimeImmutable())->modify('-' . $monthsBack . ' months')->format('Y-m-d');
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT AVG(DATEDIFF(paid_at, issue_date)) AS avg_days, COUNT(*) AS sample
+               FROM invoices
+              WHERE supplier_id = ?
+                AND status = 'paid'
+                AND paid_at IS NOT NULL
+                AND issue_date >= ?
+                AND invoice_type != 'proforma'"
+        );
+        $stmt->execute([$supplierId, $start]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        return [
+            'avg_days'      => round((float) ($row['avg_days'] ?? 0), 1),
+            'sample_size'   => (int) ($row['sample'] ?? 0),
+            'period_months' => $monthsBack,
+        ];
+    }
+
+    /**
+     * Payment punctuality — % faktur zaplacených včas (před nebo na due_date).
+     */
+    public function paymentPunctuality(int $supplierId, int $monthsBack = 12): array
+    {
+        $start = (new \DateTimeImmutable())->modify('-' . $monthsBack . ' months')->format('Y-m-d');
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT
+                SUM(CASE WHEN paid_at <= due_date THEN 1 ELSE 0 END) AS on_time,
+                SUM(CASE WHEN paid_at >  due_date THEN 1 ELSE 0 END) AS late,
+                COUNT(*) AS total
+             FROM invoices
+            WHERE supplier_id = ?
+              AND status = 'paid'
+              AND paid_at IS NOT NULL
+              AND issue_date >= ?
+              AND invoice_type != 'proforma'"
+        );
+        $stmt->execute([$supplierId, $start]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $total = (int) ($row['total'] ?? 0);
+        return [
+            'on_time'        => (int) ($row['on_time'] ?? 0),
+            'late'           => (int) ($row['late'] ?? 0),
+            'total'          => $total,
+            'on_time_pct'    => $total > 0 ? round((((int) $row['on_time']) / $total) * 100, 1) : 0.0,
+            'period_months'  => $monthsBack,
+        ];
+    }
+
+    /**
+     * Concentration risk — % share top klienta v revenue.
+     * "Pareto" warning: pokud TOP 1 klient > 40 %, jeden klient > 30 %, …
+     */
+    public function clientConcentration(int $supplierId, int $monthsBack = 12, ?string $currency = null): array
+    {
+        $clients = $this->topClients($supplierId, $monthsBack, 50, $currency);
+        if (empty($clients)) {
+            return ['top1_share' => 0, 'top3_share' => 0, 'top5_share' => 0, 'total_clients' => 0,
+                    'pareto_80_count' => 0, 'risk_level' => 'low'];
+        }
+        // Per currency group — vezmu jen first currency (UI volá per měna)
+        $cur = $currency ?? $clients[0]['currency'];
+        $filtered = array_values(array_filter($clients, fn ($c) => $c['currency'] === $cur));
+
+        $top1 = $filtered[0]['percent_share'] ?? 0;
+        $top3 = array_sum(array_slice(array_column($filtered, 'percent_share'), 0, 3));
+        $top5 = array_sum(array_slice(array_column($filtered, 'percent_share'), 0, 5));
+
+        // Pareto — kolik klientů dělá 80%
+        $pareto80 = 0;
+        $cumul = 0;
+        foreach ($filtered as $c) {
+            $cumul += $c['percent_share'];
+            $pareto80++;
+            if ($cumul >= 80) break;
+        }
+
+        $riskLevel = $top1 > 40 ? 'high' : ($top1 > 25 ? 'medium' : 'low');
+
+        return [
+            'top1_share'      => round($top1, 1),
+            'top3_share'      => round($top3, 1),
+            'top5_share'      => round($top5, 1),
+            'total_clients'   => count($filtered),
+            'pareto_80_count' => $pareto80,
+            'risk_level'      => $riskLevel,
+            'currency'        => $cur,
+        ];
+    }
+
+    /**
+     * Expense breakdown po kategoriích (vyžaduje expense_categories assignment).
+     *
+     * @return list<array{category_id:?int, code:?string, label:?string, total:float, count:int, percent:float}>
+     */
+    public function expenseBreakdown(int $supplierId, int $monthsBack = 12, ?string $currency = null): array
+    {
+        $start = (new \DateTimeImmutable())->modify('-' . $monthsBack . ' months')->format('Y-m-d');
+        $params = [$supplierId, $start];
+        $curFilter = '';
+        if ($currency !== null) {
+            $curFilter = ' AND cur.code = ?';
+            $params[] = $currency;
+        }
+        $sql = "
+            SELECT pi.expense_category_id, ec.code, ec.label,
+                   SUM(COALESCE(pi.total_with_vat, 0)) AS total,
+                   COUNT(*) AS cnt
+              FROM purchase_invoices pi
+         LEFT JOIN expense_categories ec ON ec.id = pi.expense_category_id
+         LEFT JOIN currencies cur ON cur.id = pi.currency_id
+             WHERE pi.supplier_id = ?
+               AND pi.issue_date >= ?
+               AND pi.status NOT IN ('draft', 'cancelled')
+               $curFilter
+          GROUP BY pi.expense_category_id, ec.code, ec.label
+          ORDER BY total DESC
+        ";
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $sum = array_sum(array_column($rows, 'total'));
+        return array_map(fn ($r) => [
+            'category_id' => $r['expense_category_id'] !== null ? (int) $r['expense_category_id'] : null,
+            'code'        => $r['code'] !== null ? (string) $r['code'] : null,
+            'label'       => $r['label'] !== null ? (string) $r['label'] : null,
+            'total'       => (float) $r['total'],
+            'count'       => (int) $r['cnt'],
+            'percent'     => $sum > 0 ? round(((float) $r['total'] / $sum) * 100, 1) : 0.0,
+        ], $rows);
+    }
+
+    /**
+     * Customer churn risk — klienti, kteří neměli fakturu 60+ dní.
+     *
+     * @return list<array{client_id:int, company_name:string, last_invoice_date:string,
+     *                    days_since:int, total_revenue:float, currency:string}>
+     */
+    public function churnRisk(int $supplierId, int $thresholdDays = 60, int $limit = 20): array
+    {
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT c.id AS client_id, c.company_name,
+                    MAX(i.issue_date) AS last_invoice_date,
+                    DATEDIFF(?, MAX(i.issue_date)) AS days_since,
+                    SUM(COALESCE(i.total_with_vat, 0)) AS total_revenue,
+                    COALESCE(cur.code, 'CZK') AS currency
+               FROM clients c
+               JOIN invoices i ON i.client_id = c.id AND i.status NOT IN ('draft', 'cancelled')
+          LEFT JOIN currencies cur ON cur.id = i.currency_id
+              WHERE c.supplier_id = ?
+                AND i.invoice_type != 'proforma'
+                AND c.is_customer = 1
+           GROUP BY c.id, c.company_name, cur.code
+             HAVING DATEDIFF(?, MAX(i.issue_date)) > ?
+           ORDER BY days_since ASC
+              LIMIT " . (int) $limit
+        );
+        $stmt->execute([$today, $supplierId, $today, $thresholdDays]);
+        return array_map(fn ($r) => [
+            'client_id'         => (int) $r['client_id'],
+            'company_name'      => (string) $r['company_name'],
+            'last_invoice_date' => (string) $r['last_invoice_date'],
+            'days_since'        => (int) $r['days_since'],
+            'total_revenue'     => (float) $r['total_revenue'],
+            'currency'          => (string) $r['currency'],
+        ], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
 }

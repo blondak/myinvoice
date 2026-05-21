@@ -4,7 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import { crmApi, type CrmOverview, type CrmMonthlyRow, type TopClient, type TopVendor } from '@/api/crm'
+import { crmApi, type CrmOverview, type CrmMonthlyRow, type TopClient, type TopVendor,
+  type AgingBucket, type DsoResult, type PunctualityResult, type ConcentrationResult,
+  type ExpenseCategoryRow, type ChurnRiskClient } from '@/api/crm'
 import { formatMoney } from '@/composables/useFormat'
 import { apiErrorMessage } from '@/api/errors'
 
@@ -16,6 +18,13 @@ const overview = ref<CrmOverview | null>(null)
 const monthly = ref<CrmMonthlyRow[]>([])
 const topClients = ref<TopClient[]>([])
 const topVendors = ref<TopVendor[]>([])
+const agingRecv = ref<AgingBucket[]>([])
+const agingPay  = ref<AgingBucket[]>([])
+const dso = ref<DsoResult | null>(null)
+const punctuality = ref<PunctualityResult | null>(null)
+const concentration = ref<ConcentrationResult | null>(null)
+const expenses = ref<ExpenseCategoryRow[]>([])
+const churn = ref<ChurnRiskClient[]>([])
 const loading = ref(true)
 const recomputing = ref(false)
 
@@ -36,16 +45,30 @@ async function loadAll() {
   loading.value = true
   try {
     const cur = currencyFilter.value || undefined
-    const [ov, mo, tc, tv] = await Promise.all([
+    const [ov, mo, tc, tv, ar, ap, d, p, conc, exp, ch] = await Promise.all([
       crmApi.overview(),
       crmApi.monthly(periodMonths.value, cur),
       crmApi.topClients(periodMonths.value, 10, cur),
       crmApi.topVendors(periodMonths.value, 10, cur),
+      crmApi.agingReceivables(),
+      crmApi.agingPayables(),
+      crmApi.dso(periodMonths.value),
+      crmApi.punctuality(periodMonths.value),
+      crmApi.concentration(periodMonths.value, cur),
+      crmApi.expenseBreakdown(periodMonths.value, cur),
+      crmApi.churnRisk(60, 10),
     ])
     overview.value = ov
     monthly.value = mo
     topClients.value = tc
     topVendors.value = tv
+    agingRecv.value = ar
+    agingPay.value  = ap
+    dso.value = d
+    punctuality.value = p
+    concentration.value = conc
+    expenses.value = exp
+    churn.value = ch
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -100,6 +123,36 @@ const chartMaxValue = computed(() => {
 function barWidthPct(value: number): number {
   if (chartMaxValue.value === 0) return 0
   return Math.round((value / chartMaxValue.value) * 100)
+}
+
+// Aging buckets pro vybranou měnu
+const agingForCurrency = computed(() =>
+  agingRecv.value.filter(b => b.currency === currencyFilter.value)
+)
+const agingPayForCurrency = computed(() =>
+  agingPay.value.filter(b => b.currency === currencyFilter.value)
+)
+const agingTotal = computed(() => agingForCurrency.value.reduce((s, b) => s + b.total, 0))
+const agingPayTotal = computed(() => agingPayForCurrency.value.reduce((s, b) => s + b.total, 0))
+
+function agingPct(bucket: AgingBucket, total: number): number {
+  if (total === 0) return 0
+  return Math.round((bucket.total / total) * 100)
+}
+
+function agingBucketColor(bucket: string): string {
+  switch (bucket) {
+    case 'not_due':         return 'bg-success-500'
+    case 'overdue_30':      return 'bg-warning-400'
+    case 'overdue_60':      return 'bg-warning-500'
+    case 'overdue_90':      return 'bg-danger-400'
+    case 'overdue_90_plus': return 'bg-danger-600'
+    default:                return 'bg-neutral-400'
+  }
+}
+
+function riskColor(level: string): string {
+  return level === 'high' ? 'text-danger-500' : level === 'medium' ? 'text-warning-600' : 'text-success-600'
 }
 
 function formatMonthLabel(period: string): string {
@@ -335,6 +388,181 @@ onMounted(loadAll)
                 </td>
                 <td class="px-5 py-2.5 text-right text-xs text-neutral-500 font-mono">
                   {{ v.percent_share.toFixed(1) }}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ Aging buckets (pohledávky + závazky) ═══ -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Receivables -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              {{ t('crm.aging.receivables_title') }}
+            </h3>
+            <span class="text-sm font-mono text-neutral-700">
+              {{ formatMoney(agingTotal, currencyFilter) }}
+            </span>
+          </header>
+          <div v-if="agingForCurrency.length === 0" class="p-6 text-center text-neutral-500 text-sm">
+            {{ t('crm.aging.no_open') }}
+          </div>
+          <div v-else class="p-4 space-y-2">
+            <div v-for="b in agingForCurrency" :key="b.bucket" class="grid grid-cols-[100px_1fr_120px] gap-2 items-center text-xs">
+              <div class="text-neutral-700 font-medium">{{ t('crm.aging.bucket.' + b.bucket) }}</div>
+              <div class="flex items-center gap-2">
+                <div :class="['h-3 rounded-sm', agingBucketColor(b.bucket)]"
+                  :style="{ width: agingPct(b, agingTotal) + '%' }"></div>
+                <span class="text-neutral-500">{{ b.count }} faktur</span>
+              </div>
+              <div class="text-right font-mono text-neutral-700">
+                {{ formatMoney(b.total, b.currency) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payables -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              {{ t('crm.aging.payables_title') }}
+            </h3>
+            <span class="text-sm font-mono text-neutral-700">
+              {{ formatMoney(agingPayTotal, currencyFilter) }}
+            </span>
+          </header>
+          <div v-if="agingPayForCurrency.length === 0" class="p-6 text-center text-neutral-500 text-sm">
+            {{ t('crm.aging.no_pay') }}
+          </div>
+          <div v-else class="p-4 space-y-2">
+            <div v-for="b in agingPayForCurrency" :key="b.bucket" class="grid grid-cols-[100px_1fr_120px] gap-2 items-center text-xs">
+              <div class="text-neutral-700 font-medium">{{ t('crm.aging.bucket.' + b.bucket) }}</div>
+              <div class="flex items-center gap-2">
+                <div :class="['h-3 rounded-sm', agingBucketColor(b.bucket)]"
+                  :style="{ width: agingPct(b, agingPayTotal) + '%' }"></div>
+                <span class="text-neutral-500">{{ b.count }} faktur</span>
+              </div>
+              <div class="text-right font-mono text-neutral-700">
+                {{ formatMoney(b.total, b.currency) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Health metrics row: DSO + Punctuality + Concentration ═══ -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- DSO -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-neutral-500 font-medium mb-1">
+            {{ t('crm.dso.title') }}
+          </div>
+          <div class="text-2xl font-bold font-mono text-neutral-900">
+            {{ dso?.avg_days ?? '—' }}<span class="text-base text-neutral-500 ml-1">{{ t('crm.dso.days') }}</span>
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">{{ t('crm.dso.hint', { n: dso?.sample_size || 0 }) }}</div>
+        </div>
+
+        <!-- Punctuality -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-neutral-500 font-medium mb-1">
+            {{ t('crm.punctuality.title') }}
+          </div>
+          <div class="text-2xl font-bold font-mono"
+            :class="(punctuality?.on_time_pct ?? 0) >= 80 ? 'text-success-600' : (punctuality?.on_time_pct ?? 0) >= 50 ? 'text-warning-600' : 'text-danger-500'">
+            {{ punctuality?.on_time_pct ?? 0 }}%
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">
+            {{ t('crm.punctuality.detail', { on_time: punctuality?.on_time || 0, late: punctuality?.late || 0 }) }}
+          </div>
+        </div>
+
+        <!-- Concentration risk -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-neutral-500 font-medium mb-1">
+            {{ t('crm.concentration.title') }}
+          </div>
+          <div class="text-2xl font-bold font-mono" :class="riskColor(concentration?.risk_level || 'low')">
+            {{ concentration?.top1_share ?? 0 }}%
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">
+            {{ t('crm.concentration.top1', { pct: concentration?.top1_share ?? 0 }) }}
+            <span class="ml-2">· {{ t('crm.concentration.pareto', { n: concentration?.pareto_80_count ?? 0 }) }}</span>
+          </div>
+          <div class="text-xs mt-2 pt-2 border-t border-neutral-100" :class="riskColor(concentration?.risk_level || 'low')">
+            {{ t('crm.concentration.risk_' + (concentration?.risk_level || 'low')) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Expense breakdown + Churn risk side-by-side ═══ -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Expense breakdown -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              {{ t('crm.expense_breakdown.title') }}
+            </h3>
+          </header>
+          <div v-if="expenses.length === 0" class="p-6 text-center text-neutral-500 text-sm">
+            {{ t('crm.expense_breakdown.empty') }}
+          </div>
+          <table v-else class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="e in expenses" :key="(e.category_id ?? 0) + '-' + (e.code ?? '')" class="hover:bg-neutral-50">
+                <td class="px-5 py-2">
+                  <div class="font-medium text-neutral-900">
+                    {{ e.label || t('crm.expense_breakdown.uncategorized') }}
+                  </div>
+                  <div class="text-xs text-neutral-500">{{ e.count }} {{ t('crm.kpi.purchases') }}</div>
+                </td>
+                <td class="px-3 py-2">
+                  <div class="w-full h-2 bg-neutral-100 rounded">
+                    <div class="h-full bg-warning-500 rounded" :style="{ width: e.percent + '%' }"></div>
+                  </div>
+                </td>
+                <td class="px-3 py-2 text-right font-mono text-neutral-900">{{ formatMoney(e.total, currencyFilter) }}</td>
+                <td class="px-5 py-2 text-right text-xs text-neutral-500 font-mono w-12">{{ e.percent.toFixed(1) }}%</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="expenses.length > 0 && expenses[0].category_id === null"
+            class="px-5 py-2 text-xs text-warning-600 bg-warning-50 border-t border-warning-500/40">
+            💡 {{ t('crm.expense_breakdown.uncategorized_hint') }}
+          </div>
+        </div>
+
+        <!-- Churn risk -->
+        <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              {{ t('crm.churn.title') }}
+            </h3>
+          </header>
+          <div v-if="churn.length === 0" class="p-6 text-center text-neutral-500 text-sm">
+            {{ t('crm.churn.empty') }}
+          </div>
+          <table v-else class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="c in churn" :key="c.client_id + c.currency" class="hover:bg-neutral-50">
+                <td class="px-5 py-2">
+                  <RouterLink :to="`/clients/${c.client_id}`" class="font-medium text-primary-700 hover:underline">
+                    {{ c.company_name }}
+                  </RouterLink>
+                  <div class="text-xs text-neutral-500">{{ t('crm.churn.last', { date: c.last_invoice_date }) }}</div>
+                </td>
+                <td class="px-3 py-2 text-right">
+                  <span class="text-sm font-mono"
+                    :class="c.days_since > 180 ? 'text-danger-500' : c.days_since > 90 ? 'text-warning-600' : 'text-neutral-700'">
+                    {{ c.days_since }}d
+                  </span>
+                </td>
+                <td class="px-5 py-2 text-right text-xs text-neutral-500 font-mono">
+                  {{ formatMoney(c.total_revenue, c.currency) }}
                 </td>
               </tr>
             </tbody>

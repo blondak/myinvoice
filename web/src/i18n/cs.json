@@ -1446,6 +1446,47 @@
       "this_month": "Tento měsíc",
       "invoices": "fakt.",
       "purchases": "přij. fakt."
+    },
+    "aging": {
+      "receivables_title": "Pohledávky (po splatnosti)",
+      "payables_title": "Závazky (po splatnosti)",
+      "no_open": "Žádné otevřené pohledávky.",
+      "no_pay": "Žádné nezaplacené závazky.",
+      "bucket": {
+        "not_due":         "V termínu",
+        "overdue_30":      "1-30 dní",
+        "overdue_60":      "31-60 dní",
+        "overdue_90":      "61-90 dní",
+        "overdue_90_plus": "90+ dní"
+      }
+    },
+    "dso": {
+      "title": "Doba inkasa (DSO)",
+      "days": "dní",
+      "hint": "Průměr ze {n} zaplacených faktur"
+    },
+    "punctuality": {
+      "title": "Platební morálka",
+      "detail": "{on_time} včas / {late} po splatnosti"
+    },
+    "concentration": {
+      "title": "Riziko koncentrace",
+      "top1": "Top 1 klient: {pct}%",
+      "pareto": "Pareto 80%: {n} klientů",
+      "risk_low": "✓ Diverzifikováno",
+      "risk_medium": "⚠ Středně koncentrované",
+      "risk_high": "⚠ Vysoká koncentrace — riskuješ pokud jeden klient odpadne"
+    },
+    "expense_breakdown": {
+      "title": "Náklady podle kategorií",
+      "empty": "Žádné přijaté faktury v tomto období.",
+      "uncategorized": "Bez kategorie",
+      "uncategorized_hint": "Přiřaďte kategorie nákladů v editoru přijatých faktur — uvidíte podrobnější rozpad."
+    },
+    "churn": {
+      "title": "Riziko ztráty klientů (60+ dní bez objednávky)",
+      "empty": "Všichni klienti jsou aktivní.",
+      "last": "Poslední: {date}"
     }
   },
   "integrations": {

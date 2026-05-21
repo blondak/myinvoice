@@ -63,6 +63,59 @@ final class CrmDashboardAction
         return Json::ok($response, $this->crm->topVendors($supplierId, $months, $limit, $currency));
     }
 
+    public function agingReceivables(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        return Json::ok($response, $this->crm->agingReceivables($supplierId));
+    }
+
+    public function agingPayables(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        return Json::ok($response, $this->crm->agingPayables($supplierId));
+    }
+
+    public function dso(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $months = max(1, min(36, (int) ($request->getQueryParams()['months'] ?? 12)));
+        return Json::ok($response, $this->crm->daysSalesOutstanding($supplierId, $months));
+    }
+
+    public function punctuality(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $months = max(1, min(36, (int) ($request->getQueryParams()['months'] ?? 12)));
+        return Json::ok($response, $this->crm->paymentPunctuality($supplierId, $months));
+    }
+
+    public function concentration(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $months = max(1, min(36, (int) ($q['months'] ?? 12)));
+        $currency = isset($q['currency']) ? (string) $q['currency'] : null;
+        return Json::ok($response, $this->crm->clientConcentration($supplierId, $months, $currency));
+    }
+
+    public function expenseBreakdown(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $months = max(1, min(36, (int) ($q['months'] ?? 12)));
+        $currency = isset($q['currency']) ? (string) $q['currency'] : null;
+        return Json::ok($response, $this->crm->expenseBreakdown($supplierId, $months, $currency));
+    }
+
+    public function churnRisk(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $q = $request->getQueryParams();
+        $threshold = max(7, min(365, (int) ($q['days'] ?? 60)));
+        $limit = max(1, min(100, (int) ($q['limit'] ?? 20)));
+        return Json::ok($response, $this->crm->churnRisk($supplierId, $threshold, $limit));
+    }
+
     public function recompute(Request $request, Response $response): Response
     {
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);

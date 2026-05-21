@@ -1446,6 +1446,47 @@
       "this_month": "This month",
       "invoices": "inv.",
       "purchases": "exp."
+    },
+    "aging": {
+      "receivables_title": "Receivables (by age)",
+      "payables_title": "Payables (by age)",
+      "no_open": "No open receivables.",
+      "no_pay": "No unpaid payables.",
+      "bucket": {
+        "not_due":         "Not due",
+        "overdue_30":      "1-30 days",
+        "overdue_60":      "31-60 days",
+        "overdue_90":      "61-90 days",
+        "overdue_90_plus": "90+ days"
+      }
+    },
+    "dso": {
+      "title": "Days Sales Outstanding",
+      "days": "days",
+      "hint": "Avg from {n} paid invoices"
+    },
+    "punctuality": {
+      "title": "Payment punctuality",
+      "detail": "{on_time} on-time / {late} late"
+    },
+    "concentration": {
+      "title": "Concentration risk",
+      "top1": "Top 1 client: {pct}%",
+      "pareto": "Pareto 80%: {n} clients",
+      "risk_low": "✓ Diversified",
+      "risk_medium": "⚠ Moderately concentrated",
+      "risk_high": "⚠ High concentration — risky if one client leaves"
+    },
+    "expense_breakdown": {
+      "title": "Expenses by category",
+      "empty": "No received invoices in this period.",
+      "uncategorized": "Uncategorized",
+      "uncategorized_hint": "Assign expense categories in the received invoice editor — you'll see detailed breakdown."
+    },
+    "churn": {
+      "title": "Churn risk (60+ days without order)",
+      "empty": "All clients are active.",
+      "last": "Last: {date}"
     }
   },
   "integrations": {

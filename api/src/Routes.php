@@ -289,6 +289,13 @@ final class Routes
         $app->get    ('/api/crm/monthly',      [CrmDashboardAction::class, 'monthly']);
         $app->get    ('/api/crm/top-clients',  [CrmDashboardAction::class, 'topClients']);
         $app->get    ('/api/crm/top-vendors',  [CrmDashboardAction::class, 'topVendors']);
+        $app->get    ('/api/crm/aging-receivables', [CrmDashboardAction::class, 'agingReceivables']);
+        $app->get    ('/api/crm/aging-payables',    [CrmDashboardAction::class, 'agingPayables']);
+        $app->get    ('/api/crm/dso',               [CrmDashboardAction::class, 'dso']);
+        $app->get    ('/api/crm/payment-punctuality', [CrmDashboardAction::class, 'punctuality']);
+        $app->get    ('/api/crm/concentration',     [CrmDashboardAction::class, 'concentration']);
+        $app->get    ('/api/crm/expense-breakdown', [CrmDashboardAction::class, 'expenseBreakdown']);
+        $app->get    ('/api/crm/churn-risk',        [CrmDashboardAction::class, 'churnRisk']);
         $app->post   ('/api/crm/recompute',    [CrmDashboardAction::class, 'recompute']);
 
         // EPO výkazy (fáze 6) — DPH přiznání DPHDP3
