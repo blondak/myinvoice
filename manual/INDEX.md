@@ -31,6 +31,7 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 7. [Klienti](07_Klienti.md)
 8. [Zakázky (vč. schvalování výkazů zákazníkem)](08_Zakazky.md)
 9. [Faktury — seznam a hromadné akce](09_Faktury.md)
+9a. [Přijaté faktury (nákupy)](09a_Prijate_faktury.md) — nové ve v3.5.0
 10. [Faktura — editor, výkaz víceprací a schvalování zákazníkem](10_Faktura_editor.md)
 11. [Faktura — PDF, QR platba, odeslání e-mailem](11_Faktura_PDF.md)
 

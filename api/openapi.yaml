@@ -1962,6 +1962,308 @@ paths:
                   new_next_run_date: { type: string, format: date, nullable: true }
                   template_status:   { type: string, enum: [active, paused, expired] }
 
+  # ============================================================================
+  # Purchase invoices (přijaté faktury) — fáze 1 integrace forku
+  # ============================================================================
+  /api/v1/purchase-invoices:
+    get:
+      tags: [Purchase invoices]
+      summary: Seznam přijatých faktur seskupený po měsících
+      description: |
+        Vrací přijaté faktury aktuálního tenant (supplier_id), seskupené podle
+        `COALESCE(tax_date, issue_date)` per měsíc. Stejný response tvar jako
+        `/invoices` ale s `vendor_*` poli místo `client_*`.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: filter[status]
+          schema: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        - in: query
+          name: filter[document_kind]
+          schema: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        - in: query
+          name: filter[vendor_id]
+          schema: { type: integer }
+        - in: query
+          name: filter[year]
+          schema: { type: integer }
+        - in: query
+          name: filter[month]
+          schema: { type: integer }
+        - in: query
+          name: filter[unpaid_only]
+          schema: { type: boolean }
+        - in: query
+          name: filter[overdue]
+          schema: { type: boolean }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: string, example: "2026-05" }
+                        count: { type: integer }
+                        totals_per_currency:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              currency: { type: string }
+                              without_vat: { type: number }
+                              vat: { type: number }
+                              with_vat: { type: number }
+                        invoices:
+                          type: array
+                          items: { $ref: '#/components/schemas/PurchaseInvoiceListItem' }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      per_page: { type: integer }
+                      pages: { type: integer }
+    post:
+      tags: [Purchase invoices]
+      summary: Vytvoří draft přijaté faktury
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PurchaseInvoicePayload' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '400': { description: Validation error }
+
+  /api/v1/purchase-invoices/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Purchase invoices]
+      summary: Detail přijaté faktury
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '404': { description: Nenalezeno }
+    put:
+      tags: [Purchase invoices]
+      summary: Update přijaté faktury (jen draft)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: force
+          description: Admin override pro received status (booked/paid/cancelled neumožněno).
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PurchaseInvoicePayload' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '409': { description: Not editable }
+    delete:
+      tags: [Purchase invoices]
+      summary: Smaže draft (vystavené faktury použij transition cancel)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200': { description: OK }
+        '409': { description: Lze smazat jen draft }
+
+  /api/v1/purchase-invoices/{id}/items:
+    put:
+      tags: [Purchase invoices]
+      summary: Přepíše položky a přepočte sumy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/PurchaseInvoiceItemPayload' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+
+  /api/v1/purchase-invoices/{id}/exchange-rate:
+    post:
+      tags: [Purchase invoices]
+      summary: Nastaví exchange rate manuálně
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rate: { type: number, nullable: true }
+                rate_date: { type: string, format: date, nullable: true }
+                source: { type: string, enum: [cnb, manual, idoklad, fakturoid], default: manual }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/purchase-invoices/{id}/transition:
+    post:
+      tags: [Purchase invoices]
+      summary: Přechod stavu (state machine draft → received → booked → paid; + cancelled)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target: { type: string, enum: [received, booked, paid, cancelled] }
+                paid_date:
+                  type: string
+                  format: date
+                  description: Pouze pro target=paid (default = dnes)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '409': { description: Invalid transition }
+
+  /api/v1/purchase-invoices/{id}/pdf:
+    post:
+      tags: [Purchase invoices]
+      summary: Upload originálního PDF od dodavatele (archive + SHA-256 dedup)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF dokument (max 20 MiB, magic bytes %PDF- validation)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  pdf_path: { type: string }
+                  pdf_hash: { type: string, description: SHA-256 hex }
+                  pdf_size_bytes: { type: integer }
+                  pdf_original_name: { type: string }
+        '409':
+          description: Stejné PDF už archivováno u jiné faktury (existing_purchase_invoice_id v error.extra)
+        '413': { description: File too large (> 20 MiB) }
+    get:
+      tags: [Purchase invoices]
+      summary: Stáhne archivované PDF od dodavatele
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf: {}
+        '404': { description: K faktuře není archivovaný PDF }
+
+  /api/v1/purchase-invoices/scan-inbox:
+    post:
+      tags: [Purchase invoices]
+      summary: Scan adresáře s PDF/ISDOC pro automatický import (admin/accountant only)
+      description: |
+        Rekurzivně projde adresář nastavený v `cfg.purchase_invoice.inbox_dir`,
+        deduplikuje přes SHA-256 (vůči `purchase_invoices.pdf_hash`). Z PDF s embedded
+        ISDOC rozpozná data a vytvoří draft (mapper v fázi 2c plánu integrace).
+        Pure PDF bez ISDOC se přeskakují (AI extrakce dorazí v fázi 2c).
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  description: True = jen vrátit seznam nálezů bez zápisu
+                  default: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboxScanResult' }
+        '403': { description: Pouze admin/accountant }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -3155,3 +3457,197 @@ components:
               unit_price_without_vat: { type: number, format: float, description: "Může být záporná pro slevový řádek, ale ne současně se záporným množstvím." }
               vat_rate_id: { type: integer }
               order_index: { type: integer }
+
+    # ========================================================================
+    # Purchase invoices (přijaté faktury) — fáze 1 integrace forku
+    # ========================================================================
+    PurchaseInvoiceListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        supplier_id: { type: integer }
+        vendor_id: { type: integer }
+        varsymbol: { type: string, nullable: true, description: "Naše interní číslo PF-YYYYMM-NNNN" }
+        vendor_invoice_number: { type: string }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true, description: "DUZP" }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        currency: { type: string }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        advance_paid_amount: { type: number }
+        amount_to_pay: { type: number, description: "Generated column = total_with_vat - advance_paid_amount" }
+        status: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        vendor_company_name: { type: string }
+        vendor_ic: { type: string, nullable: true }
+        month_bucket: { type: string, example: "2026-05" }
+
+    PurchaseInvoiceItem:
+      type: object
+      properties:
+        id: { type: integer }
+        purchase_invoice_id: { type: integer }
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string }
+        unit_price_without_vat: { type: number }
+        vat_rate_id: { type: integer }
+        vat_rate_snapshot: { type: number }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        order_index: { type: integer }
+        vat_classification_code:
+          type: string
+          nullable: true
+          description: "MFČR kód pro DPH/KH (připraveno pro fázi 6)"
+
+    PurchaseInvoiceItemPayload:
+      type: object
+      required: [description, quantity, unit_price_without_vat, vat_rate_id]
+      properties:
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string, default: ks }
+        unit_price_without_vat: { type: number }
+        vat_rate_id: { type: integer }
+        order_index: { type: integer }
+        vat_classification_code: { type: string, nullable: true }
+
+    PurchaseInvoice:
+      type: object
+      properties:
+        id: { type: integer }
+        supplier_id: { type: integer }
+        vendor_id: { type: integer }
+        varsymbol: { type: string, nullable: true }
+        vendor_invoice_number: { type: string }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        currency: { type: string }
+        exchange_rate: { type: number, nullable: true }
+        exchange_rate_date: { type: string, format: date, nullable: true }
+        exchange_rate_source: { type: string, enum: [cnb, manual, idoklad, fakturoid] }
+        reverse_charge: { type: boolean }
+        language: { type: string, enum: [cs, en] }
+        note_above_items: { type: string, nullable: true }
+        note_below_items: { type: string, nullable: true }
+        vendor_snapshot:
+          type: object
+          description: Immutable JSON snapshot vendor row at time of receipt
+        own_snapshot: { type: object, nullable: true }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        rounding: { type: number }
+        advance_paid_amount: { type: number }
+        amount_to_pay: { type: number }
+        payment_currency_id: { type: integer, nullable: true }
+        payment_exchange_rate: { type: number, nullable: true }
+        paid_amount_payment_ccy: { type: number, nullable: true }
+        paid_amount_invoice_ccy: { type: number, nullable: true }
+        exchange_diff_base:
+          type: number
+          nullable: true
+          description: "FX gain/loss v base ccy (CZK)"
+        status: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        booked_at: { type: string, format: date-time, nullable: true }
+        paid_at: { type: string, format: date, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        pdf_path:
+          type: string
+          nullable: true
+          description: "Relative path within archive_storage"
+        pdf_hash: { type: string, nullable: true, description: "SHA-256 hex" }
+        pdf_size_bytes: { type: integer, nullable: true }
+        pdf_original_name: { type: string, nullable: true }
+        pdf_uploaded_at: { type: string, format: date-time, nullable: true }
+        vat_classification_code: { type: string, nullable: true }
+        created_by: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        vendor_company_name: { type: string }
+        vendor_ic: { type: string, nullable: true }
+        vendor_dic: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PurchaseInvoiceItem' }
+        vat_breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              vat_rate: { type: number }
+              without_vat: { type: number }
+              vat: { type: number }
+              with_vat: { type: number }
+        totals:
+          type: object
+          properties:
+            without_vat: { type: number }
+            vat: { type: number }
+            with_vat: { type: number }
+            rounding: { type: number }
+            advance_paid_amount: { type: number }
+            amount_to_pay: { type: number }
+
+    PurchaseInvoicePayload:
+      type: object
+      required: [vendor_id, vendor_invoice_number, issue_date, due_date, currency_id, items]
+      properties:
+        vendor_id: { type: integer }
+        vendor_invoice_number: { type: string, maxLength: 50 }
+        varsymbol: { type: string, nullable: true, maxLength: 20 }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance], default: invoice }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        exchange_rate: { type: number, nullable: true }
+        exchange_rate_date: { type: string, format: date, nullable: true }
+        exchange_rate_source: { type: string, enum: [cnb, manual, idoklad, fakturoid], default: cnb }
+        reverse_charge: { type: boolean, default: false }
+        language: { type: string, enum: [cs, en], default: cs }
+        note_above_items: { type: string, nullable: true }
+        note_below_items: { type: string, nullable: true }
+        advance_paid_amount: { type: number, default: 0 }
+        payment_currency_id: { type: integer, nullable: true }
+        payment_exchange_rate: { type: number, nullable: true }
+        paid_amount_payment_ccy: { type: number, nullable: true }
+        paid_amount_invoice_ccy: { type: number, nullable: true }
+        exchange_diff_base: { type: number, nullable: true }
+        vat_classification_code: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PurchaseInvoiceItemPayload' }
+
+    InboxScanResult:
+      type: object
+      properties:
+        created: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        dry_run: { type: boolean }
+        inbox_dir: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              file: { type: string }
+              status:
+                type: string
+                enum: [created, skipped, failed, rejected, mapper_pending, config_missing, inbox_missing, limit_reached]
+              reason: { type: string, nullable: true }
+              purchase_invoice_id: { type: integer, nullable: true }
+              isdoc_invoice_count: { type: integer, nullable: true }
+              supplier_ic: { type: string, nullable: true }

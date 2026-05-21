@@ -4,7 +4,178 @@
     "dashboard": "Dashboard", "invoices": "Invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Charts", "bank": "Bank", "system": "System",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out"
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
+    "purchase_invoices": "Received invoices", "vendors": "Vendors"
+  },
+  "purchase_invoice": {
+    "title": "Received invoices",
+    "subtitle": "Vendor documents — company expenses.",
+    "new": "+ New received invoice",
+    "scan_inbox_btn": "Scan inbox",
+    "empty": "No received invoices yet.",
+    "empty_filtered": "No invoices match the filter.",
+    "title_new": "New received invoice",
+    "title_edit": "Edit received invoice",
+    "title_detail": "Received invoice detail",
+    "summary_count": "{count} invoices",
+    "back_to_list": "← Back to list",
+    "status": {
+      "draft": "Draft",
+      "received": "Received",
+      "booked": "Booked",
+      "paid": "Paid",
+      "cancelled": "Cancelled"
+    },
+    "document_kind": {
+      "invoice": "Invoice",
+      "receipt": "Receipt",
+      "credit_note": "Credit note",
+      "advance": "Advance"
+    },
+    "fields": {
+      "vendor": "Vendor",
+      "vendor_invoice_number": "Vendor invoice number",
+      "vendor_invoice_number_hint": "As written on the original (e.g. FA-2026-001)",
+      "varsymbol": "Our internal number",
+      "varsymbol_hint": "Optional — auto-generated as PF-YYYYMM-NNNN on receipt",
+      "document_kind": "Document type",
+      "issue_date": "Issue date",
+      "tax_date": "Tax point date (DUZP)",
+      "due_date": "Due date",
+      "received_at": "Received on",
+      "currency": "Invoice currency",
+      "exchange_rate": "Rate at tax date",
+      "exchange_rate_load_cnb": "Load from ČNB",
+      "exchange_rate_source": "Rate source",
+      "reverse_charge": "Reverse charge",
+      "language": "Document language",
+      "note_above_items": "Note above items",
+      "note_below_items": "Note below items",
+      "advance_paid_amount": "Advance paid",
+      "vat_classification_code": "VAT classification (MFCR)"
+    },
+    "items": {
+      "title": "Items",
+      "add": "+ Add item",
+      "description": "Description",
+      "quantity": "Qty",
+      "unit": "Unit",
+      "unit_price": "Unit price w/o VAT",
+      "vat_rate": "VAT rate",
+      "total_without_vat": "Without VAT",
+      "total_vat": "VAT",
+      "total_with_vat": "With VAT",
+      "remove": "Remove row",
+      "empty": "No items — add at least one to calculate totals."
+    },
+    "totals": {
+      "without_vat": "Total without VAT",
+      "vat": "VAT",
+      "with_vat": "Total with VAT",
+      "advance_paid": "Advance paid",
+      "to_pay": "Amount due"
+    },
+    "vat_breakdown": {
+      "title": "VAT breakdown",
+      "rate": "Rate",
+      "base": "Base",
+      "vat": "VAT",
+      "with_vat": "Total"
+    },
+    "payment_currency": {
+      "toggle": "Paying in different currency than invoice",
+      "currency": "Payment account currency",
+      "rate": "Rate payment → invoice currency",
+      "paid_payment_ccy": "Actually paid from account",
+      "paid_invoice_ccy": "Equivalent in invoice currency",
+      "exchange_diff": "FX diff (in CZK)",
+      "hint": "Fill in if paying USD invoice from CZK/EUR account. Diff is used for FX gain/loss tracking."
+    },
+    "actions": {
+      "save": "Save",
+      "save_and_receive": "Save and mark received",
+      "mark_received": "Mark as received",
+      "mark_booked": "Mark as booked",
+      "mark_paid": "Mark as paid",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "edit": "Edit",
+      "back": "Back",
+      "duplicate": "Duplicate"
+    },
+    "confirm": {
+      "delete_draft": "Really delete this draft?",
+      "delete_blocked": "Only drafts can be deleted. For already received use Cancel.",
+      "cancel": "Really cancel this invoice? This cannot be undone."
+    },
+    "transition": {
+      "invalid": "Cannot transition to requested state from current.",
+      "success_received": "Invoice marked as received.",
+      "success_booked": "Invoice marked as booked.",
+      "success_paid": "Invoice marked as paid.",
+      "success_cancelled": "Invoice cancelled."
+    },
+    "pdf": {
+      "title": "Vendor original PDF",
+      "dropzone_hint": "Drag a PDF here (or click to pick)",
+      "dropzone_active": "Drop file to upload",
+      "uploading": "Uploading…",
+      "uploaded_at": "Uploaded {date}",
+      "size": "Size",
+      "open": "Open PDF",
+      "download": "Download PDF",
+      "replace": "Replace",
+      "no_pdf": "No archived PDF for this invoice.",
+      "max_size_hint": "Maximum size 20 MiB",
+      "invalid_pdf": "File is not a valid PDF document.",
+      "duplicate": "The same PDF is already archived under another invoice.",
+      "upload_error": "Upload failed: {error}"
+    },
+    "extraction": {
+      "isdoc_found": "ISDOC detected in PDF. Fields prefilled from attachment.",
+      "ai_pending": "This PDF has no ISDOC — AI extraction will be available in phase 2c. Please fill manually.",
+      "manual_fallback": "Fill manually"
+    },
+    "scan_inbox": {
+      "title": "Scan received invoices inbox",
+      "trigger": "Run scan",
+      "dry_run": "Dry run (no writes)",
+      "running": "Scanning directory…",
+      "result_summary": "Created: {created}, skipped: {skipped}, failed: {failed}",
+      "no_dir": "Inbox directory not configured in cfg.php (purchase_invoice.inbox_dir).",
+      "details": "Details",
+      "file": "File",
+      "status_label": "Status",
+      "reason": "Reason"
+    },
+    "filters": {
+      "all_statuses": "All statuses",
+      "all_kinds": "All types",
+      "unpaid_only": "Unpaid only",
+      "overdue": "Overdue",
+      "vendor_placeholder": "Select vendor",
+      "search_placeholder": "Search number / vendor…"
+    },
+    "validation": {
+      "vendor_required": "Select a vendor.",
+      "vendor_invoice_number_required": "Vendor invoice number is required.",
+      "date_invalid": "Invalid date.",
+      "currency_required": "Select invoice currency.",
+      "items_required": "Add at least one item."
+    }
+  },
+  "vendor": {
+    "title": "Vendors",
+    "picker_label": "Vendor",
+    "search_placeholder": "Search vendor by name / Reg. ID…",
+    "create_new": "+ Create new vendor",
+    "empty": "No vendors.",
+    "ic": "Reg. ID",
+    "dic": "VAT ID",
+    "company_name": "Company name",
+    "address": "Address",
+    "email": "E-mail"
   },
   "recurring": {
     "title": "Recurring invoices",

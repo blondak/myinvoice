@@ -42,6 +42,7 @@ const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
     { to: '/',         label: t('nav.dashboard'),  icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
     { to: '/invoices', label: t('nav.invoices'),   icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z' },
+    { to: '/purchase-invoices', label: t('nav.purchase_invoices'), icon: 'M4 7h16M4 11h16M4 15h10M4 19h10M16 17l3 3 3-3M19 14v6' },
     { to: '/clients',  label: t('nav.clients'),    icon: 'M17 20h5v-2a4 4 0 0 0-3-3.87M9 20H4v-2a3 3 0 0 1 5.356-1.857M15 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z' },
     { to: '/projects', label: t('nav.projects'),   icon: 'M3 7l9-4 9 4-9 4-9-4zM3 12l9 4 9-4M3 17l9 4 9-4' },
     { to: '/stats',    label: t('nav.stats'),      icon: 'M3 3v18h18M7 14l4-4 4 4 5-5' },

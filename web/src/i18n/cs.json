@@ -4,7 +4,178 @@
     "dashboard": "Přehled", "invoices": "Faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Grafy", "bank": "Banka", "system": "Systém",
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé",
-    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit"
+    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
+    "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
+    "purchase_invoices": "Přijaté faktury", "vendors": "Dodavatelé"
+  },
+  "purchase_invoice": {
+    "title": "Přijaté faktury",
+    "subtitle": "Doklady od dodavatelů — náklady firmy.",
+    "new": "+ Nová přijatá faktura",
+    "scan_inbox_btn": "Nascanovat inbox",
+    "empty": "Zatím žádné přijaté faktury.",
+    "empty_filtered": "Žádné faktury odpovídající filtru.",
+    "title_new": "Nová přijatá faktura",
+    "title_edit": "Úprava přijaté faktury",
+    "title_detail": "Detail přijaté faktury",
+    "summary_count": "{count} faktur",
+    "back_to_list": "← Zpět na seznam",
+    "status": {
+      "draft": "Koncept",
+      "received": "Přijatá",
+      "booked": "Zaúčtovaná",
+      "paid": "Uhrazená",
+      "cancelled": "Stornovaná"
+    },
+    "document_kind": {
+      "invoice": "Faktura",
+      "receipt": "Doklad o úhradě",
+      "credit_note": "Dobropis",
+      "advance": "Záloha"
+    },
+    "fields": {
+      "vendor": "Dodavatel",
+      "vendor_invoice_number": "Číslo dokladu dodavatele",
+      "vendor_invoice_number_hint": "Tak, jak je uvedeno na originálu (např. FA-2026-001)",
+      "varsymbol": "Naše interní číslo",
+      "varsymbol_hint": "Volitelné — automaticky se vygeneruje jako PF-YYYYMM-NNNN při přijetí",
+      "document_kind": "Typ dokladu",
+      "issue_date": "Datum vystavení",
+      "tax_date": "DUZP",
+      "due_date": "Splatnost",
+      "received_at": "Datum přijetí",
+      "currency": "Měna faktury",
+      "exchange_rate": "Kurz k DUZP",
+      "exchange_rate_load_cnb": "Načíst z ČNB",
+      "exchange_rate_source": "Zdroj kurzu",
+      "reverse_charge": "Reverse charge (přenesená daň. povinnost)",
+      "language": "Jazyk dokladu",
+      "note_above_items": "Poznámka nad položkami",
+      "note_below_items": "Poznámka pod položkami",
+      "advance_paid_amount": "Záloha uhrazená předem",
+      "vat_classification_code": "Klasifikace DPH (MFČR)"
+    },
+    "items": {
+      "title": "Položky",
+      "add": "+ Přidat položku",
+      "description": "Popis",
+      "quantity": "Množství",
+      "unit": "MJ",
+      "unit_price": "Cena/MJ bez DPH",
+      "vat_rate": "Sazba DPH",
+      "total_without_vat": "Bez DPH",
+      "total_vat": "DPH",
+      "total_with_vat": "S DPH",
+      "remove": "Smazat řádek",
+      "empty": "Žádné položky — přidej alespoň jednu pro výpočet souhrnu."
+    },
+    "totals": {
+      "without_vat": "Celkem bez DPH",
+      "vat": "DPH",
+      "with_vat": "Celkem s DPH",
+      "advance_paid": "Uhrazená záloha",
+      "to_pay": "K úhradě"
+    },
+    "vat_breakdown": {
+      "title": "Rozpis DPH",
+      "rate": "Sazba",
+      "base": "Základ",
+      "vat": "DPH",
+      "with_vat": "Celkem"
+    },
+    "payment_currency": {
+      "toggle": "Platba v jiné měně než měna faktury",
+      "currency": "Měna platebního účtu",
+      "rate": "Kurz platba → měna faktury",
+      "paid_payment_ccy": "Reálně odešlo z účtu",
+      "paid_invoice_ccy": "Ekvivalent v měně faktury",
+      "exchange_diff": "Kurzový rozdíl (v CZK)",
+      "hint": "Vyplň, pokud platíš USD fakturu z CZK / EUR účtu. Rozdíl se použije pro výpočet kurzové ztráty/zisku."
+    },
+    "actions": {
+      "save": "Uložit",
+      "save_and_receive": "Uložit a označit jako přijaté",
+      "mark_received": "Označit jako přijaté",
+      "mark_booked": "Označit jako zaúčtované",
+      "mark_paid": "Označit jako uhrazené",
+      "cancel": "Stornovat",
+      "delete": "Smazat",
+      "edit": "Upravit",
+      "back": "Zpět",
+      "duplicate": "Duplikovat"
+    },
+    "confirm": {
+      "delete_draft": "Opravdu chceš smazat tento koncept?",
+      "delete_blocked": "Smazat lze pouze koncept. Pro již přijaté použij Stornovat.",
+      "cancel": "Opravdu chceš stornovat tuto fakturu? Tuto akci nelze vrátit."
+    },
+    "transition": {
+      "invalid": "Z tohoto stavu nelze přejít na požadovaný.",
+      "success_received": "Faktura označena jako přijatá.",
+      "success_booked": "Faktura označena jako zaúčtovaná.",
+      "success_paid": "Faktura označena jako uhrazená.",
+      "success_cancelled": "Faktura stornována."
+    },
+    "pdf": {
+      "title": "Originální PDF od dodavatele",
+      "dropzone_hint": "Sem přetáhni PDF faktury (nebo klikni pro výběr)",
+      "dropzone_active": "Pusť soubor pro nahrání",
+      "uploading": "Nahrávám…",
+      "uploaded_at": "Nahráno {date}",
+      "size": "Velikost",
+      "open": "Otevřít PDF",
+      "download": "Stáhnout PDF",
+      "replace": "Nahradit",
+      "no_pdf": "K této faktuře není archivovaný PDF dokument.",
+      "max_size_hint": "Maximální velikost 20 MiB",
+      "invalid_pdf": "Soubor není platný PDF dokument.",
+      "duplicate": "Stejný PDF dokument už je archivován u jiné faktury.",
+      "upload_error": "Nahrání selhalo: {error}"
+    },
+    "extraction": {
+      "isdoc_found": "Z PDF jsem rozpoznal ISDOC. Pole jsou předvyplněna z přílohy.",
+      "ai_pending": "Toto PDF neobsahuje ISDOC — AI extrakce bude dostupná ve fázi 2c. Vyplň pole ručně.",
+      "manual_fallback": "Vyplnit ručně"
+    },
+    "scan_inbox": {
+      "title": "Scan inbox přijatých faktur",
+      "trigger": "Spustit scan",
+      "dry_run": "Zkušební běh (bez zápisu)",
+      "running": "Procházím adresář…",
+      "result_summary": "Vytvořeno: {created}, přeskočeno: {skipped}, chyby: {failed}",
+      "no_dir": "Inbox adresář není v cfg.php nastaven (purchase_invoice.inbox_dir).",
+      "details": "Detaily",
+      "file": "Soubor",
+      "status_label": "Stav",
+      "reason": "Důvod"
+    },
+    "filters": {
+      "all_statuses": "Všechny stavy",
+      "all_kinds": "Všechny typy",
+      "unpaid_only": "Pouze neuhrazené",
+      "overdue": "Po splatnosti",
+      "vendor_placeholder": "Vyber dodavatele",
+      "search_placeholder": "Hledat číslo / dodavatele…"
+    },
+    "validation": {
+      "vendor_required": "Vyber dodavatele.",
+      "vendor_invoice_number_required": "Číslo dokladu od dodavatele je povinné.",
+      "date_invalid": "Neplatné datum.",
+      "currency_required": "Vyber měnu faktury.",
+      "items_required": "Přidej alespoň jednu položku."
+    }
+  },
+  "vendor": {
+    "title": "Dodavatelé",
+    "picker_label": "Dodavatel",
+    "search_placeholder": "Hledat dodavatele dle názvu / IČO…",
+    "create_new": "+ Vytvořit nového dodavatele",
+    "empty": "Žádní dodavatelé.",
+    "ic": "IČO",
+    "dic": "DIČ",
+    "company_name": "Název firmy",
+    "address": "Adresa",
+    "email": "E-mail"
   },
   "recurring": {
     "title": "Pravidelné fakturace",
