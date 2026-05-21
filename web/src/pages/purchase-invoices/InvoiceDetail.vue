@@ -16,7 +16,7 @@ const invoice = ref<PurchaseInvoice | null>(null)
 const loading = ref(true)
 const error = ref('')
 const acting = ref(false)
-const pdfPreviewOpen = ref(true) // default open — user typicky chce vidět faktura inline
+const pdfPreviewOpen = ref(false) // default collapsed — user explicitně otevře (Edge blokuje attachment inline)
 
 // Activity log — paralel s /invoices/{id}/activity
 const activity = ref<Array<{
@@ -357,10 +357,11 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
           </button>
         </div>
       </div>
-      <!-- Inline PDF preview přes browser PDF viewer (Chrome/FF/Edge mají built-in) -->
+      <!-- Inline PDF preview přes browser PDF viewer. Musí být ?inline=1 (jinak
+           Content-Disposition: attachment a Edge/IE blokují embed). -->
       <div v-if="pdfPreviewOpen" class="bg-neutral-100">
         <iframe
-          :src="purchaseInvoicesApi.pdfUrl(invoice.id) + '#view=FitH'"
+          :src="purchaseInvoicesApi.pdfUrl(invoice.id, true) + '#view=FitH'"
           class="w-full h-[80vh] border-0"
           :title="invoice.pdf_original_name || 'PDF'"
         ></iframe>

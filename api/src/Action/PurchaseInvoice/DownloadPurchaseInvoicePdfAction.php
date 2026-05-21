@@ -97,10 +97,15 @@ final class DownloadPurchaseInvoicePdfAction
         }
         fclose($stream);
 
+        // `?inline=1` → Content-Disposition: inline (povolí browser-native PDF viewer v iframe).
+        // Bez parametru: attachment (download). Use case: Detail page má iframe preview přes ?inline=1.
+        $inline = !empty($request->getQueryParams()['inline']);
+        $disposition = ($inline ? 'inline' : 'attachment') . '; filename="' . $downloadName . '"';
+
         return $response
             ->withHeader('Content-Type', 'application/pdf')
             ->withHeader('Content-Length', (string) $size)
-            ->withHeader('Content-Disposition', 'attachment; filename="' . $downloadName . '"')
+            ->withHeader('Content-Disposition', $disposition)
             ->withHeader('Cache-Control', 'private, no-store')
             ->withHeader('X-Content-Type-Options', 'nosniff');
     }

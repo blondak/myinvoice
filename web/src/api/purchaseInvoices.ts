@@ -310,11 +310,13 @@ export const purchaseInvoicesApi = {
       action: string; payload: Record<string, unknown> | null; ip: string | null; created_at: string;
     }>>(`/purchase-invoices/${id}/activity`).then(r => r.data),
 
-  pdfUrl: (id: number) => {
+  pdfUrl: (id: number, inline = false) => {
     // Přímá navigace v prohlížeči — supplier_id v query param (X-Supplier-Id header se neposílá).
+    // inline=true → Content-Disposition: inline (iframe preview; bez tohoto Edge/IE blokuje pro attachment).
     const sid = localStorage.getItem('myinvoice.current_supplier_id')
     const params = new URLSearchParams()
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    if (inline) params.set('inline', '1')
     const qs = params.toString()
     return `/api/purchase-invoices/${id}/pdf${qs ? '?' + qs : ''}`
   },
