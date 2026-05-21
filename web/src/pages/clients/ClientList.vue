@@ -22,11 +22,17 @@ const search = ref('')
 const showArchived = ref(false)
 const sort = ref<'name' | 'revenue' | 'last_activity'>('name')
 const route = useRoute()
-// Initial filter from ?role=vendors|all (default customers)
-const roleFilter = ref<RoleFilter>(((): RoleFilter => {
+// Filter from ?role=vendors|all|customers (default customers).
+// Watch query.role pro proklik mezi sidebar položkami Klienti ↔ Dodavatelé
+// (Vue Router neremountuje komponentu při stejné route, jen mění query).
+function readRoleFromQuery(): RoleFilter {
   const q = String(route.query.role ?? '')
   return q === 'vendors' || q === 'all' ? q : 'customers'
-})())
+}
+const roleFilter = ref<RoleFilter>(readRoleFromQuery())
+watch(() => route.query.role, () => {
+  roleFilter.value = readRoleFromQuery()
+})
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Klient-side role filter (backend zatím vrací všechny; přepsání na server-side filter

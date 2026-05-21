@@ -358,6 +358,8 @@ onMounted(async () => {
               <RouterLink
                 v-else
                 :to="item.to"
+                active-class=""
+                exact-active-class=""
                 class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight"
                 :class="isActive(item.to)
                   ? 'bg-primary-50 text-primary-700 font-medium'
