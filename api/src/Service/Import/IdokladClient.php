@@ -225,6 +225,55 @@ final class IdokladClient
     }
 
     /**
+     * Stáhne PDF pro vydanou fakturu (rendered iDoklad PDF). Endpoint:
+     *   GET /v3/IssuedInvoices/{id}/Document  (application/pdf bytes).
+     */
+    public function downloadIssuedPdf(int $supplierId, int $idokladInvoiceId): ?string
+    {
+        $token = $this->getToken($supplierId);
+        $url = self::API_BASE . '/IssuedInvoices/' . $idokladInvoiceId . '/Document';
+        $this->throttle($supplierId);
+        $resp = $this->http->get($url, [
+            'headers' => ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/pdf'],
+        ]);
+        if ($resp->getStatusCode() !== 200) return null;
+        $body = (string) $resp->getBody();
+        return str_starts_with($body, '%PDF') ? $body : null;
+    }
+
+    /**
+     * List attachments pro přijatou fakturu (PDF originály od dodavatele).
+     *
+     * @return list<array<string,mixed>>  [{Id, FileName, ContentType, ...}]
+     */
+    public function listReceivedAttachments(int $supplierId, int $idokladInvoiceId): array
+    {
+        try {
+            $r = $this->get($supplierId, 'ReceivedInvoices/' . $idokladInvoiceId . '/Attachments', 1, 100);
+            return $r['Items'];
+        } catch (\Throwable $e) {
+            $this->logger->info('iDoklad listReceivedAttachments failed', ['invoice_id' => $idokladInvoiceId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Stáhne raw bytes konkrétního attachmentu pro přijatou fakturu.
+     */
+    public function downloadReceivedAttachment(int $supplierId, int $attachmentId): ?string
+    {
+        $token = $this->getToken($supplierId);
+        $url = self::API_BASE . '/ReceivedInvoices/Attachments/' . $attachmentId . '/Download';
+        $this->throttle($supplierId);
+        $resp = $this->http->get($url, [
+            'headers' => ['Authorization' => 'Bearer ' . $token],
+        ]);
+        if ($resp->getStatusCode() !== 200) return null;
+        $body = (string) $resp->getBody();
+        return $body !== '' ? $body : null;
+    }
+
+    /**
      * Rolling 60s window throttle — pokud bylo víc než RATE_LIMIT_THRESHOLD requests,
      * sleep 1s.
      */

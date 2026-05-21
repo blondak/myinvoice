@@ -420,7 +420,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="p-6 max-w-5xl mx-auto">
+  <div class="max-w-5xl">
     <h1 class="text-2xl font-bold text-neutral-900 mb-5">
       {{ isEdit ? t('recurring.form_title_edit') : t('recurring.form_title_new') }}
     </h1>

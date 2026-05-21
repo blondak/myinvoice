@@ -41,6 +41,10 @@ export interface IdokladStartParams {
   include_clients?: boolean
   include_issued?: boolean
   include_received?: boolean
+  /** Incremental sync — jen DateLastChange >= idoklad_last_imported_at bookmark */
+  incremental?: boolean
+  /** Stáhne PDF přílohy (vydané: rendered; přijaté: první PDF attachment od dodavatele) */
+  download_attachments?: boolean
   dry_run?: boolean
 }
 

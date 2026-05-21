@@ -70,6 +70,8 @@ const startParams = ref({
   include_clients: true,
   include_issued: true,
   include_received: true,
+  incremental: false,
+  download_attachments: false,
   dry_run: false,
 })
 const currentJob = ref<ImportJob | null>(null)
@@ -243,6 +245,14 @@ onUnmounted(() => {
             <label class="flex items-center gap-2 text-sm">
               <input v-model="startParams.include_received" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
               {{ t('integrations.idoklad.include_received') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="startParams.incremental" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <span :title="t('integrations.idoklad.incremental_hint')">{{ t('integrations.idoklad.incremental') }}</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="startParams.download_attachments" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <span :title="t('integrations.idoklad.download_attachments_hint')">{{ t('integrations.idoklad.download_attachments') }}</span>
             </label>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="startParams.dry_run" type="checkbox" class="rounded border-neutral-300 text-primary-600" />

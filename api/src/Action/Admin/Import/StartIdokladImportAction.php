@@ -68,10 +68,12 @@ final class StartIdokladImportAction
 
         $body = (array) ($request->getParsedBody() ?? []);
         $params = [
-            'include_clients'  => $body['include_clients']  ?? true,
-            'include_issued'   => $body['include_issued']   ?? true,
-            'include_received' => $body['include_received'] ?? true,
-            'dry_run'          => !empty($body['dry_run']),
+            'include_clients'      => $body['include_clients']      ?? true,
+            'include_issued'       => $body['include_issued']       ?? true,
+            'include_received'     => $body['include_received']     ?? true,
+            'incremental'          => !empty($body['incremental']),
+            'download_attachments' => !empty($body['download_attachments']),
+            'dry_run'              => !empty($body['dry_run']),
         ];
 
         $userId = (int) ($user['id'] ?? 0);

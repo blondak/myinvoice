@@ -7,6 +7,7 @@ namespace MyInvoice\Service\Import;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\ClientRepository;
 use MyInvoice\Repository\ImportJobRepository;
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
 use MyInvoice\Service\Invoice\InvoiceCalculator;
@@ -44,6 +45,7 @@ final class IdokladImportService
         private readonly PurchaseInvoiceRepository $purchaseRepo,
         private readonly InvoiceCalculator $invCalc,
         private readonly PurchaseInvoiceCalculator $purCalc,
+        private readonly Config $config,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -70,18 +72,27 @@ final class IdokladImportService
             $userId = (int) $job['created_by'];
             $dryRun = !empty($params['dry_run']);
 
-            $this->jobs->appendLog($jobId, 'Import zahájen' . ($dryRun ? ' (dry-run)' : '') . '.');
+            $incremental = !empty($params['incremental']);
+            $downloadAttachments = !empty($params['download_attachments']);
+            $bookmarkSince = $incremental ? $this->loadBookmark($supplierId) : null;
+
+            $msg = 'Import zahájen' . ($dryRun ? ' (dry-run)' : '');
+            if ($incremental && $bookmarkSince !== null) $msg .= ', incremental od ' . $bookmarkSince;
+            if ($downloadAttachments) $msg .= ', s přílohami';
+            $this->jobs->appendLog($jobId, $msg . '.');
 
             if (!empty($params['include_clients']) || ($params['include_clients'] ?? null) === null) {
-                $this->importClients($jobId, $supplierId, $userId, $dryRun);
+                $this->importClients($jobId, $supplierId, $userId, $dryRun, $bookmarkSince);
                 $this->checkCancel($jobId);
             }
             if (!empty($params['include_issued']) || ($params['include_issued'] ?? null) === null) {
-                $this->importIssued($jobId, $supplierId, $userId, $dryRun);
+                $this->importIssued($jobId, $supplierId, $userId, $dryRun, $bookmarkSince, $downloadAttachments);
+                $this->checkCancel($jobId);
+                $this->importIssuedCorrections($jobId, $supplierId, $userId, $dryRun, $bookmarkSince, $downloadAttachments);
                 $this->checkCancel($jobId);
             }
             if (!empty($params['include_received']) || ($params['include_received'] ?? null) === null) {
-                $this->importReceived($jobId, $supplierId, $userId, $dryRun);
+                $this->importReceived($jobId, $supplierId, $userId, $dryRun, $bookmarkSince, $downloadAttachments);
             }
 
             // Mark completed + bookmark
@@ -124,13 +135,16 @@ final class IdokladImportService
     /**
      * Import Contacts → clients. Dedup přes (supplier_id, idoklad_id).
      */
-    private function importClients(int $jobId, int $supplierId, int $userId, bool $dryRun): void
+    private function importClients(int $jobId, int $supplierId, int $userId, bool $dryRun, ?string $bookmarkSince = null): void
     {
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing contacts…', 'processed' => 0]);
-        $this->jobs->appendLog($jobId, 'Stahuji kontakty z iDoklad…');
+        $this->jobs->appendLog($jobId, 'Stahuji kontakty z iDoklad' . ($bookmarkSince ? " (>{$bookmarkSince})" : '') . '…');
+
+        // iDoklad podporuje filter `DateLastChange>=YYYY-MM-DD` pro incremental sync
+        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
 
         $created = 0; $skipped = 0; $processed = 0;
-        foreach ($this->idoklad->getAll($supplierId, 'Contacts') as $contact) {
+        foreach ($this->idoklad->getAll($supplierId, 'Contacts', $query) as $contact) {
             $processed++;
             if ($processed % self::PROGRESS_FLUSH_EVERY === 0) {
                 $this->jobs->updateProgress($jobId, ['processed' => $processed, 'created_count' => $created, 'skipped_count' => $skipped]);
@@ -200,13 +214,15 @@ final class IdokladImportService
      * Note: faktury z iDoklad nemají project_id (oni nemají koncept projektů jako my)
      * — project_id = NULL. Uživatel může později ručně přiřadit.
      */
-    private function importIssued(int $jobId, int $supplierId, int $userId, bool $dryRun): void
+    private function importIssued(int $jobId, int $supplierId, int $userId, bool $dryRun, ?string $bookmarkSince = null, bool $downloadAttachments = false): void
     {
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing issued invoices…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji vydané faktury z iDoklad…');
 
+        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+
         $created = 0; $skipped = 0; $failed = 0; $processed = 0;
-        foreach ($this->idoklad->getAll($supplierId, 'IssuedInvoices') as $idoklad) {
+        foreach ($this->idoklad->getAll($supplierId, 'IssuedInvoices', $query) as $idoklad) {
             $processed++;
             if ($processed % self::PROGRESS_FLUSH_EVERY === 0) {
                 $this->jobs->updateProgress($jobId, ['processed' => $processed, 'created_count' => $created, 'skipped_count' => $skipped, 'failed_count' => $failed]);
@@ -231,6 +247,9 @@ final class IdokladImportService
                     'UPDATE invoices SET idoklad_id = ? WHERE id = ?'
                 )->execute([$idokladId, $invoiceId]);
                 $this->invCalc->recompute($invoiceId);
+                if ($downloadAttachments) {
+                    $this->archiveIssuedPdf($supplierId, $invoiceId, $idokladId, $idoklad);
+                }
                 $created++;
             } catch (\Throwable $e) {
                 $failed++;
@@ -296,13 +315,15 @@ final class IdokladImportService
      *
      * Per fork bug fix: DateOfIssue často NULL pro přijaté, fallback DateOfAccountingEvent.
      */
-    private function importReceived(int $jobId, int $supplierId, int $userId, bool $dryRun): void
+    private function importReceived(int $jobId, int $supplierId, int $userId, bool $dryRun, ?string $bookmarkSince = null, bool $downloadAttachments = false): void
     {
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing received invoices…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji přijaté faktury z iDoklad…');
 
+        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+
         $created = 0; $skipped = 0; $failed = 0; $processed = 0;
-        foreach ($this->idoklad->getAll($supplierId, 'ReceivedInvoices') as $idoklad) {
+        foreach ($this->idoklad->getAll($supplierId, 'ReceivedInvoices', $query) as $idoklad) {
             $processed++;
             if ($processed % self::PROGRESS_FLUSH_EVERY === 0) {
                 $this->jobs->updateProgress($jobId, ['processed' => $processed, 'created_count' => $created, 'skipped_count' => $skipped, 'failed_count' => $failed]);
@@ -326,6 +347,9 @@ final class IdokladImportService
                     'UPDATE purchase_invoices SET idoklad_id = ? WHERE id = ?'
                 )->execute([$idokladId, $purchaseId]);
                 $this->purCalc->recompute($purchaseId);
+                if ($downloadAttachments) {
+                    $this->archiveReceivedPdf($supplierId, $purchaseId, $idokladId);
+                }
                 $created++;
             } catch (\Throwable $e) {
                 $failed++;
@@ -483,6 +507,196 @@ final class IdokladImportService
         if ($vn === '') $vn = 'IDOKLAD-import';
         $vn = (string) preg_replace('/[\x00-\x1F\x7F]/', '', $vn);
         return strlen($vn) > 50 ? substr($vn, 0, 50) : $vn;
+    }
+
+    /**
+     * Import IssuedInvoiceCorrections (dobropisy k vystaveným fakturám).
+     * Mají ParentDocumentId odkazující na původní fakturu (idoklad_id),
+     * což mapujeme na invoices.parent_invoice_id (po lookup do clients/invoices
+     * podle naší db-side idoklad_id).
+     */
+    private function importIssuedCorrections(int $jobId, int $supplierId, int $userId, bool $dryRun, ?string $bookmarkSince = null, bool $downloadAttachments = false): void
+    {
+        $this->jobs->updateProgress($jobId, ['current_step' => 'Importing credit notes…']);
+        $this->jobs->appendLog($jobId, 'Stahuji dobropisy z iDoklad…');
+
+        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        $created = 0; $skipped = 0; $failed = 0;
+
+        foreach ($this->idoklad->getAll($supplierId, 'IssuedInvoiceCorrections', $query) as $i) {
+            $idokladId = (int) ($i['Id'] ?? 0);
+            if ($idokladId === 0) continue;
+
+            // Dedup — dobropisy jsou v `invoices` tabulce s invoice_type='credit_note'
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT id FROM invoices WHERE supplier_id = ? AND idoklad_id = ? LIMIT 1'
+            );
+            $stmt->execute([$supplierId, $idokladId]);
+            if ($stmt->fetchColumn() !== false) { $skipped++; continue; }
+
+            if ($dryRun) { $created++; continue; }
+
+            try {
+                // Resolve parent invoice
+                $parentIdokladId = (int) ($i['ParentDocumentId'] ?? 0);
+                $parentInvoiceId = null;
+                if ($parentIdokladId > 0) {
+                    $s = $this->db->pdo()->prepare(
+                        'SELECT id FROM invoices WHERE supplier_id = ? AND idoklad_id = ? LIMIT 1'
+                    );
+                    $s->execute([$supplierId, $parentIdokladId]);
+                    $pid = $s->fetchColumn();
+                    $parentInvoiceId = $pid !== false ? (int) $pid : null;
+                }
+
+                // Create as invoice_type='credit_note' + parent reference
+                $partnerId = (int) ($i['PartnerId'] ?? 0);
+                $clientId = $this->resolveClientByIdoklad($partnerId, $supplierId);
+                if ($clientId === null) {
+                    throw new \RuntimeException("Klient #{$partnerId} nenalezen — naimportuj nejdřív kontakty.");
+                }
+
+                $payload = [
+                    'invoice_type'      => 'credit_note',
+                    'parent_invoice_id' => $parentInvoiceId,
+                    'client_id'         => $clientId,
+                    'issue_date'        => (string) ($i['DateOfIssue'] ?? date('Y-m-d')),
+                    'tax_date'          => (string) ($i['DateOfTaxing'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
+                    'due_date'          => (string) ($i['DateOfMaturity'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
+                    'currency_id'       => $this->resolveCurrencyId((string) ($i['CurrencyCode'] ?? 'CZK'), $supplierId, isActive: true),
+                    'reverse_charge'    => false,
+                    'language'          => 'cs',
+                    'varsymbol'         => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
+                    'payment_method'    => 'bank_transfer',
+                ];
+                $invoiceId = $this->invoices->createDraft($payload, $userId);
+                $this->db->pdo()->prepare(
+                    'UPDATE invoices SET idoklad_id = ? WHERE id = ?'
+                )->execute([$idokladId, $invoiceId]);
+
+                // Items
+                $vatRates = $this->loadVatRateMap();
+                $items = [];
+                foreach (($i['Items'] ?? []) as $idx => $line) {
+                    $rate = (float) ($line['VatRate'] ?? 0);
+                    $items[] = [
+                        'description'            => (string) ($line['Name'] ?? $line['Description'] ?? ''),
+                        'quantity'               => (float) ($line['Amount'] ?? 1),
+                        'unit'                   => (string) ($line['Unit'] ?? 'ks'),
+                        'unit_price_without_vat' => (float) ($line['UnitPrice'] ?? 0),
+                        'vat_rate_id'            => $this->matchVatRateId($vatRates, $rate),
+                        'order_index'            => $idx,
+                    ];
+                }
+                if (!empty($items)) {
+                    $this->invoices->replaceItems($invoiceId, $items);
+                }
+                $this->invCalc->recompute($invoiceId);
+                if ($downloadAttachments) {
+                    $this->archiveIssuedPdf($supplierId, $invoiceId, $idokladId, $i);
+                }
+                $created++;
+            } catch (\Throwable $e) {
+                $failed++;
+                $this->jobs->appendLog($jobId, "Dobropis #{$idokladId}: " . $e->getMessage());
+            }
+        }
+        $this->jobs->updateProgress($jobId, ['created_count' => $created, 'skipped_count' => $skipped, 'failed_count' => $failed]);
+        $this->jobs->appendLog($jobId, "Dobropisy: vytvořeno {$created}, přeskočeno {$skipped}, chyby {$failed}.");
+    }
+
+    /**
+     * Stáhne rendered PDF od iDoklad a uloží do storage/invoices/supplier-{id}/.
+     * Dedup přes SHA-256: pokud už existuje stejný soubor, jen reuse path.
+     * Pro vydanou fakturu používáme separátní column imported_pdf_* aby se nepřepsal
+     * náš vlastní rendered PDF (pdf_path).
+     */
+    private function archiveIssuedPdf(int $supplierId, int $invoiceId, int $idokladId, array $idoklad): void
+    {
+        $pdf = $this->idoklad->downloadIssuedPdf($supplierId, $idokladId);
+        if ($pdf === null) return;
+
+        $archiveRoot = (string) $this->config->get('invoice.import_archive_storage', '');
+        if ($archiveRoot === '') {
+            $uploads = (string) $this->config->get('storage.uploads_dir', '');
+            $archiveRoot = $uploads !== '' ? dirname($uploads) . '/invoices-imported'
+                : __DIR__ . '/../../../../storage/invoices-imported';
+        }
+        $tenantDir = $archiveRoot . DIRECTORY_SEPARATOR . 'supplier-' . $supplierId;
+        if (!is_dir($tenantDir)) @mkdir($tenantDir, 0755, true);
+
+        $sha = hash('sha256', $pdf);
+        $size = strlen($pdf);
+        $disk = substr($sha, 0, 16) . '.pdf';
+        $diskPath = $tenantDir . DIRECTORY_SEPARATOR . $disk;
+        if (!is_file($diskPath)) {
+            @file_put_contents($diskPath, $pdf);
+        }
+        $relPath = 'supplier-' . $supplierId . '/' . $disk;
+        $name = ($idoklad['DocumentNumber'] ?? 'invoice') . '.pdf';
+        $this->db->pdo()->prepare(
+            'UPDATE invoices SET imported_pdf_path = ?, imported_pdf_hash = ?,
+                                  imported_pdf_size_bytes = ?, imported_pdf_original_name = ?
+              WHERE id = ?'
+        )->execute([$relPath, $sha, $size, $name, $invoiceId]);
+    }
+
+    /**
+     * Stáhne první PDF přílohu pro přijatou fakturu (typically jedna od dodavatele).
+     */
+    private function archiveReceivedPdf(int $supplierId, int $purchaseInvoiceId, int $idokladInvoiceId): void
+    {
+        $attachments = $this->idoklad->listReceivedAttachments($supplierId, $idokladInvoiceId);
+        // Filter PDFs only (iDoklad může mít víc příloh — obrázky, atd.)
+        $pdfAttachments = array_filter(
+            $attachments,
+            fn ($a) => str_contains(strtolower((string) ($a['ContentType'] ?? '')), 'pdf')
+                || str_ends_with(strtolower((string) ($a['FileName'] ?? '')), '.pdf'),
+        );
+        if (empty($pdfAttachments)) return;
+
+        $first = reset($pdfAttachments);
+        $attachmentId = (int) ($first['Id'] ?? 0);
+        if ($attachmentId === 0) return;
+
+        $pdf = $this->idoklad->downloadReceivedAttachment($supplierId, $attachmentId);
+        if ($pdf === null) return;
+
+        $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
+        if ($archiveRoot === '') {
+            $uploads = (string) $this->config->get('storage.uploads_dir', '');
+            $archiveRoot = $uploads !== '' ? dirname($uploads) . '/purchase-invoices'
+                : __DIR__ . '/../../../../storage/purchase-invoices';
+        }
+        $tenantDir = $archiveRoot . DIRECTORY_SEPARATOR . 'supplier-' . $supplierId;
+        if (!is_dir($tenantDir)) @mkdir($tenantDir, 0755, true);
+
+        $sha = hash('sha256', $pdf);
+        $size = strlen($pdf);
+        $disk = substr($sha, 0, 16) . '.pdf';
+        $diskPath = $tenantDir . DIRECTORY_SEPARATOR . $disk;
+        if (!is_file($diskPath)) {
+            @file_put_contents($diskPath, $pdf);
+        }
+        $relPath = 'supplier-' . $supplierId . '/' . $disk;
+        $name = (string) ($first['FileName'] ?? 'invoice.pdf');
+        $this->purchaseRepo->setPdfMetadata($purchaseInvoiceId, $supplierId, $relPath, $sha, $size, $name);
+    }
+
+    /**
+     * Bookmark — vrátí ISO date posledního úspěšného importu pro tento tenant.
+     * Použito jako filter DateLastChange>=… pro incremental sync.
+     */
+    private function loadBookmark(int $supplierId): ?string
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT idoklad_last_imported_at FROM supplier WHERE id = ?'
+        );
+        $stmt->execute([$supplierId]);
+        $val = $stmt->fetchColumn();
+        if ($val === false || $val === null) return null;
+        // ISO 8601 → iDoklad chce YYYY-MM-DD
+        return substr((string) $val, 0, 10);
     }
 }
 
