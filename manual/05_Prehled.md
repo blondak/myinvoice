@@ -52,11 +52,11 @@ Pod grafy je tabulka:
 - **Nezaplacené** — faktury v stavu `sent` / `issued` / `reminded`, ještě před
   splatností.
 
-Klik na číslo faktury otevře [Detail faktury](11_Faktura_PDF.md).
+Klik na číslo faktury otevře [Detail faktury](12_Faktura_PDF.md).
 
 ## 5.6 Rychlé akce (vpravo nahoře)
 
-- **+ Nová faktura** — otevře [Editor faktury](10_Faktura_editor.md), prázdný koncept
+- **+ Nová faktura** — otevře [Editor faktury](11_Faktura_editor.md), prázdný koncept
 - **+ Nový klient** — otevře modal pro založení klienta (s ARES lookupem)
 
 ## 5.7 Aktualizace dat

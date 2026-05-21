@@ -1,4 +1,4 @@
-# 9a. Přijaté faktury (nákupy)
+# 10. Přijaté faktury (nákupy)
 
 > Přidáno v3.5.0 jako součást fáze 1 integrace forku myinvoiceDph (Martin Říha).
 
@@ -16,7 +16,7 @@ odcházejí z firmy. Oproti vystaveným fakturám:
 
 V hlavním menu **Přijaté faktury**.
 
-## 9a.1 Stavy přijaté faktury
+## 10.1 Stavy přijaté faktury
 
 | Stav | Význam | Co lze |
 |---|---|---|
@@ -28,11 +28,11 @@ V hlavním menu **Přijaté faktury**.
 
 Smazat jde **jen koncept**. Pro pozdější stavy použij Stornovat (zachová auditní stopu).
 
-## 9a.2 Nová přijatá faktura
+## 10.2 Nová přijatá faktura
 
 V seznamu klikni **+ Nová přijatá faktura**. Otevře se formulář.
 
-### 9a.2.1 Drag & drop PDF
+### 10.2.1 Drag & drop PDF
 Nad formulářem je **drag & drop zóna**. Pokud máš PDF od dodavatele:
 
 - Přetáhni PDF do zóny (nebo klikni a vyber soubor).
@@ -46,7 +46,7 @@ Limity:
 - Akceptujeme pouze application/pdf (magic bytes `%PDF-` se ověřují server-side)
 - SHA-256 deduplikace — stejný PDF už archivovaný u jiné faktury nebude akceptován
 
-### 9a.2.2 Povinná pole
+### 10.2.2 Povinná pole
 
 | Pole | Význam |
 |---|---|
@@ -62,7 +62,7 @@ Limity:
 | **Kurz k DUZP** | Pokud je měna ≠ CZK, **musíš zafixovat kurz**. Tlačítko „Načíst z ČNB" stáhne aktuální nebo poslední dostupný denní kurz. |
 | **Reverse charge** | Zaškrtni, pokud je doklad B2B s přenesenou daňovou povinností (B2B EU services). DPH na řádcích bude 0, ty si daň zdaníš sám ve výkazu DPH. |
 
-### 9a.2.3 Položky
+### 10.2.3 Položky
 
 Tlačítkem **+ Přidat položku** přidej řádek. Per řádek:
 
@@ -71,11 +71,11 @@ Tlačítkem **+ Přidat položku** přidej řádek. Per řádek:
 - Měrná jednotka (ks / hod / kus…)
 - Cena za MJ bez DPH
 - Sazba DPH (z číselníku — 21 % / 12 % / 0 %)
-- (volitelně) MFČR DPH klasifikační kód — pro budoucí výkazy DPH (fáze 6 plánu)
+- (volitelně) MFČR DPH klasifikační kód — pro výkazy DPH (sekce Daně, auto-default podle sazby)
 
 Souhrn dole se přepočítá automaticky po každé změně.
 
-### 9a.2.4 Platba v jiné měně (multi-currency)
+### 10.2.4 Platba v jiné měně (multi-currency)
 
 Klikni na **„Platba v jiné měně než měna faktury"** pokud máš tento scénář:
 
@@ -93,7 +93,7 @@ Systém automaticky vypočte:
 - **Ekvivalent v měně faktury** — pro spárování proti `amount_to_pay`
 - **Kurzový rozdíl** — v základní měně (CZK). Záporný = kurzová ztráta, kladný = zisk. Zatím se zaznamenává pro reporting; účetně se v fázi 6 (DPH výkazy) automaticky promítne do správných řádků.
 
-## 9a.3 Detail přijaté faktury
+## 10.3 Detail přijaté faktury
 
 Po uložení / přechodu na detail:
 
@@ -106,7 +106,7 @@ Po uložení / přechodu na detail:
 - Tlačítko **Upravit** je dostupné jen u draft. Po označení jako přijatá je doklad immutable (kromě admin override `?force=1` u received).
 - Tlačítko **Smazat** je dostupné jen u draft. Pro pozdější stavy použij Stornovat.
 
-## 9a.4 Scan inbox — automatický import z adresáře
+## 10.4 Scan inbox — automatický import z adresáře
 
 Pokud máš dodavatele kteří ti **posílají PDF e-mailem** nebo máš složku
 sdílených dokladů, nakonfiguruj **inbox adresář** v `cfg.php`:
@@ -132,7 +132,7 @@ Modal po skončení zobrazí přehled: vytvořeno / přeskočeno / chyby + per-s
 **Bezpečnost:** soubory mimo configured `inbox_dir` jsou odmítnuty (path traversal guard
 přes `realpath()`). Maximum 500 souborů per běh (DoS protection na velké adresáře).
 
-## 9a.5 Klienti vs. dodavatelé
+## 10.5 Klienti vs. dodavatelé
 
 V tabulce klientů jsme zavedli dva flagy:
 
@@ -146,7 +146,7 @@ fakturuješ za development a od níž kupuješ hosting) — jedna entita = jedna
 V hlavním menu **Klienti** vidíš defaultně jen `is_customer=1`. V budoucí verzi
 přidáme oddělený view **Dodavatelé** pro `is_vendor=1`.
 
-## 9a.6 Export přijaté faktury (naše PDF / ISDOC / Pohoda)
+## 10.6 Export přijaté faktury (naše PDF / ISDOC / Pohoda)
 
 V detailu přijaté faktury najdeš tlačítko **„Exporty"** s dropdown menu:
 
@@ -174,7 +174,7 @@ purchase (`<pur:purchase>` místo `<inv:invoice>`).
 > Aktuálně exportuj jednotlivě v detailu každé faktury. Pro hromadný PDF export
 > originálních dodavatelských PDF použij **Přijaté faktury → Exporty** s formátem ZIP.
 
-## 9a.7 Audit log
+## 10.7 Audit log
 
 Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 
@@ -189,13 +189,13 @@ Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 - `purchase_invoice.isdoc_exported` / `pohoda_exported`
 - `purchase_invoice.inbox_scanned`
 
-## 9a.8 REST API
+## 10.8 REST API
 
 Všechny operace jsou dostupné i přes REST API (`/api/v1/purchase-invoices/*`) —
 viz [Swagger UI](/api/docs) nebo [Redoc](/api/reference). PAT token musí mít scope
 `read_write` pro mutace.
 
-## 9a.9 Status integrace forku
+## 10.9 Status integrace forku
 
 Všechny fáze plánu jsou **dokončeny**:
 

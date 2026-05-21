@@ -31,34 +31,34 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 7. [Klienti](07_Klienti.md)
 8. [Zakázky (vč. schvalování výkazů zákazníkem)](08_Zakazky.md)
 9. [Faktury — seznam a hromadné akce](09_Faktury.md)
-9a. [Přijaté faktury (nákupy)](09a_Prijate_faktury.md) — nové ve v3.5.0
-10. [Faktura — editor, výkaz víceprací a schvalování zákazníkem](10_Faktura_editor.md)
-11. [Faktura — PDF, QR platba, odeslání e-mailem](11_Faktura_PDF.md)
+10. [Přijaté faktury (nákupy)](10_Prijate_faktury.md) — nové ve v3.5.0
+11. [Faktura — editor, výkaz víceprací a schvalování zákazníkem](11_Faktura_editor.md)
+12. [Faktura — PDF, QR platba, odeslání e-mailem](12_Faktura_PDF.md)
 
 ### Platby a komunikace
 
-12. [Banka — import výpisů a párování plateb](12_Banka.md)
-13. [Upomínky po splatnosti](13_Upominky.md)
-14. [Pravidelné fakturace (recurring invoices)](14_Pravidelne_fakturace.md)
+13. [Banka — import výpisů a párování plateb](13_Banka.md)
+14. [Upomínky po splatnosti](14_Upominky.md)
+15. [Pravidelné fakturace (recurring invoices)](15_Pravidelne_fakturace.md)
 
 ### Exporty pro účetní
 
-15. [Exporty (PDF ZIP, ISDOC, Pohoda XML)](15_Exporty.md)
-16. [Importy (Pohoda XML, ISDOC)](16_Importy.md)
+16. [Exporty (PDF ZIP, ISDOC, Pohoda XML)](16_Exporty.md)
+17. [Importy (Pohoda XML, ISDOC)](17_Importy.md)
 
 ### Konfigurace
 
-17. [Více dodavatelů z jedné instalace](17_Multi_supplier.md)
-18. [Nastavení (dodavatel, číselníky, uživatelé, e-mail šablony)](18_Nastaveni.md)
-19. [Bezpečnost (2FA, IP allowlist, role, activity log)](19_Bezpecnost.md)
-20. [Aktualizace na novou verzi](20_Aktualizace.md)
+18. [Více dodavatelů z jedné instalace](18_Multi_supplier.md)
+19. [Nastavení (dodavatel, číselníky, uživatelé, e-mail šablony)](19_Nastaveni.md)
+20. [Bezpečnost (2FA, IP allowlist, role, activity log)](20_Bezpecnost.md)
+21. [Aktualizace na novou verzi](21_Aktualizace.md)
 
 ### Pokročilé
 
-21. [REST API (automatizace a integrace)](21_API.md)
-22. [CRM dashboard (revenue/costs/profit/aging/DSO)](22_CRM.md) — **nové ve v4.0.0**
-23. [Výkazy DPH (DPHDP3 + KH + SH)](23_Vykazy_DPH.md) — **nové ve v4.0.0**
-24. [Daň z příjmů (DPFO / DPPO)](24_Dan_z_prijmu.md) — **nové ve v4.0.0** (MVP foundation)
+22. [REST API (automatizace a integrace)](22_API.md)
+23. [CRM dashboard (revenue/costs/profit/aging/DSO)](23_CRM.md) — **nové ve v4.0.0**
+24. [Výkazy DPH (DPHDP3 + KH + SH)](24_Vykazy_DPH.md) — **nové ve v4.0.0**
+25. [Daň z příjmů (DPFO / DPPO)](25_Dan_z_prijmu.md) — **nové ve v4.0.0** (MVP foundation)
 
 ### Reference
 

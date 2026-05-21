@@ -125,7 +125,7 @@ schválení se faktura **automaticky vystaví a odešle**.
 > se o vícepracích dozví až s hotovou fakturou.
 
 Detailní popis workflow schvalování (tlačítka, stavy, public stránka) viz
-kapitola [10. Faktura — editor a výkaz víceprací § 9.7](10_Faktura_editor.md).
+kapitola [11. Faktura — editor a výkaz víceprací § 9.7](11_Faktura_editor.md).
 
 ## 8.7 Tipy
 

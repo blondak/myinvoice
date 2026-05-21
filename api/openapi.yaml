@@ -2668,7 +2668,7 @@ paths:
   /api/v1/crm/payment-punctuality:
     get:
       tags: [CRM]
-      summary: % faktur zaplacených včas
+      summary: "% faktur zaplacených včas"
       parameters:
         - $ref: '#/components/parameters/SupplierIdHeader'
         - { in: query, name: months, schema: { type: integer, default: 12 } }

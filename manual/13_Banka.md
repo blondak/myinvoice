@@ -1,4 +1,4 @@
-# 12. Banka — import výpisů a párování plateb
+# 13. Banka — import výpisů a párování plateb
 
 Místo ručního označování faktur jako zaplacených, naimportuj **GPC výpis**
 z banky a systém automaticky spáruje platby s fakturami podle variabilního
@@ -8,7 +8,7 @@ GPC (ABO) je standardní český formát pro elektronickou výměnu výpisů. Um
 exportovat: **KB**, **Fio Bank**, **ČSOB**, **Raiffeisenbank**, **Česká
 spořitelna**, **mBank**, a další.
 
-## 12.1 Stažení GPC výpisu z banky
+## 13.1 Stažení GPC výpisu z banky
 
 Postup je v každé bance trochu jiný:
 
@@ -23,7 +23,7 @@ Postup je v každé bance trochu jiný:
 Stáhni soubor (typicky `.gpc` nebo `.abo`, někdy `.txt`). Velikost ~10–100 KB
 na měsíc obvykle.
 
-## 12.2 Upload výpisu do MyInvoice
+## 13.2 Upload výpisu do MyInvoice
 
 V hlavním menu **Banka → Nahrát výpis**.
 
@@ -47,7 +47,7 @@ Hláška o výsledku:
 Importováno: 12 transakcí, spárováno: 8, k manuálnímu párování: 4.
 ```
 
-## 12.3 Seznam výpisů
+## 13.3 Seznam výpisů
 
 **Banka → Výpisy** ukáže historii.
 
@@ -62,7 +62,7 @@ Importováno: 12 transakcí, spárováno: 8, k manuálnímu párování: 4.
 | Spárováno | `12/14` — 12 z 14 transakcí spárováno na faktury |
 | Importováno | Datum + uživatel |
 
-## 12.4 Detail výpisu
+## 13.4 Detail výpisu
 
 Klik na řádek → detail.
 
@@ -80,7 +80,7 @@ Tabulka transakcí:
 | Stav | `Spárováno` (zelená) / `Bez shody` (šedá) / `Ignorováno` (oranž.) |
 | Faktura | Pokud spárováno, číslo faktury (klikatelné) |
 
-### 12.4.1 Manuální párování
+### 13.4.1 Manuální párování
 
 Pro transakce, které se nespárovaly automaticky (typicky chybí VS, nebo
 částka nesedí kvůli částečné platbě, devizovému kurzu, bankovnímu poplatku):
@@ -91,7 +91,7 @@ Pro transakce, které se nespárovaly automaticky (typicky chybí VS, nebo
 
 Faktura → status `paid`, `paid_at` = datum transakce. Activity log: `bank.matched_manual`.
 
-### 12.4.2 Ignorovat transakci
+### 13.4.2 Ignorovat transakci
 
 Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 účty, refundace, …):
@@ -99,7 +99,7 @@ Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 1. Klik **Ignorovat**.
 2. Status → `Ignorováno`. Pro reporting se nepočítá.
 
-## 12.5 Reverse: zrušení spárování
+## 13.5 Reverse: zrušení spárování
 
 Pokud automatika spárovala chybně:
 
@@ -107,7 +107,7 @@ Pokud automatika spárovala chybně:
 2. Faktura → status zpět na předchozí (`sent` / `issued`).
 3. Activity log: `bank.unmatched`.
 
-## 12.6 Cron — automatický scan
+## 13.6 Cron — automatický scan
 
 Místo ručního uploadu můžeš nastavit **cron**, který bude pravidelně skenovat
 adresář (např. `private/bank-incoming/`) a importovat nové výpisy:
@@ -122,7 +122,7 @@ Setup:
 2. Cron každých 30 min spustí `php api/bin/cron-bank-scan.php`
 3. Skript projde nové soubory, importuje, přesune do `private/bank-archive/`
 
-## 12.7 Tipy
+## 13.7 Tipy
 
 - **Nahraj výpis **denně/týdně** — čím čerstvější, tím dříve se ti vyfiltrují
   faktury po splatnosti správně.
