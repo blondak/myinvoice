@@ -146,7 +146,35 @@ fakturuješ za development a od níž kupuješ hosting) — jedna entita = jedna
 V hlavním menu **Klienti** vidíš defaultně jen `is_customer=1`. V budoucí verzi
 přidáme oddělený view **Dodavatelé** pro `is_vendor=1`.
 
-## 9a.6 Audit log
+## 9a.6 Export přijaté faktury (naše PDF / ISDOC / Pohoda)
+
+V detailu přijaté faktury najdeš tlačítko **„Exporty"** s dropdown menu:
+
+### Naše PDF (rekonstrukce)
+Vygeneruje naši vlastní PDF kopii ze strukturovaných dat. Užitečné když:
+- Importovaly se jen metadata (z iDokladu/Fakturoidu API, ne originální PDF)
+- Originál není dostupný (přijatá faktura zadaná ručně)
+- Potřebuješ čitelný PDF pro účetní archiv
+
+PDF obsahuje hlavičku s dodavatelem, položky, totals, poznámky. Footer poznámka:
+*„Naše rekonstrukce přijaté faktury z dat v MyInvoice.cz. Originál od dodavatele je
+referenční dokument."*
+
+### ISDOC XML
+Export do ISDOC 6.0 standardu — kompatibilní s Pohoda, Money S3, iDoklad a dalšími.
+Strategie: **role inversion** — v ISDOC pro přijatou fakturu je *dodavatel* =
+původní vendor, *zákazník* = naše firma (opak vystavené).
+
+### Pohoda XML
+Pohoda dataPack XML pro import do účetního software Pohoda. Direction =
+purchase (`<pur:purchase>` místo `<inv:invoice>`).
+
+> [!NOTE]
+> **Bulk export** více přijatých faktur naráz (ZIP / dataPack) je v plánu pro v4.0.0.
+> Aktuálně exportuj jednotlivě v detailu každé faktury. Pro hromadný PDF export
+> originálních dodavatelských PDF použij **Přijaté faktury → Exporty** s formátem ZIP.
+
+## 9a.7 Audit log
 
 Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 
@@ -157,18 +185,27 @@ Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 - `purchase_invoice.transitioned` (s payloadem `{from, to}`)
 - `purchase_invoice.deleted`
 - `purchase_invoice.pdf_uploaded` / `pdf_downloaded`
+- `purchase_invoice.our_pdf_downloaded`
+- `purchase_invoice.isdoc_exported` / `pohoda_exported`
 - `purchase_invoice.inbox_scanned`
 
-## 9a.7 REST API
+## 9a.8 REST API
 
 Všechny operace jsou dostupné i přes REST API (`/api/v1/purchase-invoices/*`) —
 viz [Swagger UI](/api/docs) nebo [Redoc](/api/reference). PAT token musí mít scope
 `read_write` pro mutace.
 
-## 9a.8 Co se chystá v dalších fázích
+## 9a.9 Status integrace forku
 
-- **Fáze 2 (v3.6.0)**: import přijatých faktur z iDokladu / Fakturoidu API + AI extrakce z PDF (Anthropic Claude).
-- **Fáze 3 (v3.7.0)**: párování plateb z bankovního výpisu vůči přijatým fakturám (automatický přechod na paid).
-- **Fáze 6 (v4.0.0)**: výkazy DPH, KH a daň z příjmů — využívá `vat_classification_code` na položkách.
+Všechny fáze plánu jsou **dokončeny**:
+
+- ✅ **Fáze 1** (v3.5.0) — základní CRUD přijatých faktur, PDF upload + inbox scan
+- ✅ **Fáze 2a** (v3.6.0) — iDoklad API import (OAuth + jobs + dobropisy + attachments)
+- ✅ **Fáze 2b** — Fakturoid import (BasicAuth + subjects + invoices + expenses)
+- ✅ **Fáze 2c** — AI extrakce z PDF (Anthropic Claude vision, BYOK)
+- ✅ **Fáze 3** (v3.7.0) — bank matching CSV + auto-match (vystavené + přijaté)
+- ✅ **Fáze 5** — CRM dashboard (revenue/costs/profit/aging/DSO/concentration/churn)
+- ✅ **Fáze 6** (v4.0.0) — VAT klasifikace + tax settings + DPHDP3/KH/SH/DPFO/DPPO XML
+  výkazy + Naše PDF + ISDOC/Pohoda export přijatých
 
 Detail viz `source/09-fork-integration-plan.md`.

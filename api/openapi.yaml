@@ -2236,6 +2236,55 @@ paths:
             application/pdf: {}
         '404': { description: K faktuře není archivovaný PDF }
 
+  /api/v1/purchase-invoices/{id}/our-pdf:
+    get:
+      tags: [Purchase invoices]
+      summary: Naše PDF rekonstrukce přijaté faktury (mPDF z dat)
+      description: |
+        Vygeneruje naši vlastní PDF kopii přijaté faktury. Užitečné když chybí
+        originál (importované jen metadata) nebo chceme vlastní layout.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: inline, schema: { type: integer, enum: [0,1] }, description: '1 = Content-Disposition: inline (iframe preview)' }
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf: {}
+        '404': { description: Faktura nenalezena }
+
+  /api/v1/purchase-invoices/{id}/isdoc:
+    get:
+      tags: [Purchase invoices]
+      summary: ISDOC 6.0 XML export přijaté faktury
+      description: |
+        Role inversion — pro přijatou je `AccountingSupplierParty` = vendor,
+        `AccountingCustomerParty` = náš tenant.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: ISDOC XML
+          content:
+            application/xml: {}
+        '404': { description: Faktura nenalezena }
+
+  /api/v1/purchase-invoices/{id}/pohoda:
+    get:
+      tags: [Purchase invoices]
+      summary: Pohoda XML (dataPack s `<pur:purchase>`) export přijaté faktury
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: Pohoda XML
+          content:
+            application/xml: {}
+        '404': { description: Faktura nenalezena }
+
   /api/v1/purchase-invoices/scan-inbox:
     post:
       tags: [Purchase invoices]
@@ -2243,8 +2292,9 @@ paths:
       description: |
         Rekurzivně projde adresář nastavený v `cfg.purchase_invoice.inbox_dir`,
         deduplikuje přes SHA-256 (vůči `purchase_invoices.pdf_hash`). Z PDF s embedded
-        ISDOC rozpozná data a vytvoří draft (mapper v fázi 2c plánu integrace).
-        Pure PDF bez ISDOC se přeskakují (AI extrakce dorazí v fázi 2c).
+        ISDOC rozpozná data a automaticky vytvoří draft přijaté faktury. Pure PDF bez
+        ISDOC se přeskakují — pro AI extrakci použij endpoint
+        `POST /api/integrations/anthropic/extract` (BYOK).
       parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
       requestBody:
         content:
@@ -2263,6 +2313,128 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/InboxScanResult' }
         '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphdp3/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled DPH přiznání (DPHDP3) pro období
+      description: |
+        ⚠️ XML vygenerovaný buildem je POUZE POMŮCKA. Před odesláním na EPO portál
+        MFČR vždy ověř s účetní.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,   required: true, schema: { type: integer, minimum: 2020, maximum: 2050 } }
+        - { in: query, name: month,  schema: { type: integer, minimum: 1, maximum: 12 }, description: 'Pro měsíční periodu' }
+        - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 }, description: 'Pro kvartální periodu' }
+      responses:
+        '200':
+          description: JSON summary (lines 1-29 + 40+, totals, deadline)
+          content:
+            application/json:
+              schema: { type: object }
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphdp3:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML DPH přiznání (DPHDP3 verzePis 03.01) pro EPO portál
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, required: true, schema: { type: integer } }
+        - { in: query, name: month, schema: { type: integer } }
+        - { in: query, name: quarter, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphkh1/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled Kontrolního hlášení (DPHKH1) — vždy měsíční
+      description: |
+        Kontrolní hlášení se podává **vždy měsíčně**, i pro kvartální plátce DPH.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer, minimum: 1, maximum: 12 } }
+      responses:
+        '200': { description: Summary s counts sekcí A.1/A.4/A.5/B.1/B.2/B.3 }
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphkh1:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML Kontrolního hlášení (DPHKH1 verzePis 03.01)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
+  /api/v1/reports/dphshv/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled Souhrnného hlášení (EU dodání) — měsíční
+      description: |
+        Souhrnné hlášení podávají **plátci DPH i identifikované osoby** s alespoň
+        1 EU dodávkou v měsíci. Mapování VAT kódů: 20→0 (zboží), 22→2 (služby).
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Summary s řádky (country, vat_id, sh_type, amount, count) }
+
+  /api/v1/reports/dphshv:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML Souhrnného hlášení (DPHSHV verzePis 06.01)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
+  /api/v1/reports/income-tax/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled daňového přiznání (DPFO/DPPO) — roční, MVP foundation
+      description: |
+        ⚠️ **MVP only** — výkaz NENÍ kompletní. Generuje XML kostru s identifikací
+        poplatníka a orientačními čísly (tržby/náklady z faktur). Účetní data
+        (odpisy, mzdy, soc/zdrav, zálohy, slevy) MyInvoice neeviduje — doplnit
+        v účetním software nebo ve spolupráci s poradcem.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, schema: { type: integer }, description: 'Default = předchozí rok' }
+        - { in: query, name: type, required: true, schema: { type: string, enum: [fo, po] } }
+      responses:
+        '200': { description: Orientational summary }
+
+  /api/v1/reports/income-tax:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML daňového přiznání DPFO (DPFDP5) nebo DPPO (DPPDP9)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, schema: { type: integer } }
+        - { in: query, name: type, required: true, schema: { type: string, enum: [fo, po] } }
+      responses:
+        '200':
+          description: XML download (kostra)
+          content:
+            application/xml: {}
 
 components:
   securitySchemes:

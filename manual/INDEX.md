@@ -2,7 +2,7 @@
 
 [🌐 MyInvoice.cz](https://myinvoice.cz/) · [⭐ GitHub](https://github.com/radekhulan/myinvoice) · [📦 GHCR Docker](https://github.com/radekhulan/myinvoice/pkgs/container/myinvoice)
 
-> Verze: 2.0.0 · Datum: 2026-05-06 · Vyvíjí [MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)
+> Verze: 2.1.0 · Datum: 2026-05-21 · Vyvíjí [MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)
 
 Vítej v manuálu k fakturačnímu systému **MyInvoice.cz**. Manuál pokrývá vše, co
 v aplikaci uděláš — od prvního přihlášení, přes vystavení faktury a její
@@ -56,6 +56,9 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 ### Pokročilé
 
 21. [REST API (automatizace a integrace)](21_API.md)
+22. [CRM dashboard (revenue/costs/profit/aging/DSO)](22_CRM.md) — **nové ve v4.0.0**
+23. [Výkazy DPH (DPHDP3 + KH + SH)](23_Vykazy_DPH.md) — **nové ve v4.0.0**
+24. [Daň z příjmů (DPFO / DPPO)](24_Dan_z_prijmu.md) — **nové ve v4.0.0** (MVP foundation)
 
 ### Reference
 

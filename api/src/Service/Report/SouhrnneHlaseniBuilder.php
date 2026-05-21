@@ -153,12 +153,11 @@ final class SouhrnneHlaseniBuilder
      */
     private function collectEuSupplies(int $supplierId, string $start, string $end): array
     {
-        // Build IN clause z kódů 20, 22, 21 (a custom EU kódy)
-        // array_keys() vrací int|string podle obsahu klíčů — castovat na string před addslashes()
-        $codes = implode(',', array_map(
-            fn ($c) => "'" . addslashes((string) $c) . "'",
-            array_keys(self::VAT_CODE_TO_SH_TYPE),
-        ));
+        // VAT klasifikační kódy pro EU (sale): 20, 21, 22. Plně parameterized
+        // přes IN(?,?,?) placeholders — žádné string concatenation, defensive
+        // i pro budoucí rozšíření o custom kódy.
+        $codeKeys = array_map('strval', array_keys(self::VAT_CODE_TO_SH_TYPE));
+        $placeholders = implode(',', array_fill(0, count($codeKeys), '?'));
 
         $sql = "
             SELECT cnt.iso2 AS country_iso2,
@@ -178,12 +177,12 @@ final class SouhrnneHlaseniBuilder
                AND cnt.is_eu = 1
                AND cnt.iso2 != 'CZ'
                AND c.dic IS NOT NULL AND c.dic != ''
-               AND COALESCE(ii.vat_classification_code, i.vat_classification_code) IN ({$codes})
+               AND COALESCE(ii.vat_classification_code, i.vat_classification_code) IN ({$placeholders})
           GROUP BY cnt.iso2, c.dic, c.company_name, vat_code
           ORDER BY cnt.iso2, c.dic
         ";
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([$supplierId, $start, $end]);
+        $stmt->execute([$supplierId, $start, $end, ...$codeKeys]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         // Konsolidace: pokud má klient 2 řádky se stejným vat_code (shouldn't happen po GROUP BY,

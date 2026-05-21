@@ -77,8 +77,8 @@ final class UpdatePurchaseInvoiceAction
             $this->clients->markAsVendor((int) $vendor['id']);
         }
 
-        // Auto-default VAT klasifikace pokud uživatel nezadal — na header i items.
-        $this->applyVatClassificationDefaults($body);
+        // Auto-default VAT klasifikace pokud uživatel nezadal — na header i items (s multi-tenant scope).
+        $this->applyVatClassificationDefaults($body, $supplierId);
 
         try {
             $this->repo->updateDraft($id, $body, $supplierId);
@@ -99,7 +99,7 @@ final class UpdatePurchaseInvoiceAction
      * Auto-default vat_classification_code podle vat_rate na řádcích a header.
      * Aplikuje se jen pokud user nezadal (NULL nebo prázdný string).
      */
-    private function applyVatClassificationDefaults(array &$body): void
+    private function applyVatClassificationDefaults(array &$body, int $supplierId): void
     {
         $vatRates = $this->repo->vatRateMap();  // id → rate_percent
         $reverseCharge = !empty($body['reverse_charge']);
@@ -110,7 +110,8 @@ final class UpdatePurchaseInvoiceAction
                 if (!empty($item['vat_classification_code'])) continue;
                 $rateId = (int) ($item['vat_rate_id'] ?? 0);
                 $rate = (float) ($vatRates[$rateId] ?? 0);
-                $item['vat_classification_code'] = $this->vatDefaulter->defaultForPurchase($rate, $reverseCharge);
+                $taxDate = $body['tax_date'] ?? $body['issue_date'] ?? null;
+                $item['vat_classification_code'] = $this->vatDefaulter->defaultForPurchase($rate, $reverseCharge, $taxDate, $supplierId);
             }
             unset($item);
         }
@@ -128,6 +129,8 @@ final class UpdatePurchaseInvoiceAction
                 $itemsWithTotals,
                 (bool) ($body['reverse_charge'] ?? false),
                 'purchase',
+                $body['tax_date'] ?? $body['issue_date'] ?? null,
+                $supplierId,
             );
         }
     }

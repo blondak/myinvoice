@@ -46,24 +46,21 @@ final class VatClassificationDefaulter
      * scénář změny sazby od 1.1.2027 — faktury z 2026 chytnou starou klasifikaci,
      * faktury od 2027 novou (i když rate_percent se mění).
      *
-     * Aktuálně defaulter porovnává rate_percent z faktury (vat_rate_snapshot uložený
-     * při vystavení) se rate_percent v vat_classifications — match s tolerance 0.5%.
-     * Pokud user upraví vat_classifications.vat_rate (např. 21 → 20) ke konkrétnímu datu,
-     * defaulter automaticky chytne novou hodnotu. Plus respektuje valid_from/valid_to
-     * na vat_rates pokud user filtruje history (`$taxDate` parametr).
+     * `$supplierId` (volitelné, default 0 = jen globální) — multi-tenant scope.
+     * Volej s tenant ID aby tenant viděl své custom kódy ELL.GLOBÁLNÍ; ne kódy jiných tenantů.
      */
-    public function defaultForSale(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null): string
+    public function defaultForSale(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null, int $supplierId = 0): string
     {
-        return $this->lookup('sale', $vatRate, $reverseCharge, $taxDate)
+        return $this->lookup('sale', $vatRate, $reverseCharge, $taxDate, $supplierId)
             ?? ($reverseCharge ? self::FALLBACK_SALE_REVERSE : $this->byRateFallback($vatRate, self::FALLBACK_SALE_TUZEMSKO));
     }
 
     /**
      * Default pro přijatou fakturu (cost side).
      */
-    public function defaultForPurchase(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null): string
+    public function defaultForPurchase(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null, int $supplierId = 0): string
     {
-        return $this->lookup('purchase', $vatRate, $reverseCharge, $taxDate)
+        return $this->lookup('purchase', $vatRate, $reverseCharge, $taxDate, $supplierId)
             ?? ($reverseCharge ? self::FALLBACK_PURCHASE_REVERSE : $this->byRateFallback($vatRate, self::FALLBACK_PURCHASE_TUZEMSKO));
     }
 
@@ -76,9 +73,9 @@ final class VatClassificationDefaulter
      *  2. V vat_classifications najdi kód s match (direction, vat_rate ≈, reverse).
      *  3. Pokud sazba není v `vat_rates` registrovaná, fallback na samotnou hodnotu.
      */
-    private function lookup(string $direction, float $vatRate, bool $reverseCharge, ?string $taxDate = null): ?string
+    private function lookup(string $direction, float $vatRate, bool $reverseCharge, ?string $taxDate = null, int $supplierId = 0): ?string
     {
-        $key = "{$direction}:{$vatRate}:" . ($reverseCharge ? '1' : '0') . ':' . ($taxDate ?? '');
+        $key = "{$direction}:{$vatRate}:" . ($reverseCharge ? '1' : '0') . ':' . ($taxDate ?? '') . ':' . $supplierId;
         if (isset($this->cache[$key])) {
             return $this->cache[$key] ?: null;
         }
@@ -103,16 +100,21 @@ final class VatClassificationDefaulter
             }
         }
 
+        // **Multi-tenant scope** — vrátí globální seed (supplier_id IS NULL) NEBO
+        // tenant-specific kódy. NIKDY kódy jiných tenantů. Pokud má tenant custom
+        // kód se stejnou sazbou jako globální, preferujeme tenant-specific
+        // (supplier_id NOT NULL = 1, ORDER DESC).
         $stmt = $this->db->pdo()->prepare(
             "SELECT code FROM vat_classifications
               WHERE archived = 0
                 AND (direction = ? OR direction = 'both')
                 AND ABS(COALESCE(vat_rate, -999) - ?) < 0.5
                 AND is_reverse_charge = ?
-           ORDER BY supplier_id IS NULL DESC, display_order ASC
+                AND (supplier_id IS NULL OR supplier_id = ?)
+           ORDER BY (supplier_id IS NOT NULL) DESC, display_order ASC
               LIMIT 1"
         );
-        $stmt->execute([$direction, $vatRate, $reverseCharge ? 1 : 0]);
+        $stmt->execute([$direction, $vatRate, $reverseCharge ? 1 : 0, $supplierId]);
         $code = $stmt->fetchColumn();
 
         $result = $code !== false ? (string) $code : null;
@@ -136,7 +138,7 @@ final class VatClassificationDefaulter
      *
      * @param list<array{vat_rate?:float, total_with_vat?:float}> $items
      */
-    public function suggestHeaderForInvoice(array $items, bool $reverseCharge, string $direction): string
+    public function suggestHeaderForInvoice(array $items, bool $reverseCharge, string $direction, ?string $taxDate = null, int $supplierId = 0): string
     {
         // Najdi dominantní sazbu (s největší totální částkou)
         $byRate = [];
@@ -152,7 +154,7 @@ final class VatClassificationDefaulter
             $dominantRate = (float) array_key_first($byRate);
         }
         return $direction === 'sale'
-            ? $this->defaultForSale($dominantRate, $reverseCharge)
-            : $this->defaultForPurchase($dominantRate, $reverseCharge);
+            ? $this->defaultForSale($dominantRate, $reverseCharge, $taxDate, $supplierId)
+            : $this->defaultForPurchase($dominantRate, $reverseCharge, $taxDate, $supplierId);
     }
 }

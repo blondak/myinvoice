@@ -1,7 +1,8 @@
 # 15. Exporty (PDF ZIP, ISDOC, Pohoda XML)
 
 Pro účetní (interní oddělení nebo externí kancelář) nabízí MyInvoice tři
-formáty hromadného exportu:
+formáty hromadného exportu **vystavených faktur** a per-faktura export
+**přijatých faktur** (ISDOC / Pohoda / naše PDF rekonstrukce — viz [9a.6](09a_Prijate_faktury.md#9a6-export-přijaté-faktury-naše-pdf--isdoc--pohoda)).
 
 | Formát | Pro koho | Co obsahuje |
 |---|---|---|

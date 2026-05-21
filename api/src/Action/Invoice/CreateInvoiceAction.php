@@ -54,8 +54,8 @@ final class CreateInvoiceAction
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $userId = (int) ($user['id'] ?? 0);
 
-        // Auto-default VAT klasifikace pokud user nezadal
-        $this->applyVatClassificationDefaults($body);
+        // Auto-default VAT klasifikace pokud user nezadal (s multi-tenant scope)
+        $this->applyVatClassificationDefaults($body, SupplierGuard::currentId($request));
 
         $id = $this->repo->createDraft($body, $userId);
         $this->repo->replaceItems($id, (array) ($body['items'] ?? []));
@@ -79,7 +79,7 @@ final class CreateInvoiceAction
      * Auto-default vat_classification_code podle vat_rate na řádcích a header.
      * Aplikuje se jen pokud user nezadal (NULL nebo prázdný).
      */
-    private function applyVatClassificationDefaults(array &$body): void
+    private function applyVatClassificationDefaults(array &$body, int $supplierId): void
     {
         $vatRates = $this->repo->vatRateMap();
         $reverseCharge = !empty($body['reverse_charge']);
@@ -89,7 +89,8 @@ final class CreateInvoiceAction
                 if (!empty($item['vat_classification_code'])) continue;
                 $rateId = (int) ($item['vat_rate_id'] ?? 0);
                 $rate = (float) ($vatRates[$rateId] ?? 0);
-                $item['vat_classification_code'] = $this->vatDefaulter->defaultForSale($rate, $reverseCharge);
+                $taxDate = $body['tax_date'] ?? $body['issue_date'] ?? null;
+                $item['vat_classification_code'] = $this->vatDefaulter->defaultForSale($rate, $reverseCharge, $taxDate, $supplierId);
             }
             unset($item);
         }
@@ -106,6 +107,8 @@ final class CreateInvoiceAction
                 $itemsWithTotals,
                 (bool) ($body['reverse_charge'] ?? false),
                 'sale',
+                $body['tax_date'] ?? $body['issue_date'] ?? null,
+                $supplierId,
             );
         }
     }
