@@ -50,6 +50,7 @@ final class PurchaseInvoiceInboxScanner
         private readonly PdfIsdocExtractor $pdfExtractor,
         private readonly IsdocParser $isdocParser,
         private readonly IsdocToPurchaseInvoiceMapper $mapper,
+        private readonly AiPdfExtractor $aiExtractor,
     ) {}
 
     /**
@@ -172,13 +173,45 @@ final class PurchaseInvoiceInboxScanner
 
             $ext = strtolower(pathinfo($real, PATHINFO_EXTENSION));
             $isdocXml = $this->extractIsdocXml($real, $ext);
+
+            // Pokud PDF nemá ISDOC, zkusíme AI fallback (jen pokud je tenant
+            // nakonfigurovaný a NEni dryRun).
+            if ($isdocXml === null && $ext === 'pdf' && !$dryRun && $this->isAiConfigured($supplierId)) {
+                $pdfBytes = @file_get_contents($real);
+                if ($pdfBytes !== false) {
+                    $aiResult = $this->aiExtractor->extractAndCreate(
+                        $supplierId, $userId, $pdfBytes, null, basename($real),
+                    );
+                    if (!empty($aiResult['ok']) && !empty($aiResult['purchase_invoice_id'])) {
+                        $imported++;
+                        $details[] = [
+                            'file'   => $real,
+                            'status' => 'imported',
+                            'reason' => 'AI extract',
+                            'purchase_invoice_id' => $aiResult['purchase_invoice_id'],
+                            'vendor_id'           => $aiResult['vendor_id'] ?? null,
+                            'source'              => $aiResult['source'] ?? 'ai',
+                        ];
+                        continue;
+                    }
+                    // AI selhalo — pokračujeme do skipped section níže s AI error msg
+                    $details[] = [
+                        'file'   => $real,
+                        'status' => 'skipped',
+                        'reason' => 'AI extrakce selhala: ' . ($aiResult['error'] ?? 'unknown'),
+                    ];
+                    $skipped++;
+                    continue;
+                }
+            }
+
             if ($isdocXml === null) {
                 $skipped++;
                 $details[] = [
                     'file'   => $real,
                     'status' => 'skipped',
                     'reason' => $ext === 'pdf'
-                        ? 'PDF neobsahuje ISDOC, AI extrakce dorazí ve fázi 2c'
+                        ? 'PDF neobsahuje ISDOC. Pro AI extrakci nakonfiguruj Anthropic Claude v Externí integrace → AI.'
                         : 'Soubor nelze parsovat jako ISDOC',
                 ];
                 continue;
@@ -333,5 +366,24 @@ final class PurchaseInvoiceInboxScanner
             'inbox_dir' => $inboxDir,
             'details'   => $details,
         ];
+    }
+
+    /**
+     * Zda má tenant nakonfigurovanou Anthropic API key pro AI extract.
+     *
+     * Quick check — table anthropic_credentials per supplier_id. Pokud chybí
+     * tabulka (legacy install), vrátí false (no AI).
+     */
+    private function isAiConfigured(int $supplierId): bool
+    {
+        try {
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT 1 FROM anthropic_credentials WHERE supplier_id = ? LIMIT 1'
+            );
+            $stmt->execute([$supplierId]);
+            return $stmt->fetchColumn() !== false;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
