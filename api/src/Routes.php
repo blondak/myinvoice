@@ -24,9 +24,11 @@ use MyInvoice\Action\Approval\UpdateApprovalStatusAction;
 use MyInvoice\Action\Admin\ExportAction;
 use MyInvoice\Action\Admin\ImportAction;
 use MyInvoice\Action\Admin\Import\StartIdokladImportAction;
+use MyInvoice\Action\Admin\Import\StartFakturoidImportAction;
 use MyInvoice\Action\Admin\Import\ImportJobStatusAction;
 use MyInvoice\Action\Admin\Import\CancelImportJobAction;
 use MyInvoice\Action\Admin\Import\IdokladCredentialsAction;
+use MyInvoice\Action\Admin\Import\FakturoidCredentialsAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\CronJobsAction;
 use MyInvoice\Action\Admin\RunCronJobAction;
@@ -265,6 +267,13 @@ final class Routes
         $app->put    ('/api/admin/imports/idoklad/credentials', [IdokladCredentialsAction::class, 'update']);
         $app->delete ('/api/admin/imports/idoklad/credentials', [IdokladCredentialsAction::class, 'delete']);
         $app->post   ('/api/admin/imports/idoklad/start',       StartIdokladImportAction::class);
+
+        // Fakturoid (fáze 2b) — credentials + start
+        $app->get    ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'status']);
+        $app->put    ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'update']);
+        $app->delete ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'delete']);
+        $app->post   ('/api/admin/imports/fakturoid/start',       StartFakturoidImportAction::class);
+
         $app->get    ('/api/admin/imports/{id:[0-9]+}',         ImportJobStatusAction::class);
         $app->post   ('/api/admin/imports/{id:[0-9]+}/cancel',  CancelImportJobAction::class);
         $app->get    ('/api/admin/users',           [UserAdminAction::class, 'list']);

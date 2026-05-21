@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { integrationsApi, type IdokladCredentialsStatus, type ImportJob } from '@/api/integrations'
+import { integrationsApi, type IdokladCredentialsStatus, type FakturoidCredentialsStatus, type ImportJob } from '@/api/integrations'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 
@@ -132,8 +132,89 @@ const progressPercent = computed(() => {
   return Math.round((currentJob.value.processed / currentJob.value.total_items) * 100)
 })
 
+// ── Fakturoid credentials state ───────────────────────────────────────
+const fakStatus = ref<FakturoidCredentialsStatus | null>(null)
+const fakSlug = ref('')
+const fakEmail = ref('')
+const fakApiKey = ref('')
+const fakSaving = ref(false)
+const fakShowKey = ref(false)
+const fakTestMsg = ref<{ ok: boolean; text: string } | null>(null)
+
+const fakStartParams = ref({
+  include_clients: true,
+  include_issued: true,
+  include_received: true,
+  incremental: false,
+  dry_run: false,
+})
+const fakStarting = ref(false)
+
+async function loadFakStatus() {
+  try {
+    fakStatus.value = await integrationsApi.getFakturoidCreds()
+    if (fakStatus.value?.slug) fakSlug.value = fakStatus.value.slug
+    if (fakStatus.value?.email) fakEmail.value = fakStatus.value.email
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  }
+}
+
+async function saveFakCreds() {
+  if (!fakSlug.value || !fakEmail.value || !fakApiKey.value) {
+    toast.error('Vyplň všechna pole (slug, email, api_key).')
+    return
+  }
+  fakSaving.value = true
+  fakTestMsg.value = null
+  try {
+    const r = await integrationsApi.setFakturoidCreds(fakSlug.value, fakEmail.value, fakApiKey.value)
+    if (r.test_ok) {
+      fakTestMsg.value = { ok: true, text: t('integrations.fakturoid.test_success', { name: r.account_name || '' }) }
+      fakApiKey.value = ''
+      await loadFakStatus()
+    } else {
+      fakTestMsg.value = { ok: false, text: r.test_error || 'Test connectivity selhal' }
+    }
+  } catch (e) {
+    fakTestMsg.value = { ok: false, text: apiErrorMessage(e) }
+  } finally {
+    fakSaving.value = false
+  }
+}
+
+async function deleteFakCreds() {
+  if (!confirm(t('integrations.fakturoid.delete_confirm'))) return
+  try {
+    await integrationsApi.deleteFakturoidCreds()
+    fakStatus.value = null
+    fakSlug.value = ''
+    fakEmail.value = ''
+    fakApiKey.value = ''
+    fakTestMsg.value = null
+    toast.success(t('integrations.fakturoid.deleted'))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  }
+}
+
+async function startFakImport() {
+  if (fakStarting.value) return
+  fakStarting.value = true
+  try {
+    const r = await integrationsApi.startFakturoid(fakStartParams.value)
+    toast.success(t('integrations.idoklad.started', { jobId: r.job_id }))
+    await pollJob(r.job_id)
+  } catch (e: any) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    fakStarting.value = false
+  }
+}
+
 onMounted(() => {
   loadIdokladStatus()
+  loadFakStatus()
 })
 
 onUnmounted(() => {
@@ -159,7 +240,7 @@ onUnmounted(() => {
           : 'border-transparent text-neutral-600 hover:text-neutral-900'"
       >
         {{ t('integrations.' + tt + '.tab') }}
-        <span v-if="tt !== 'idoklad'" class="text-[10px] uppercase tracking-wide bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">
+        <span v-if="tt === 'ai'" class="text-[10px] uppercase tracking-wide bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">
           {{ t('integrations.coming_soon') }}
         </span>
       </button>
@@ -326,11 +407,152 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ════ Fakturoid / AI placeholdery ════ -->
+    <!-- ════ Fakturoid tab ════ -->
+    <div v-else-if="tab === 'fakturoid'" class="space-y-4">
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-2">{{ t('integrations.fakturoid.credentials_title') }}</h2>
+        <p class="text-xs text-neutral-500 mb-4">{{ t('integrations.fakturoid.credentials_hint') }}</p>
+
+        <div class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700 mb-4" v-if="fakStatus?.configured">
+          <strong>✓ {{ t('integrations.idoklad.configured') }}</strong>
+          <span v-if="fakStatus.slug" class="ml-2 font-mono text-xs">{{ fakStatus.slug }}</span>
+          <span v-if="fakStatus.email" class="ml-2 text-xs">· {{ fakStatus.email }}</span>
+        </div>
+
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-neutral-700 mb-1">{{ t('integrations.fakturoid.slug') }} *</label>
+              <input v-model="fakSlug" type="text" maxlength="64"
+                     class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono"
+                     placeholder="moje-firma" />
+              <p class="text-xs text-neutral-500 mt-1">{{ t('integrations.fakturoid.slug_hint') }}</p>
+            </div>
+            <div>
+              <label class="block text-sm text-neutral-700 mb-1">{{ t('integrations.fakturoid.email') }} *</label>
+              <input v-model="fakEmail" type="email" maxlength="255"
+                     class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm"
+                     placeholder="me@example.com" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('integrations.fakturoid.api_key') }} *</label>
+            <div class="flex gap-2">
+              <input v-model="fakApiKey" :type="fakShowKey ? 'text' : 'password'" maxlength="512"
+                     class="flex-1 h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono"
+                     :placeholder="fakStatus?.configured ? t('integrations.fakturoid.key_placeholder_existing') : ''" />
+              <button type="button" @click="fakShowKey = !fakShowKey"
+                      class="cursor-pointer h-10 px-3 border border-neutral-300 rounded-md hover:bg-neutral-50 text-sm">
+                {{ fakShowKey ? '🙈' : '👁' }}
+              </button>
+            </div>
+            <p class="text-xs text-neutral-500 mt-1">{{ t('integrations.fakturoid.key_hint') }}</p>
+          </div>
+        </div>
+
+        <div v-if="fakTestMsg" class="mt-3 rounded-md px-3 py-2 text-sm"
+             :class="fakTestMsg.ok ? 'bg-success-50 text-success-600 border border-success-500/40' : 'bg-danger-50 text-danger-500 border border-danger-500/40'">
+          {{ fakTestMsg.text }}
+        </div>
+
+        <div class="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-neutral-100">
+          <button v-if="fakStatus?.configured" type="button" @click="deleteFakCreds"
+                  class="cursor-pointer h-10 px-4 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md">
+            {{ t('integrations.idoklad.delete') }}
+          </button>
+          <span v-else></span>
+          <button type="button" @click="saveFakCreds" :disabled="fakSaving"
+                  class="cursor-pointer h-10 px-5 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ fakSaving ? '…' : t('integrations.idoklad.save_and_test') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Box: import controls -->
+      <div v-if="fakStatus?.configured" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">{{ t('integrations.idoklad.run_title') }}</h2>
+
+        <div v-if="!isJobRunning" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="fakStartParams.include_clients" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('integrations.fakturoid.include_subjects') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="fakStartParams.include_issued" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('integrations.idoklad.include_issued') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="fakStartParams.include_received" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('integrations.fakturoid.include_expenses') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="fakStartParams.incremental" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('integrations.idoklad.incremental') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="fakStartParams.dry_run" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('integrations.idoklad.dry_run') }}
+            </label>
+          </div>
+          <button type="button" @click="startFakImport" :disabled="fakStarting"
+                  class="cursor-pointer w-full h-10 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md inline-flex items-center justify-center gap-2">
+            {{ fakStarting ? '…' : t('integrations.idoklad.start_import') }}
+          </button>
+        </div>
+
+        <div v-if="currentJob" class="space-y-3">
+          <div class="flex items-center justify-between text-sm">
+            <div>
+              <span class="font-medium">Job #{{ currentJob.id }}</span>
+              <span class="ml-2 px-2 py-0.5 text-xs rounded border"
+                    :class="{
+                      'bg-neutral-100 text-neutral-600 border-neutral-200': currentJob.status === 'queued',
+                      'bg-primary-50 text-primary-700 border-primary-500/40': currentJob.status === 'running',
+                      'bg-success-50 text-success-600 border-success-500/40': currentJob.status === 'completed',
+                      'bg-danger-50 text-danger-500 border-danger-500/40': currentJob.status === 'failed',
+                      'bg-warning-50 text-warning-600 border-warning-500/40': currentJob.status === 'cancelled',
+                    }">
+                {{ t('integrations.idoklad.status.' + currentJob.status) }}
+              </span>
+            </div>
+            <button v-if="isJobRunning" type="button" @click="cancelImport"
+                    :disabled="currentJob.cancel_requested"
+                    class="cursor-pointer h-8 px-3 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 disabled:opacity-50 rounded-md">
+              {{ currentJob.cancel_requested ? t('integrations.idoklad.cancelling') : t('integrations.idoklad.cancel') }}
+            </button>
+          </div>
+          <div v-if="currentJob.current_step" class="text-sm text-neutral-600">{{ currentJob.current_step }}</div>
+          <div class="grid grid-cols-3 gap-2 text-sm">
+            <div class="bg-success-50 border border-success-500/40 rounded p-2">
+              <div class="text-xs text-success-600">{{ t('integrations.idoklad.created') }}</div>
+              <div class="font-mono font-semibold text-success-600">{{ currentJob.created_count }}</div>
+            </div>
+            <div class="bg-warning-50 border border-warning-500/40 rounded p-2">
+              <div class="text-xs text-warning-600">{{ t('integrations.idoklad.skipped') }}</div>
+              <div class="font-mono font-semibold text-warning-600">{{ currentJob.skipped_count }}</div>
+            </div>
+            <div class="bg-danger-50 border border-danger-500/40 rounded p-2">
+              <div class="text-xs text-danger-500">{{ t('integrations.idoklad.failed') }}</div>
+              <div class="font-mono font-semibold text-danger-500">{{ currentJob.failed_count }}</div>
+            </div>
+          </div>
+          <div v-if="currentJob.last_error" class="rounded-md bg-danger-50 border border-danger-500/40 px-3 py-2 text-sm text-danger-500">
+            {{ currentJob.last_error }}
+          </div>
+          <details v-if="currentJob.log_text" class="text-xs">
+            <summary class="cursor-pointer text-neutral-600 hover:text-neutral-900">{{ t('integrations.idoklad.log') }}</summary>
+            <pre class="mt-2 max-h-72 overflow-y-auto bg-neutral-900 text-neutral-100 p-3 rounded font-mono text-[11px] whitespace-pre-wrap">{{ currentJob.log_text }}</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ AI placeholder ════ -->
     <div v-else class="bg-white border border-neutral-200 rounded-lg p-8 shadow-sm text-center">
       <div class="text-neutral-500 text-sm">
         <strong>{{ t('integrations.coming_soon') }}</strong> —
-        {{ tab === 'fakturoid' ? t('integrations.fakturoid.coming_hint') : t('integrations.ai.coming_hint') }}
+        {{ t('integrations.ai.coming_hint') }}
       </div>
     </div>
   </div>

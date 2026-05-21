@@ -24,6 +24,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use MyInvoice\Bootstrap;
 use MyInvoice\Repository\ImportJobRepository;
+use MyInvoice\Service\Import\FakturoidImportService;
 use MyInvoice\Service\Import\IdokladImportService;
 
 // Parse args
@@ -66,8 +67,9 @@ ignore_user_abort(true);
 
 try {
     if ($source === 'idoklad') {
-        $service = $container->get(IdokladImportService::class);
-        $service->run($jobId);
+        $container->get(IdokladImportService::class)->run($jobId);
+    } elseif ($source === 'fakturoid') {
+        $container->get(FakturoidImportService::class)->run($jobId);
     } else {
         $jobs->appendLog($jobId, "Source '{$source}' není zatím podporován workerem.");
         $jobs->markFailed($jobId, "Source '{$source}' není podporován.");

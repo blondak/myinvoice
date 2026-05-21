@@ -48,6 +48,27 @@ export interface IdokladStartParams {
   dry_run?: boolean
 }
 
+export interface FakturoidCredentialsStatus {
+  configured: boolean
+  slug: string | null
+  email: string | null
+}
+
+export interface FakturoidCredentialsUpdateResult {
+  saved: boolean
+  test_ok: boolean
+  test_error: string | null
+  account_name: string | null
+}
+
+export interface FakturoidStartParams {
+  include_clients?: boolean
+  include_issued?: boolean
+  include_received?: boolean
+  incremental?: boolean
+  dry_run?: boolean
+}
+
 export const integrationsApi = {
   // iDoklad credentials
   getIdokladCreds: () =>
@@ -58,12 +79,26 @@ export const integrationsApi = {
     }).then(r => r.data),
   deleteIdokladCreds: () =>
     api.delete<{ ok: boolean }>('/admin/imports/idoklad/credentials').then(r => r.data),
-
-  // Import jobs
   startIdoklad: (params: IdokladStartParams = {}) =>
     api.post<{ job_id: number; status: string; params: IdokladStartParams }>(
       '/admin/imports/idoklad/start', params,
     ).then(r => r.data),
+
+  // Fakturoid credentials
+  getFakturoidCreds: () =>
+    api.get<FakturoidCredentialsStatus>('/admin/imports/fakturoid/credentials').then(r => r.data),
+  setFakturoidCreds: (slug: string, email: string, apiKey: string) =>
+    api.put<FakturoidCredentialsUpdateResult>('/admin/imports/fakturoid/credentials', {
+      slug, email, api_key: apiKey,
+    }).then(r => r.data),
+  deleteFakturoidCreds: () =>
+    api.delete<{ ok: boolean }>('/admin/imports/fakturoid/credentials').then(r => r.data),
+  startFakturoid: (params: FakturoidStartParams = {}) =>
+    api.post<{ job_id: number; status: string; params: FakturoidStartParams }>(
+      '/admin/imports/fakturoid/start', params,
+    ).then(r => r.data),
+
+  // Shared job tracking
   getJob: (id: number) =>
     api.get<ImportJob>(`/admin/imports/${id}`).then(r => r.data),
   cancelJob: (id: number) =>

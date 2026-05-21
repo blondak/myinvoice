@@ -1449,7 +1449,20 @@
     },
     "fakturoid": {
       "tab": "Fakturoid",
-      "coming_hint": "Fakturoid import coming in phase 2b (parallel to iDoklad UI, different OAuth flow)."
+      "credentials_title": "Fakturoid API credentials",
+      "credentials_hint": "BasicAuth: slug + email + personal API token. Find in Fakturoid → Settings → User profile → API.",
+      "slug": "Account slug",
+      "slug_hint": "From URL https://app.fakturoid.cz/{slug}/",
+      "email": "Email",
+      "api_key": "Personal API token",
+      "key_placeholder_existing": "(unchanged — enter new to override)",
+      "key_hint": "Encrypted AES-256-GCM. User-Agent header sent automatically.",
+      "include_subjects": "Subjects (contacts)",
+      "include_expenses": "Expenses (received invoices)",
+      "test_success": "Fakturoid connection works — account {name}.",
+      "delete_confirm": "Really remove Fakturoid credentials?",
+      "deleted": "Fakturoid credentials removed",
+      "coming_hint": "—"
     },
     "ai": {
       "tab": "AI extraction (PDF)",

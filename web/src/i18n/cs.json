@@ -1449,7 +1449,20 @@
     },
     "fakturoid": {
       "tab": "Fakturoid",
-      "coming_hint": "Fakturoid import bude dostupný v fázi 2b (paralel s iDoklad UI, jiný OAuth flow)."
+      "credentials_title": "Fakturoid API credentials",
+      "credentials_hint": "BasicAuth: slug + email + personal API token. Najdeš v Fakturoid → Nastavení → Uživatelský profil → API.",
+      "slug": "Account slug",
+      "slug_hint": "Z URL https://app.fakturoid.cz/{slug}/",
+      "email": "Email",
+      "api_key": "Personal API token",
+      "key_placeholder_existing": "(nevyplněno — nastav nový pro override)",
+      "key_hint": "Šifrováno AES-256-GCM. User-Agent posíláme automaticky.",
+      "include_subjects": "Subjekty (kontakty)",
+      "include_expenses": "Přijaté (expenses)",
+      "test_success": "Připojení k Fakturoid funguje — account {name}.",
+      "delete_confirm": "Opravdu odebrat Fakturoid credentials?",
+      "deleted": "Fakturoid credentials odebrány",
+      "coming_hint": "—"
     },
     "ai": {
       "tab": "AI extrakce (PDF)",
