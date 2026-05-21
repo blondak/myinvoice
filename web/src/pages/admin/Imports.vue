@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { uploadImport, type ImportReport, type ImportResultRow, type ImportKind } from '@/api/imports'
 import { purchaseInvoicesApi, type InboxScanResult } from '@/api/purchaseInvoices'
+import { integrationsApi, type AnthropicCredentialsStatus } from '@/api/integrations'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 
@@ -82,6 +83,18 @@ const notImportedItems = computed(() => {
   if (!scanResult.value) return []
   return scanResult.value.details.filter(d => d.status === 'skipped' || d.status === 'failed')
 })
+
+// AI integration status — load při mount aby uživatel věděl, zda PDF bez ISDOC
+// bude zpracováno (AI fallback) nebo skipnuté (no AI config)
+const aiStatus = ref<AnthropicCredentialsStatus | null>(null)
+async function loadAiStatus() {
+  try {
+    aiStatus.value = await integrationsApi.getAnthropicCreds()
+  } catch {
+    aiStatus.value = { configured: false } as AnthropicCredentialsStatus
+  }
+}
+onMounted(loadAiStatus)
 async function runScan() {
   scanRunning.value = true
   scanResult.value = null
@@ -252,6 +265,27 @@ async function runScan() {
         <div class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
           <strong>{{ t('imports.purchase_scan_title') }}:</strong>
           {{ t('imports.purchase_scan_hint') }}
+        </div>
+
+        <!-- AI integration status — informuje user zda PDF bez ISDOC bude zpracováno -->
+        <div class="mt-3">
+          <div v-if="aiStatus === null" class="rounded-md bg-neutral-50 border border-neutral-200 px-3 py-2 text-sm text-neutral-500">
+            {{ t('common.loading') }}…
+          </div>
+          <div v-else-if="aiStatus.configured"
+               class="rounded-md bg-success-50 border border-success-500/40 px-3 py-2 text-sm text-success-600">
+            <strong>✓ {{ t('imports.ai_active_title') }}</strong>
+            <span class="ml-2 font-mono text-xs text-success-600/80">{{ aiStatus.default_model }}</span>
+            <span class="ml-3 text-xs">{{ t('imports.ai_active_hint') }}</span>
+          </div>
+          <div v-else
+               class="rounded-md bg-warning-50 border border-warning-500/40 px-3 py-2 text-sm text-warning-700">
+            <strong>⚠ {{ t('imports.ai_not_configured_title') }}</strong>
+            <span class="ml-2 text-xs">{{ t('imports.ai_not_configured_hint') }}</span>
+            <RouterLink to="/admin/integrations?tab=ai" class="ml-1 text-xs text-primary-700 hover:underline whitespace-nowrap">
+              → {{ t('nav.ai_import') }}
+            </RouterLink>
+          </div>
         </div>
 
         <div class="border border-neutral-200 rounded-lg p-5 bg-neutral-50/50">
