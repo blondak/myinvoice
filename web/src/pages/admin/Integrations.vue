@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { integrationsApi,
   type IdokladCredentialsStatus, type FakturoidCredentialsStatus,
@@ -12,12 +12,17 @@ const { t } = useI18n()
 const toast = useToast()
 
 type Tab = 'idoklad' | 'fakturoid' | 'ai'
-// Initial tab from ?tab=... query (default idoklad)
+// Tab z ?tab=... query (default idoklad). Watch pro proklik mezi sidebar položkami
+// "Externí integrace" (no query) ↔ "AI import" (?tab=ai).
 const route = useRoute()
-const tab = ref<Tab>(((): Tab => {
+function readTabFromQuery(): Tab {
   const q = String(route.query.tab ?? '')
   return q === 'fakturoid' || q === 'ai' ? q as Tab : 'idoklad'
-})())
+}
+const tab = ref<Tab>(readTabFromQuery())
+watch(() => route.query.tab, () => {
+  tab.value = readTabFromQuery()
+})
 
 // ── iDoklad credentials state ─────────────────────────────────────────
 const idokladStatus = ref<IdokladCredentialsStatus | null>(null)
