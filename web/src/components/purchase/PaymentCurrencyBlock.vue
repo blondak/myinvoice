@@ -65,9 +65,17 @@ function round2(n: number): number {
 
 watch(() => [props.paidAmountPaymentCcy, props.paymentExchangeRate, props.invoiceExchangeRate], recalcDiff)
 
-const otherCurrencies = computed(() =>
-  props.currencies.filter(c => c.id !== props.invoiceCurrencyId)
-)
+// Distinct ISO codes, vyloučit currency_id faktury (platba v jiné měně)
+const otherCurrencies = computed(() => {
+  const invoiceCode = props.currencies.find(c => c.id === props.invoiceCurrencyId)?.code
+  const byCode = new Map<string, typeof props.currencies[number]>()
+  for (const c of props.currencies) {
+    if (c.code === invoiceCode) continue
+    const existing = byCode.get(c.code)
+    if (!existing || c.is_default) byCode.set(c.code, c)
+  }
+  return Array.from(byCode.values()).sort((a, b) => a.code.localeCompare(b.code))
+})
 </script>
 
 <template>
@@ -92,10 +100,10 @@ const otherCurrencies = computed(() =>
           <select
             :value="paymentCurrencyId ?? ''"
             @change="emit('update:paymentCurrencyId', ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null)"
-            class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm"
+            class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm"
           >
             <option value="">—</option>
-            <option v-for="c in otherCurrencies" :key="c.id" :value="c.id">{{ c.code }} — {{ c.label }}</option>
+            <option v-for="c in otherCurrencies" :key="c.id" :value="c.id">{{ c.code }}</option>
           </select>
         </div>
 

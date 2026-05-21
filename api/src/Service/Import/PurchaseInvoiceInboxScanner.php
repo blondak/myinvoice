@@ -70,7 +70,24 @@ final class PurchaseInvoiceInboxScanner
 
         $inboxReal = realpath($inboxDir);
         if ($inboxReal === false || !is_dir($inboxReal)) {
-            return $this->emptyResult($inboxDir, $dryRun, [['file' => $inboxDir, 'status' => 'inbox_missing', 'reason' => 'Inbox adresář neexistuje']]);
+            // Diagnostika: PHP user (z Apache/IIS) nemusí mít přístup ke cestě,
+            // i když existuje z hlediska uživatele (typicky user-specific OneDrive
+            // junction `C:/doc/...` nebo `C:/Users/X/Documents`).
+            $exists = file_exists($inboxDir);
+            $readable = $exists && is_readable($inboxDir);
+            $reason = 'Inbox adresář nelze otevřít z webového procesu.';
+            if (!$exists) {
+                $reason .= " Cesta neexistuje, NEBO PHP user (web server) k ní nemá přístup.";
+            } elseif (!$readable) {
+                $reason .= " Cesta existuje, ale není čitelná pro PHP user (web server).";
+            }
+            $reason .= ' Pozn.: PHP user často NENÍ tvůj Windows user. ' .
+                'Doporučení: použij cestu uvnitř webrootu (např. C:/inetpub/wwwroot/myinvoice.cz/inbox) nebo grantni read práva IIS user-u.';
+            return $this->emptyResult($inboxDir, $dryRun, [[
+                'file' => $inboxDir,
+                'status' => 'inbox_missing',
+                'reason' => $reason,
+            ]]);
         }
 
         $recursive = (bool) $this->config->get('purchase_invoice.inbox_recursive', true);

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+
+type RoleFilter = 'all' | 'customers' | 'vendors'
 
 const { t } = useI18n()
 
@@ -19,7 +21,25 @@ const loadingMore = ref(false)
 const search = ref('')
 const showArchived = ref(false)
 const sort = ref<'name' | 'revenue' | 'last_activity'>('name')
+const roleFilter = ref<RoleFilter>('customers')
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Klient-side role filter (backend zatím vrací všechny; přepsání na server-side filter
+// je TODO, kdy bude víc dat).
+const filteredItems = computed(() => {
+  if (roleFilter.value === 'all') return items.value
+  return items.value.filter(c => {
+    if (roleFilter.value === 'vendors')   return c.is_vendor   === true
+    if (roleFilter.value === 'customers') return c.is_customer !== false  // default true pro existující data
+    return true
+  })
+})
+
+const roleCounts = computed(() => ({
+  all:       items.value.length,
+  customers: items.value.filter(c => c.is_customer !== false).length,
+  vendors:   items.value.filter(c => c.is_vendor   === true).length,
+}))
 
 async function load(reset = true) {
   if (reset) {
@@ -75,6 +95,27 @@ function openClient(c: Client) {
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+      <!-- Tabs: Klienti / Dodavatelé / Vše -->
+      <div class="px-4 pt-2 border-b border-neutral-100 flex items-center gap-1">
+        <button
+          v-for="opt in [
+            { key: 'customers' as RoleFilter, label: t('client.tab_customers') },
+            { key: 'vendors' as RoleFilter,   label: t('client.tab_vendors') },
+            { key: 'all' as RoleFilter,       label: t('client.tab_all') },
+          ]"
+          :key="opt.key"
+          type="button"
+          @click="roleFilter = opt.key"
+          class="cursor-pointer relative px-3 py-2 text-sm border-b-2 transition"
+          :class="roleFilter === opt.key
+            ? 'border-primary-600 text-primary-700 font-medium'
+            : 'border-transparent text-neutral-600 hover:text-neutral-900'"
+        >
+          {{ opt.label }}
+          <span class="ml-1.5 inline-block px-1.5 py-0.5 text-xs bg-neutral-100 text-neutral-600 rounded-full">{{ roleCounts[opt.key] }}</span>
+        </button>
+      </div>
+
       <div class="px-4 py-3 border-b border-neutral-200 flex flex-col sm:flex-row sm:items-center gap-3">
         <input
           v-model="search"
@@ -116,13 +157,20 @@ function openClient(c: Client) {
         </thead>
         <tbody class="divide-y divide-neutral-100">
           <tr
-            v-for="c in items"
+            v-for="c in filteredItems"
             :key="c.id"
             @click="openClient(c)"
             class="cursor-pointer hover:bg-neutral-50"
           >
             <td class="px-4 py-3">
-              <div class="font-medium text-neutral-900">{{ c.company_name }}</div>
+              <div class="flex items-center gap-2">
+                <div class="font-medium text-neutral-900">{{ c.company_name }}</div>
+                <span v-if="c.is_customer !== false && c.is_vendor === true"
+                      class="inline-block px-1.5 py-0 text-[10px] bg-purple-100 text-purple-700 rounded font-medium uppercase tracking-wide"
+                      :title="t('client.dual_role_tooltip')">K+D</span>
+                <span v-else-if="c.is_vendor === true"
+                      class="inline-block px-1.5 py-0 text-[10px] bg-amber-100 text-amber-700 rounded font-medium uppercase tracking-wide">{{ t('client.vendor_badge') }}</span>
+              </div>
               <div v-if="c.archived_at" class="text-xs text-neutral-400 mt-0.5">{{ t('common.archived') }}</div>
             </td>
             <td class="px-4 py-3 font-mono text-xs text-neutral-600">{{ c.ic || '—' }}</td>
@@ -149,7 +197,7 @@ function openClient(c: Client) {
       <!-- Mobile: karty -->
       <div v-if="items.length" class="md:hidden divide-y divide-neutral-100">
         <div
-          v-for="c in items"
+          v-for="c in filteredItems"
           :key="`m-${c.id}`"
           @click="openClient(c)"
           class="cursor-pointer hover:bg-neutral-50 transition px-4 py-3"
@@ -183,7 +231,7 @@ function openClient(c: Client) {
       </div>
 
       <div v-if="items.length" class="px-4 py-3 border-t border-neutral-200 flex items-center justify-between text-sm">
-        <span class="text-neutral-500">{{ t('common.loaded_count', { loaded: items.length, total }) }}</span>
+        <span class="text-neutral-500">{{ t('common.loaded_count', { loaded: filteredItems.length, total: roleCounts[roleFilter] }) }}</span>
         <button v-if="page < pages" @click="load(false)" :disabled="loadingMore"
           class="cursor-pointer h-9 px-4 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50 rounded-md inline-flex items-center gap-1.5">
           {{ loadingMore ? t('common.loading_more') : t('common.load_more') }}

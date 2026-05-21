@@ -68,7 +68,8 @@ final class ClientRepository
         // Cache `client_revenue_cache` — primární řádek vybíráme přes c.currency_default_id
         $sql = "SELECT c.id, c.supplier_id, c.company_name, c.ic, c.dic, c.main_email, c.language,
                        c.currency_default_id, cur.code AS currency_default,
-                       c.reverse_charge, c.payment_due_default, c.hourly_rate,
+                       c.reverse_charge, c.is_customer, c.is_vendor,
+                       c.payment_due_default, c.hourly_rate,
                        c.archived_at, co.iso2 AS country_iso2,
                        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status = 'active' AND p.archived_at IS NULL) AS active_projects_count,
                        COALESCE(crc.revenue, 0) AS revenue,
@@ -107,11 +108,20 @@ final class ClientRepository
         $countryId = $this->countryIdFromIso2((string) ($data['country_iso2'] ?? 'CZ'));
         $currencyId = $this->resolveCurrencyId($data, $supplierId);
 
+        // Role flagy — default is_customer=1, is_vendor=0 (BC); ovládá frontend formulář.
+        $isCustomer = array_key_exists('is_customer', $data) ? (int) (bool) $data['is_customer'] : 1;
+        $isVendor   = array_key_exists('is_vendor',   $data) ? (int) (bool) $data['is_vendor']   : 0;
+        if ($isCustomer === 0 && $isVendor === 0) {
+            // Default fallback — entita musí mít aspoň jednu roli
+            $isCustomer = 1;
+        }
+
         $sql = 'INSERT INTO clients
             (supplier_id, company_name, first_name, last_name, ic, dic, street, city, zip, country_id,
-             main_email, phone, language, currency_default_id, reverse_charge, auto_send_reminders,
-             payment_due_default, hourly_rate, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+             main_email, phone, language, currency_default_id, reverse_charge,
+             is_customer, is_vendor,
+             auto_send_reminders, payment_due_default, hourly_rate, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $stmt = $this->db->pdo()->prepare($sql);
         $stmt->execute([
             $supplierId,
@@ -129,6 +139,8 @@ final class ClientRepository
             (string) ($data['language'] ?? 'cs'),
             $currencyId,
             !empty($data['reverse_charge']) ? 1 : 0,
+            $isCustomer,
+            $isVendor,
             array_key_exists('auto_send_reminders', $data) ? ((int) (bool) $data['auto_send_reminders']) : 1,
             isset($data['payment_due_default']) ? (int) $data['payment_due_default'] : null,
             (float) ($data['hourly_rate'] ?? 0),
@@ -162,10 +174,50 @@ final class ClientRepository
 
     public function update(int $id, array $data): void
     {
+        $pdo = $this->db->pdo();
+
         // Klient nemůže měnit supplier — odvodíme z aktuálního DB záznamu pro currency lookup
-        $stmt = $this->db->pdo()->prepare('SELECT supplier_id FROM clients WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT supplier_id, is_customer, is_vendor FROM clients WHERE id = ?');
         $stmt->execute([$id]);
-        $supplierId = (int) $stmt->fetchColumn();
+        $current = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($current === false) {
+            throw new \InvalidArgumentException("Client #$id nenalezen.");
+        }
+        $supplierId = (int) $current['supplier_id'];
+
+        // Role flagy — pokud chybí v payloadu, zachovat aktuální hodnotu (BC).
+        $newIsCustomer = array_key_exists('is_customer', $data) ? (int) (bool) $data['is_customer'] : (int) $current['is_customer'];
+        $newIsVendor   = array_key_exists('is_vendor',   $data) ? (int) (bool) $data['is_vendor']   : (int) $current['is_vendor'];
+
+        // Lock check: nelze vypnout is_customer pokud klient má vydané faktury.
+        if ((int) $current['is_customer'] === 1 && $newIsCustomer === 0) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM invoices WHERE client_id = ?');
+            $stmt->execute([$id]);
+            $cnt = (int) $stmt->fetchColumn();
+            if ($cnt > 0) {
+                throw new \InvalidArgumentException(
+                    "Klient nemůže přestat být zákazníkem — má {$cnt} vystavených faktur. " .
+                    'Pro skrytí ze seznamu použij archivaci.'
+                );
+            }
+        }
+        // Symmetric lock pro is_vendor proti purchase_invoices.
+        if ((int) $current['is_vendor'] === 1 && $newIsVendor === 0) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM purchase_invoices WHERE vendor_id = ?');
+            $stmt->execute([$id]);
+            $cnt = (int) $stmt->fetchColumn();
+            if ($cnt > 0) {
+                throw new \InvalidArgumentException(
+                    "Klient nemůže přestat být dodavatelem — má {$cnt} přijatých faktur. " .
+                    'Pro skrytí ze seznamu použij archivaci.'
+                );
+            }
+        }
+        // Nesmí se vypnout obě role současně (entita by neměla existovat).
+        if ($newIsCustomer === 0 && $newIsVendor === 0) {
+            throw new \InvalidArgumentException('Klient musí mít alespoň jednu roli (zákazník nebo dodavatel).');
+        }
+
         $countryId = $this->countryIdFromIso2((string) ($data['country_iso2'] ?? 'CZ'));
         $currencyId = $this->resolveCurrencyId($data, $supplierId);
 
@@ -173,10 +225,11 @@ final class ClientRepository
                 company_name = ?, first_name = ?, last_name = ?, ic = ?, dic = ?,
                 street = ?, city = ?, zip = ?, country_id = ?,
                 main_email = ?, phone = ?, language = ?, currency_default_id = ?,
-                reverse_charge = ?, auto_send_reminders = ?, payment_due_default = ?,
+                reverse_charge = ?, is_customer = ?, is_vendor = ?,
+                auto_send_reminders = ?, payment_due_default = ?,
                 hourly_rate = ?, note = ?
                 WHERE id = ?';
-        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt = $pdo->prepare($sql);
         $stmt->execute([
             (string) $data['company_name'],
             $this->nullable($data, 'first_name'),
@@ -192,6 +245,8 @@ final class ClientRepository
             (string) ($data['language'] ?? 'cs'),
             $currencyId,
             !empty($data['reverse_charge']) ? 1 : 0,
+            $newIsCustomer,
+            $newIsVendor,
             array_key_exists('auto_send_reminders', $data) ? ((int) (bool) $data['auto_send_reminders']) : 1,
             isset($data['payment_due_default']) ? (int) $data['payment_due_default'] : null,
             (float) ($data['hourly_rate'] ?? 0),
@@ -272,6 +327,8 @@ final class ClientRepository
         if (isset($row['supplier_id'])) $row['supplier_id'] = (int) $row['supplier_id'];
         if (isset($row['currency_default_id'])) $row['currency_default_id'] = (int) $row['currency_default_id'];
         $row['reverse_charge']        = (bool) ($row['reverse_charge'] ?? 0);
+        if (array_key_exists('is_customer', $row)) $row['is_customer'] = (bool) $row['is_customer'];
+        if (array_key_exists('is_vendor', $row))   $row['is_vendor']   = (bool) $row['is_vendor'];
         if (array_key_exists('auto_send_reminders', $row)) {
             $row['auto_send_reminders'] = (bool) $row['auto_send_reminders'];
         }

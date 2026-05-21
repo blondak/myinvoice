@@ -41,11 +41,18 @@ const form = ref<ClientPayload>({
   language: 'cs',
   currency_default_id: 0,
   reverse_charge: false,
+  is_customer: true,
+  is_vendor: false,
   auto_send_reminders: true,
   payment_due_default: 7,
   hourly_rate: 0,
   note: null,
 })
+
+// Pro lock UI — counts of issued/received invoices se hodí znát, aby user věděl
+// proč nelze flag vypnout. Pro start: jen rely na backend error message.
+const lockCustomer = ref(false)  // true pokud klient má vydané faktury (server enforces)
+const lockVendor   = ref(false)  // true pokud má přijaté faktury
 
 const countries = ref<Country[]>([])
 const currencies = ref<Currency[]>([])
@@ -69,6 +76,8 @@ onMounted(async () => {
   if (isEdit.value && clientId.value) {
     const c = await clientsApi.get(clientId.value)
     Object.assign(form.value, sanitize(c))
+    lockCustomer.value = (c.invoices_count ?? 0) > 0
+    lockVendor.value   = (c.purchase_invoices_count ?? 0) > 0
   } else if (props.embedded && props.defaults) {
     Object.assign(form.value, props.defaults)
   }
@@ -90,6 +99,8 @@ function sanitize(c: Client): Partial<ClientPayload> {
     language: c.language,
     currency_default_id: c.currency_default_id,
     reverse_charge: c.reverse_charge,
+    is_customer: c.is_customer !== false,
+    is_vendor:   c.is_vendor   === true,
     auto_send_reminders: c.auto_send_reminders ?? true,
     payment_due_default: c.payment_due_default ?? null,
     hourly_rate: c.hourly_rate ?? 0,
@@ -345,6 +356,40 @@ async function submit() {
             <span>{{ t('client.auto_send_reminders') }}</span>
           </label>
           <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('client.auto_send_reminders_hint') }}</p>
+        </div>
+
+        <!-- Role flagy: klient i dodavatel současně -->
+        <div class="pt-3 border-t border-neutral-100">
+          <p class="text-xs text-neutral-500 mb-2">{{ t('client.roles_hint') }}</p>
+          <div class="flex flex-wrap gap-6">
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                v-model="form.is_customer"
+                type="checkbox"
+                :disabled="lockCustomer && form.is_customer"
+                class="rounded border-neutral-300 text-primary-600 disabled:opacity-50"
+              />
+              <span>{{ t('client.is_customer_label') }}</span>
+              <span v-if="lockCustomer" class="text-xs text-neutral-400 italic">
+                ({{ t('client.locked_has_invoices') }})
+              </span>
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                v-model="form.is_vendor"
+                type="checkbox"
+                :disabled="lockVendor && form.is_vendor"
+                class="rounded border-neutral-300 text-primary-600 disabled:opacity-50"
+              />
+              <span>{{ t('client.is_vendor_label') }}</span>
+              <span v-if="lockVendor" class="text-xs text-neutral-400 italic">
+                ({{ t('client.locked_has_purchases') }})
+              </span>
+            </label>
+          </div>
+          <p v-if="!form.is_customer && !form.is_vendor" class="text-xs text-red-600 mt-1">
+            {{ t('client.roles_required') }}
+          </p>
         </div>
 
         <div>

@@ -11,6 +11,7 @@ import {
   type ExchangeRateSource,
 } from '@/api/purchaseInvoices'
 import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
+import { settingsApi } from '@/api/settings'
 import { formatMoney } from '@/composables/useFormat'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
@@ -112,6 +113,61 @@ const currencyCode = computed(() => {
 })
 
 const showExchangeRate = computed(() => currencyCode.value && currencyCode.value !== 'CZK')
+
+/**
+ * Dropdown options: pro purchase invoice nás zajímá jen ISO currency code, ne vendor's
+ * bankovní účet. Currencies tabulka má v dropdown často redundantní entries
+ * (CZK — Fio, CZK — KB, atd.) — pro výběr měny faktury vendora vyfiltrujeme
+ * jen unikátní currency codes (preferujeme is_default=1 z každé skupiny).
+ */
+const currencyOptions = computed(() => {
+  const byCode = new Map<string, Currency>()
+  for (const c of currencies.value) {
+    const existing = byCode.get(c.code)
+    if (!existing || c.is_default) byCode.set(c.code, c)
+  }
+  return Array.from(byCode.values()).sort((a, b) => a.code.localeCompare(b.code))
+})
+
+// Quick add currency modal state
+const showAddCurrency = ref(false)
+const newCurrencyCode = ref('')
+const addingCurrency = ref(false)
+async function addCurrency() {
+  const code = newCurrencyCode.value.trim().toUpperCase()
+  if (!/^[A-Z]{3}$/.test(code)) {
+    toast.error('Zadej platný ISO 4217 kód (3 písmena: USD, GBP, …)')
+    return
+  }
+  if (currencies.value.some(c => c.code === code)) {
+    toast.error(`Měna ${code} už existuje`)
+    return
+  }
+  addingCurrency.value = true
+  try {
+    await settingsApi.createCurrency({
+      code,
+      label: `${code} — výchozí`,
+      symbol: code,
+      name_cs: code,
+      name_en: code,
+      decimals: 2,
+      is_active: true,
+      is_default: true,
+    })
+    // Refresh list a vyber novou měnu
+    currencies.value = await codebooksApi.currencies()
+    const newCcy = currencies.value.find(c => c.code === code)
+    if (newCcy) form.value.currency_id = newCcy.id
+    showAddCurrency.value = false
+    newCurrencyCode.value = ''
+    toast.success(`Měna ${code} přidána`)
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    addingCurrency.value = false
+  }
+}
 
 onMounted(async () => {
   await loadCodebooks()
@@ -346,19 +402,19 @@ function fieldErr(key: string): string | null {
 
     <form v-else @submit.prevent="submit" class="space-y-5">
       <!-- DRAG & DROP PDF (jen nahoře u nové faktury, schovaný po prvním interaction) -->
-      <section v-if="!isEdit && dropzoneVisible">
+      <div v-if="!isEdit && dropzoneVisible" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
         <PdfDropzone :uploading="pdfUploading" @file-dropped="onPdfDropped" @error="onPdfError" />
         <p class="text-xs text-neutral-500 mt-2">
           {{ t('purchase_invoice.extraction.ai_pending') }}
         </p>
-      </section>
+      </div>
 
       <!-- Existující PDF na detail/edit -->
-      <section v-if="existingPdf" class="p-3 border border-neutral-200 rounded-md bg-neutral-50 text-sm flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 0 0 0 2h1v9a1 1 0 1 0 2 0V4h1a1 1 0 1 0 0-2H9z"/></svg>
+      <div v-if="existingPdf" class="bg-white border border-neutral-200 rounded-lg p-4 shadow-sm flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <svg class="w-6 h-6 text-red-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 0 0 0 2h1v9a1 1 0 1 0 2 0V4h1a1 1 0 1 0 0-2H9z"/></svg>
           <div>
-            <div class="font-medium">{{ existingPdf.name }}</div>
+            <div class="font-medium text-sm">{{ existingPdf.name }}</div>
             <div class="text-xs text-neutral-500">{{ Math.round(existingPdf.size / 1024) }} KiB</div>
           </div>
         </div>
@@ -367,179 +423,194 @@ function fieldErr(key: string): string | null {
             v-if="invoiceId"
             :href="purchaseInvoicesApi.pdfUrl(invoiceId)"
             target="_blank"
-            class="px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-white"
+            class="px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             {{ t('purchase_invoice.pdf.open') }}
           </a>
           <button
             type="button"
             @click="dropzoneVisible = true; existingPdf = null"
-            class="cursor-pointer px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-white"
+            class="cursor-pointer px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             {{ t('purchase_invoice.pdf.replace') }}
           </button>
         </div>
-      </section>
+      </div>
 
       <!-- Replace dropzone když user vybere replace -->
-      <section v-else-if="isEdit && dropzoneVisible">
+      <div v-else-if="isEdit && dropzoneVisible" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
         <PdfDropzone :uploading="pdfUploading" @file-dropped="onPdfDropped" @error="onPdfError" />
-      </section>
+      </div>
 
-      <!-- Vendor + document kind -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <VendorPicker
-          v-model="form.vendor_id"
-          @selected="onVendorSelected"
-        />
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.document_kind') }}</label>
-          <select v-model="form.document_kind" class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm">
-            <option value="invoice">{{ t('purchase_invoice.document_kind.invoice') }}</option>
-            <option value="receipt">{{ t('purchase_invoice.document_kind.receipt') }}</option>
-            <option value="credit_note">{{ t('purchase_invoice.document_kind.credit_note') }}</option>
-            <option value="advance">{{ t('purchase_invoice.document_kind.advance') }}</option>
-          </select>
-        </div>
-      </section>
+      <!-- Box 1: Hlavička — vendor + typ + čísla + datumy + měna -->
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm space-y-4">
+        <h2 class="text-sm font-medium text-neutral-700 pb-2 border-b border-neutral-100">
+          {{ t('purchase_invoice.fields.vendor') }} & {{ t('purchase_invoice.fields.document_kind') }}
+        </h2>
 
-      <!-- Vendor invoice number + our varsymbol -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.vendor_invoice_number') }} *</label>
-          <input v-model="form.vendor_invoice_number" type="text" maxlength="50" required
-                 class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm font-mono"
-                 :class="fieldErr('vendor_invoice_number') ? 'border-red-300' : ''" />
-          <p class="text-xs text-neutral-500 mt-0.5">{{ t('purchase_invoice.fields.vendor_invoice_number_hint') }}</p>
-          <p v-if="fieldErr('vendor_invoice_number')" class="text-xs text-red-600">{{ fieldErr('vendor_invoice_number') }}</p>
+        <!-- Vendor + document kind -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <VendorPicker
+            v-model="form.vendor_id"
+            @selected="onVendorSelected"
+          />
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.document_kind') }}</label>
+            <select v-model="form.document_kind" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+              <option value="invoice">{{ t('purchase_invoice.document_kind.invoice') }}</option>
+              <option value="receipt">{{ t('purchase_invoice.document_kind.receipt') }}</option>
+              <option value="credit_note">{{ t('purchase_invoice.document_kind.credit_note') }}</option>
+              <option value="advance">{{ t('purchase_invoice.document_kind.advance') }}</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.varsymbol') }}</label>
-          <input v-model="form.varsymbol" type="text" maxlength="20"
-                 class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm font-mono"
-                 placeholder="PF-202605-NNNN" />
-          <p class="text-xs text-neutral-500 mt-0.5">{{ t('purchase_invoice.fields.varsymbol_hint') }}</p>
-        </div>
-      </section>
 
-      <!-- Dates -->
-      <section class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.issue_date') }} *</label>
-          <input v-model="form.issue_date" type="date" required class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm" />
+        <!-- Vendor invoice number + our varsymbol -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.vendor_invoice_number') }} <span class="text-red-500">*</span></label>
+            <input v-model="form.vendor_invoice_number" type="text" maxlength="50" required
+                   class="w-full h-10 px-3 border rounded-md text-sm font-mono"
+                   :class="fieldErr('vendor_invoice_number') ? 'border-red-300' : 'border-neutral-300'" />
+            <p class="text-xs text-neutral-500 mt-1">{{ t('purchase_invoice.fields.vendor_invoice_number_hint') }}</p>
+            <p v-if="fieldErr('vendor_invoice_number')" class="text-xs text-red-600 mt-1">{{ fieldErr('vendor_invoice_number') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.varsymbol') }}</label>
+            <input v-model="form.varsymbol" type="text" maxlength="20"
+                   class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono"
+                   placeholder="PF-202605-NNNN" />
+            <p class="text-xs text-neutral-500 mt-1">{{ t('purchase_invoice.fields.varsymbol_hint') }}</p>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.tax_date') }}</label>
-          <input v-model="form.tax_date" type="date" class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm" />
-        </div>
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.due_date') }} *</label>
-          <input v-model="form.due_date" type="date" required class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm" />
-        </div>
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.received_at') }}</label>
-          <input v-model="form.received_at" type="date" class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm" />
-        </div>
-      </section>
 
-      <!-- Currency + exchange rate -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.currency') }} *</label>
-          <select v-model="form.currency_id" required class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm">
-            <option :value="null">—</option>
-            <option v-for="c in currencies" :key="c.id" :value="c.id">{{ c.code }} — {{ c.label }}</option>
-          </select>
+        <!-- Dates -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.issue_date') }} <span class="text-red-500">*</span></label>
+            <input v-model="form.issue_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.tax_date') }}</label>
+            <input v-model="form.tax_date" type="date" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.due_date') }} <span class="text-red-500">*</span></label>
+            <input v-model="form.due_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.received_at') }}</label>
+            <input v-model="form.received_at" type="date" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+          </div>
         </div>
-        <ExchangeRateInput
-          v-if="showExchangeRate"
-          v-model="form.exchange_rate"
-          :currency="currencyCode"
-          :rate-date="form.tax_date || form.issue_date"
-          @cnb-loaded="(v) => { form.exchange_rate_date = v.rate_date; form.exchange_rate_source = 'cnb' }"
-          @source-change="(s) => form.exchange_rate_source = s"
-        />
-      </section>
 
-      <!-- Reverse charge + language -->
-      <section class="flex flex-wrap items-center gap-4">
-        <label class="inline-flex items-center gap-1.5 text-sm">
-          <input type="checkbox" v-model="form.reverse_charge" />
-          {{ t('purchase_invoice.fields.reverse_charge') }}
-        </label>
-        <div>
-          <label class="text-sm text-neutral-700 mr-2">{{ t('purchase_invoice.fields.language') }}:</label>
-          <select v-model="form.language" class="px-2 py-1 border border-neutral-300 rounded-md text-sm">
-            <option value="cs">CS</option>
-            <option value="en">EN</option>
-          </select>
+        <!-- Currency + exchange rate -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.currency') }} <span class="text-red-500">*</span></label>
+            <div class="flex items-center gap-2">
+              <select v-model="form.currency_id" required class="flex-1 h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+                <option :value="null">—</option>
+                <option v-for="c in currencyOptions" :key="c.id" :value="c.id">{{ c.code }}</option>
+              </select>
+              <button
+                type="button"
+                @click="showAddCurrency = true"
+                class="cursor-pointer h-10 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 whitespace-nowrap"
+                :title="t('purchase_invoice.fields.currency')"
+              >+ měna</button>
+            </div>
+          </div>
+          <ExchangeRateInput
+            v-if="showExchangeRate"
+            v-model="form.exchange_rate"
+            :currency="currencyCode"
+            :rate-date="form.tax_date || form.issue_date"
+            @cnb-loaded="(v) => { form.exchange_rate_date = v.rate_date; form.exchange_rate_source = 'cnb' }"
+            @source-change="(s) => form.exchange_rate_source = s"
+          />
         </div>
-      </section>
 
-      <!-- Items -->
-      <section>
-        <header class="flex items-center justify-between mb-2">
-          <h2 class="text-base font-medium">{{ t('purchase_invoice.items.title') }}</h2>
-          <button type="button" @click="addItem" class="cursor-pointer text-sm text-primary-700 hover:text-primary-800">
+        <!-- Reverse charge + language -->
+        <div class="flex flex-wrap items-center gap-6 pt-2 border-t border-neutral-100">
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" v-model="form.reverse_charge" class="rounded" />
+            {{ t('purchase_invoice.fields.reverse_charge') }}
+          </label>
+          <div class="inline-flex items-center gap-2">
+            <label class="text-sm text-neutral-700">{{ t('purchase_invoice.fields.language') }}:</label>
+            <select v-model="form.language" class="h-8 px-2 border border-neutral-300 rounded-md bg-white text-sm">
+              <option value="cs">CS</option>
+              <option value="en">EN</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box 2: Položky -->
+      <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+        <header class="flex items-center justify-between px-5 py-3 border-b border-neutral-100">
+          <h2 class="text-sm font-medium text-neutral-700">{{ t('purchase_invoice.items.title') }}</h2>
+          <button type="button" @click="addItem" class="cursor-pointer text-sm text-primary-700 hover:text-primary-800 font-medium">
             {{ t('purchase_invoice.items.add') }}
           </button>
         </header>
-        <div v-if="form.items.length === 0" class="text-sm text-neutral-500 py-4 text-center bg-neutral-50 rounded">
+        <div v-if="form.items.length === 0" class="text-sm text-neutral-500 py-8 text-center">
           {{ t('purchase_invoice.items.empty') }}
         </div>
         <table v-else class="w-full text-sm border-collapse">
           <thead>
-            <tr class="text-xs text-neutral-500">
-              <th class="text-left py-1 pr-2 font-normal">{{ t('purchase_invoice.items.description') }}</th>
-              <th class="text-right py-1 px-1 font-normal w-20">{{ t('purchase_invoice.items.quantity') }}</th>
-              <th class="text-left py-1 px-1 font-normal w-20">{{ t('purchase_invoice.items.unit') }}</th>
-              <th class="text-right py-1 px-1 font-normal w-28">{{ t('purchase_invoice.items.unit_price') }}</th>
-              <th class="text-left py-1 px-1 font-normal w-24">{{ t('purchase_invoice.items.vat_rate') }}</th>
-              <th class="text-right py-1 px-1 font-normal w-24">{{ t('purchase_invoice.items.total_with_vat') }}</th>
-              <th class="w-8"></th>
+            <tr class="text-xs text-neutral-500 bg-neutral-50">
+              <th class="text-left py-2 pl-5 pr-2 font-normal">{{ t('purchase_invoice.items.description') }}</th>
+              <th class="text-right py-2 px-1 font-normal w-20">{{ t('purchase_invoice.items.quantity') }}</th>
+              <th class="text-left py-2 px-1 font-normal w-20">{{ t('purchase_invoice.items.unit') }}</th>
+              <th class="text-right py-2 px-1 font-normal w-28">{{ t('purchase_invoice.items.unit_price') }}</th>
+              <th class="text-left py-2 px-1 font-normal w-24">{{ t('purchase_invoice.items.vat_rate') }}</th>
+              <th class="text-right py-2 px-1 font-normal w-28">{{ t('purchase_invoice.items.total_with_vat') }}</th>
+              <th class="w-10 pr-3"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(it, i) in form.items" :key="i">
-              <td class="py-1 pr-2">
-                <input v-model="it.description" type="text" class="w-full px-2 py-1 border border-neutral-300 rounded text-sm" />
+            <tr v-for="(it, i) in form.items" :key="i" class="border-t border-neutral-100">
+              <td class="py-2 pl-5 pr-2">
+                <input v-model="it.description" type="text" class="w-full h-9 px-2 border border-neutral-200 rounded text-sm" />
               </td>
-              <td class="py-1 px-1">
-                <input v-model.number="it.quantity" type="number" step="0.001" min="0" class="w-full px-2 py-1 border border-neutral-300 rounded text-sm text-right font-mono" />
+              <td class="py-2 px-1">
+                <input v-model.number="it.quantity" type="number" step="0.001" min="0" class="w-full h-9 px-2 border border-neutral-200 rounded text-sm text-right font-mono" />
               </td>
-              <td class="py-1 px-1">
-                <select v-model="it.unit" class="w-full px-1 py-1 border border-neutral-300 rounded text-sm">
+              <td class="py-2 px-1">
+                <select v-model="it.unit" class="w-full h-9 px-1 border border-neutral-200 rounded bg-white text-sm">
                   <option v-for="u in units" :key="u.code" :value="u.code">{{ u.code }}</option>
                 </select>
               </td>
-              <td class="py-1 px-1">
-                <input v-model.number="it.unit_price_without_vat" type="number" step="0.01" class="w-full px-2 py-1 border border-neutral-300 rounded text-sm text-right font-mono" />
+              <td class="py-2 px-1">
+                <input v-model.number="it.unit_price_without_vat" type="number" step="0.01" class="w-full h-9 px-2 border border-neutral-200 rounded text-sm text-right font-mono" />
               </td>
-              <td class="py-1 px-1">
-                <select v-model.number="it.vat_rate_id" class="w-full px-1 py-1 border border-neutral-300 rounded text-sm">
+              <td class="py-2 px-1">
+                <select v-model.number="it.vat_rate_id" class="w-full h-9 px-1 border border-neutral-200 rounded bg-white text-sm">
                   <option v-for="v in vatRates" :key="v.id" :value="v.id">{{ v.rate_percent }}%</option>
                 </select>
               </td>
-              <td class="py-1 px-1 text-right font-mono">{{ formatMoney(itemTotal(it).with, currencyCode) }}</td>
-              <td class="py-1 px-1">
-                <button type="button" @click="removeItem(i)" class="cursor-pointer text-neutral-400 hover:text-red-600" :title="t('purchase_invoice.items.remove')">✕</button>
+              <td class="py-2 px-1 text-right font-mono">{{ formatMoney(itemTotal(it).with, currencyCode) }}</td>
+              <td class="py-2 px-1 pr-3 text-center">
+                <button type="button" @click="removeItem(i)" class="cursor-pointer w-8 h-8 inline-flex items-center justify-center text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded" :title="t('purchase_invoice.items.remove')">✕</button>
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
 
-      <!-- Totals preview -->
-      <section v-if="form.items.length > 0" class="flex justify-end">
-        <table class="text-sm">
-          <tr><td class="pr-4 text-neutral-600">{{ t('purchase_invoice.totals.without_vat') }}:</td><td class="text-right font-mono">{{ formatMoney(totals.without_vat, currencyCode) }}</td></tr>
-          <tr><td class="pr-4 text-neutral-600">{{ t('purchase_invoice.totals.vat') }}:</td><td class="text-right font-mono">{{ formatMoney(totals.vat, currencyCode) }}</td></tr>
-          <tr class="font-medium border-t border-neutral-200"><td class="pr-4">{{ t('purchase_invoice.totals.with_vat') }}:</td><td class="text-right font-mono">{{ formatMoney(totals.with_vat, currencyCode) }}</td></tr>
-        </table>
-      </section>
+        <!-- Totals preview uvnitř Box 2 -->
+        <div v-if="form.items.length > 0" class="px-5 py-3 border-t border-neutral-100 bg-neutral-50/50 flex justify-end">
+          <table class="text-sm">
+            <tr><td class="pr-4 py-0.5 text-neutral-600">{{ t('purchase_invoice.totals.without_vat') }}:</td><td class="text-right font-mono py-0.5">{{ formatMoney(totals.without_vat, currencyCode) }}</td></tr>
+            <tr><td class="pr-4 py-0.5 text-neutral-600">{{ t('purchase_invoice.totals.vat') }}:</td><td class="text-right font-mono py-0.5">{{ formatMoney(totals.vat, currencyCode) }}</td></tr>
+            <tr class="font-semibold border-t border-neutral-200"><td class="pr-4 pt-1.5">{{ t('purchase_invoice.totals.with_vat') }}:</td><td class="text-right font-mono pt-1.5">{{ formatMoney(totals.with_vat, currencyCode) }}</td></tr>
+          </table>
+        </div>
+      </div>
 
-      <!-- Payment currency block -->
-      <section v-if="form.currency_id">
+      <!-- Box 3: Multi-currency platba (collapsible — komponenta má vlastní wrapper) -->
+      <div v-if="form.currency_id" class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <PaymentCurrencyBlock
           :invoice-currency-id="form.currency_id"
           :invoice-currency="currencyCode"
@@ -557,29 +628,58 @@ function fieldErr(key: string): string | null {
           @update:paid-amount-invoice-ccy="(v) => form.paid_amount_invoice_ccy = v"
           @update:exchange-diff-base="(v) => form.exchange_diff_base = v"
         />
-      </section>
+      </div>
 
-      <!-- Notes -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.note_above_items') }}</label>
-          <textarea v-model="form.note_above_items" rows="2" class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm"></textarea>
+      <!-- Box 4: Poznámky -->
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">{{ t('purchase_invoice.fields.note_above_items') }} / {{ t('purchase_invoice.fields.note_below_items') }}</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.fields.note_above_items') }}</label>
+            <textarea v-model="form.note_above_items" rows="3" class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm resize-y"></textarea>
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.fields.note_below_items') }}</label>
+            <textarea v-model="form.note_below_items" rows="3" class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm resize-y"></textarea>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.note_below_items') }}</label>
-          <textarea v-model="form.note_below_items" rows="2" class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-sm"></textarea>
-        </div>
-      </section>
+      </div>
 
-      <!-- Submit -->
-      <div class="flex items-center justify-end gap-2 pt-4 border-t border-neutral-200">
-        <RouterLink to="/purchase-invoices" class="px-4 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">
+      <!-- Submit bar — sticky bottom -->
+      <div class="bg-white border border-neutral-200 rounded-lg p-4 shadow-sm flex items-center justify-end gap-2">
+        <RouterLink to="/purchase-invoices" class="px-4 h-10 inline-flex items-center text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">
           {{ t('purchase_invoice.actions.back') }}
         </RouterLink>
-        <button type="submit" :disabled="submitting" class="cursor-pointer px-4 py-1.5 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md disabled:opacity-50">
+        <button type="submit" :disabled="submitting" class="cursor-pointer px-5 h-10 inline-flex items-center text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-md disabled:opacity-50">
           {{ submitting ? '…' : t('purchase_invoice.actions.save') }}
         </button>
       </div>
     </form>
+
+    <!-- Quick-add currency modal -->
+    <div v-if="showAddCurrency" class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4" @click.self="showAddCurrency = false">
+      <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-5 space-y-3">
+        <h3 class="font-medium">Přidat měnu</h3>
+        <p class="text-xs text-neutral-500">ISO 4217 kód (3 písmena), např. USD, GBP, CHF</p>
+        <input
+          v-model="newCurrencyCode"
+          type="text"
+          maxlength="3"
+          @keydown.enter="addCurrency"
+          class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono uppercase"
+          placeholder="USD"
+          autofocus
+        />
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" @click="showAddCurrency = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">Zrušit</button>
+          <button type="button" @click="addCurrency" :disabled="addingCurrency" class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md disabled:opacity-50">
+            {{ addingCurrency ? '…' : 'Přidat' }}
+          </button>
+        </div>
+        <p class="text-xs text-neutral-500 pt-1 border-t border-neutral-100">
+          Pro správu měn (kurz, bankovní účet, decimals) přejdi do <a href="/admin/settings" class="text-primary-700 hover:underline">Nastavení → Měny</a>.
+        </p>
+      </div>
+    </div>
   </div>
 </template>

@@ -32,6 +32,12 @@ final class GetClientAction
         $stmt->execute([$id]);
         $client['invoices_count'] = (int) $stmt->fetchColumn();
 
+        // Pro lock UI v ClientForm: víme-li že klient má vydané/přijaté faktury, nelze
+        // vypnout odpovídající role flag (server stejně refusne, ale UI to disable proaktivně).
+        $stmtP = $pdo->prepare('SELECT COUNT(*) FROM purchase_invoices WHERE vendor_id = ?');
+        $stmtP->execute([$id]);
+        $client['purchase_invoices_count'] = (int) $stmtP->fetchColumn();
+
         // VAT-aware obrat — plátci DPH vidí čísla bez DPH (relevantní pro DPH limit),
         // neplátci s DPH (fakturované částky odpovídají reálnému inkasu).
         $vatStmt = $pdo->prepare('SELECT is_vat_payer FROM supplier WHERE id = ?');

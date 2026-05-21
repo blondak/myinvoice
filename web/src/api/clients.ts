@@ -17,6 +17,8 @@ export interface Client {
   currency_default_id: number
   currency_default: string
   reverse_charge: boolean
+  is_customer?: boolean
+  is_vendor?: boolean
   auto_send_reminders: boolean
   payment_due_default?: number | null
   hourly_rate: number
@@ -24,6 +26,7 @@ export interface Client {
   archived_at?: string | null
   active_projects_count?: number
   invoices_count?: number
+  purchase_invoices_count?: number
   projects?: ProjectSummary[]
   revenue_by_month?: Array<{ month: string; currency: string; total: number }>
   revenue_by_year?:  Array<{ year: number; currency: string; total: number; count: number }>
@@ -93,6 +96,8 @@ export interface ClientPayload {
   language: 'cs' | 'en'
   currency_default_id: number
   reverse_charge: boolean
+  is_customer?: boolean
+  is_vendor?: boolean
   auto_send_reminders: boolean
   payment_due_default?: number | null
   hourly_rate?: number
