@@ -32,6 +32,7 @@ use MyInvoice\Action\Admin\Import\FakturoidCredentialsAction;
 use MyInvoice\Action\Admin\Import\AnthropicCredentialsAction;
 use MyInvoice\Action\Admin\Import\AiExtractPdfAction;
 use MyInvoice\Action\Crm\CrmDashboardAction;
+use MyInvoice\Action\Report\DphPriznaniAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\CronJobsAction;
 use MyInvoice\Action\Admin\RunCronJobAction;
@@ -289,6 +290,10 @@ final class Routes
         $app->get    ('/api/crm/top-clients',  [CrmDashboardAction::class, 'topClients']);
         $app->get    ('/api/crm/top-vendors',  [CrmDashboardAction::class, 'topVendors']);
         $app->post   ('/api/crm/recompute',    [CrmDashboardAction::class, 'recompute']);
+
+        // EPO výkazy (fáze 6) — DPH přiznání DPHDP3
+        $app->get    ('/api/reports/dphdp3/preview', [DphPriznaniAction::class, 'preview']);
+        $app->get    ('/api/reports/dphdp3',         [DphPriznaniAction::class, 'download']);
 
         $app->get    ('/api/admin/imports/{id:[0-9]+}',         ImportJobStatusAction::class);
         $app->post   ('/api/admin/imports/{id:[0-9]+}/cancel',  CancelImportJobAction::class);

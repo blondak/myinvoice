@@ -4,7 +4,7 @@
     "dashboard": "Dashboard", "invoices": "Invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Charts", "bank": "Bank", "system": "System",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "crm": "CRM (BI dashboard)", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "purchase_invoices": "Received invoices", "purchase_export": "Export", "vendors": "Vendors"
   },
@@ -1395,6 +1395,33 @@
     "preparing": "Preparing ZIP…",
     "hint": "PDFs are refreshed before export if the cache is stale. Larger archives may take a few seconds.",
     "download_failed": "Download failed"
+  },
+  "reports": {
+    "disclaimer_title": "Generated XML is only a helper",
+    "disclaimer_body": "Before submitting to the MF ČR EPO portal, always verify with your accountant or tax advisor. Tested on limited dataset — the app does not guarantee regulatory correctness.",
+    "dph": {
+      "title": "VAT return (DPHDP3)",
+      "subtitle": "Monthly VAT return for MF ČR EPO portal. Form version 03.01.",
+      "download_xml": "Download XML",
+      "warnings": "Warnings",
+      "vat_output": "VAT output",
+      "vat_output_hint": "From issued invoices (revenue)",
+      "vat_input": "VAT input",
+      "vat_input_hint": "From received invoices (deduction)",
+      "tax_due": "Tax due",
+      "tax_due_hint": "Own tax liability",
+      "excess_deduction": "Excess deduction",
+      "excess_deduction_hint": "Refund from tax office",
+      "output_section": "VAT output (lines 1-29)",
+      "input_section": "VAT input (lines 40+)",
+      "no_output_lines": "No issued invoices with VAT classification in this month.",
+      "no_input_lines": "No received invoices with VAT classification in this month.",
+      "no_data_hint": "For correct calculation, mark invoices with VAT classification code (field 'VAT classification' in row editor).",
+      "line": "Line",
+      "description": "Description",
+      "base": "Base",
+      "vat": "VAT"
+    }
   },
   "crm": {
     "title": "CRM dashboard",

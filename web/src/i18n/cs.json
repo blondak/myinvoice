@@ -4,7 +4,7 @@
     "dashboard": "Přehled", "invoices": "Faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Grafy", "bank": "Banka", "system": "Systém",
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé",
-    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "integrations": "Externí integrace", "crm": "CRM (BI dashboard)", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
+    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
     "purchase_invoices": "Přijaté faktury", "purchase_export": "Export", "vendors": "Dodavatelé"
   },
@@ -1395,6 +1395,33 @@
     "preparing": "Připravuji ZIP…",
     "hint": "PDF se před exportem aktualizuje, pokud cache není svěží. Větší archivy mohou trvat několik sekund.",
     "download_failed": "Stažení selhalo"
+  },
+  "reports": {
+    "disclaimer_title": "Vygenerovaný XML je pouze pomůcka",
+    "disclaimer_body": "Před odesláním na EPO portál MF ČR vždy ověřte správnost s vaší účetní nebo daňovým poradcem. Testováno na omezené sadě dat — aplikace nezaručuje regulatorní správnost.",
+    "dph": {
+      "title": "DPH přiznání (DPHDP3)",
+      "subtitle": "Měsíční přiznání k DPH pro EPO portál MF ČR. Verze formuláře 03.01.",
+      "download_xml": "Stáhnout XML",
+      "warnings": "Upozornění",
+      "vat_output": "DPH na výstupu",
+      "vat_output_hint": "Z vystavených faktur (tržby)",
+      "vat_input": "DPH na vstupu",
+      "vat_input_hint": "Z přijatých faktur (odpočet)",
+      "tax_due": "Daň k odvodu",
+      "tax_due_hint": "Vlastní daňová povinnost",
+      "excess_deduction": "Nadměrný odpočet",
+      "excess_deduction_hint": "Vratka od FÚ",
+      "output_section": "DPH na výstupu (řádky 1-29)",
+      "input_section": "DPH na vstupu (řádky 40+)",
+      "no_output_lines": "Žádné vydané faktury s VAT klasifikací v tomto měsíci.",
+      "no_input_lines": "Žádné přijaté faktury s VAT klasifikací v tomto měsíci.",
+      "no_data_hint": "Pro správný výpočet musíte faktury označit VAT klasifikačním kódem (pole 'Klasifikace DPH' v editoru řádků).",
+      "line": "Řádek",
+      "description": "Popis",
+      "base": "Základ",
+      "vat": "DPH"
+    }
   },
   "crm": {
     "title": "CRM dashboard",
