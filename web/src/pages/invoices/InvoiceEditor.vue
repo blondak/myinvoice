@@ -837,7 +837,7 @@ async function deleteDraft() {
                   <SearchableSelect
                     :model-value="form.client_id"
                     @update:model-value="(v) => { form.client_id = v; onClientChange() }"
-                    :options="clients.map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
+                    :options="clients.filter(c => c.is_customer !== false).map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
                     :placeholder="t('invoice.select_client')"
                     :clearable="false"
                   />

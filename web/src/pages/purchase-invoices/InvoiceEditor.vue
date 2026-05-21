@@ -64,6 +64,7 @@ const form = ref<{
   note_above_items: string
   note_below_items: string
   advance_paid_amount: number
+  rounding: number
   payment_currency_id: number | null
   payment_exchange_rate: number | null
   paid_amount_payment_ccy: number | null
@@ -90,6 +91,7 @@ const form = ref<{
   note_above_items: '',
   note_below_items: '',
   advance_paid_amount: 0,
+  rounding: 0,
   payment_currency_id: null,
   payment_exchange_rate: null,
   paid_amount_payment_ccy: null,
@@ -266,6 +268,7 @@ function populate(inv: PurchaseInvoice) {
   form.value.note_above_items = inv.note_above_items || ''
   form.value.note_below_items = inv.note_below_items || ''
   form.value.advance_paid_amount = inv.advance_paid_amount
+  form.value.rounding = Number(inv.rounding) || 0
   form.value.payment_currency_id = inv.payment_currency_id
   form.value.payment_exchange_rate = inv.payment_exchange_rate
   form.value.paid_amount_payment_ccy = inv.paid_amount_payment_ccy
@@ -408,6 +411,7 @@ async function submit() {
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
       advance_paid_amount: form.value.advance_paid_amount,
+      rounding: form.value.rounding,
       payment_currency_id: form.value.payment_currency_id,
       payment_exchange_rate: form.value.payment_exchange_rate,
       paid_amount_payment_ccy: form.value.paid_amount_payment_ccy,
@@ -697,12 +701,24 @@ function fieldErr(key: string): string | null {
           </tbody>
         </table>
 
-        <!-- Totals preview uvnitř Box 2 -->
+        <!-- Totals preview uvnitř Box 2 + editovatelné zaokrouhlení -->
         <div v-if="form.items.length > 0" class="px-5 py-3 border-t border-neutral-100 bg-neutral-50/50 flex justify-end">
           <table class="text-sm">
             <tr><td class="pr-4 py-0.5 text-neutral-600">{{ t('purchase_invoice.totals.without_vat') }}:</td><td class="text-right font-mono py-0.5">{{ formatMoney(totals.without_vat, currencyCode) }}</td></tr>
             <tr><td class="pr-4 py-0.5 text-neutral-600">{{ t('purchase_invoice.totals.vat') }}:</td><td class="text-right font-mono py-0.5">{{ formatMoney(totals.vat, currencyCode) }}</td></tr>
             <tr class="font-semibold border-t border-neutral-200"><td class="pr-4 pt-1.5">{{ t('purchase_invoice.totals.with_vat') }}:</td><td class="text-right font-mono pt-1.5">{{ formatMoney(totals.with_vat, currencyCode) }}</td></tr>
+            <tr>
+              <td class="pr-4 py-1 text-neutral-600">{{ t('purchase_invoice.totals.rounding') }}:</td>
+              <td class="text-right">
+                <input v-model.number="form.rounding" type="number" step="0.01"
+                  class="w-24 h-7 px-2 text-right border border-neutral-300 rounded text-sm font-mono"
+                  :title="t('purchase_invoice.totals.rounding_hint')" />
+              </td>
+            </tr>
+            <tr v-if="form.rounding !== 0" class="font-semibold border-t border-neutral-100">
+              <td class="pr-4 pt-1.5">{{ t('purchase_invoice.totals.with_vat_rounded') }}:</td>
+              <td class="text-right font-mono pt-1.5">{{ formatMoney(totals.with_vat + form.rounding, currencyCode) }}</td>
+            </tr>
           </table>
         </div>
       </div>

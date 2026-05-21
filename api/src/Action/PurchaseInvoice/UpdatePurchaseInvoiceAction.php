@@ -87,6 +87,10 @@ final class UpdatePurchaseInvoiceAction
         }
         $this->repo->replaceItems($id, (array) ($body['items'] ?? []));
         $this->calc->recompute($id);
+        // Rounding override z body (uživatel může ručně upravit v editoru)
+        if (array_key_exists('rounding', $body)) {
+            $this->repo->setRounding($id, $supplierId, (float) $body['rounding']);
+        }
 
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $action = ($existing['status'] !== 'draft') ? 'purchase_invoice.force_updated' : 'purchase_invoice.updated';

@@ -81,6 +81,7 @@
       "vat": "DPH",
       "with_vat": "Celkem s DPH",
       "rounding": "Zaokrouhlení",
+      "rounding_hint": "Rozdíl mezi součtem položek a zaokrouhlenou částkou na faktuře (typicky +/− 0.5 Kč).",
       "with_vat_rounded": "Celkem po zaokrouhlení",
       "advance_paid": "Uhrazená záloha",
       "to_pay": "K úhradě"

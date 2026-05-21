@@ -179,6 +179,7 @@ export interface PurchaseInvoicePayload {
   note_above_items?: string | null
   note_below_items?: string | null
   advance_paid_amount?: number
+  rounding?: number
   payment_currency_id?: number | null
   payment_exchange_rate?: number | null
   paid_amount_payment_ccy?: number | null

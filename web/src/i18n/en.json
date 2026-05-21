@@ -81,6 +81,7 @@
       "vat": "VAT",
       "with_vat": "Total with VAT",
       "rounding": "Rounding",
+      "rounding_hint": "Difference between items sum and rounded amount on the invoice (typically +/− 0.5 CZK).",
       "with_vat_rounded": "Total after rounding",
       "advance_paid": "Advance paid",
       "to_pay": "Amount due"
