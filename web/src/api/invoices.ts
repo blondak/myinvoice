@@ -197,6 +197,8 @@ export interface InvoicePayload {
   // s fallbackem na cfg.varsymbol.templates. Backend ho akceptuje jen u draftu;
   // po vystavení je číslo immutable (snapshot).
   varsymbol?: string | null
+  vat_classification_code?: string | null
+  revenue_category?: string | null
   items: Array<{
     description: string
     quantity: number

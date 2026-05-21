@@ -97,36 +97,38 @@ function gotoClient(clientId: number) {
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
-    <div class="flex items-center justify-between mb-1">
-      <h1 class="text-2xl font-bold text-neutral-900">{{ t('recurring.title') }}</h1>
-      <button @click="gotoNew" class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">
+  <div>
+    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ t('recurring.title') }}</h1>
+        <p class="text-sm text-neutral-500 mt-0.5">{{ t('recurring.subtitle') }}</p>
+      </div>
+      <button @click="gotoNew" class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
         {{ t('recurring.new') }}
       </button>
     </div>
-    <p class="text-sm text-neutral-500 mb-5">{{ t('recurring.subtitle') }}</p>
 
-    <div class="flex items-center gap-3 mb-4">
-      <label class="text-sm text-neutral-700">
-        <span class="mr-2">Status:</span>
-        <select v-model="statusFilter" class="h-8 px-2 text-sm border border-neutral-300 rounded">
-          <option value="">{{ t('common.all') ?? 'Vše' }}</option>
+    <!-- Filtry v boxu (sjednoceno s /invoices a /purchase-invoices) -->
+    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm mb-4 p-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <select v-model="statusFilter" class="h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+          <option value="">{{ t('common.all') ?? 'Vše' }} (status)</option>
           <option value="active">{{ t('recurring.status.active') }}</option>
           <option value="paused">{{ t('recurring.status.paused') }}</option>
           <option value="expired">{{ t('recurring.status.expired') }}</option>
         </select>
-      </label>
+      </div>
     </div>
 
     <div v-if="loading" class="text-center py-12 text-neutral-400">…</div>
-    <div v-else-if="filtered.length === 0" class="bg-white border border-dashed border-neutral-300 rounded-lg p-8 text-center">
+    <div v-else-if="filtered.length === 0" class="bg-white border border-dashed border-neutral-300 rounded-lg p-8 text-center shadow-sm">
       <p class="text-neutral-500 mb-4">{{ t('recurring.empty') }}</p>
       <button @click="gotoNew" class="cursor-pointer px-4 h-10 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">
         {{ t('recurring.create_first') }}
       </button>
     </div>
 
-    <div v-else class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+    <div v-else class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <!-- Desktop: tabulka -->
       <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-sm">

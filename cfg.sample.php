@@ -183,9 +183,10 @@ return [
         // Limity nad rámec brute_force (ten řeší jen login). Klíč = max požadavků v daném okně.
         'login_per_min_per_ip'      => 10,           // doplněk k brute_force; ochrana proti spamu z 1 IP
         'forgot_per_hour_per_email' => 3,            // POST /auth/forgot-password
-        'mutation_per_min_per_user' => 60,           // všechna POST/PUT/PATCH/DELETE
-        'read_per_min_per_user'     => 300,          // GET endpointy
+        'mutation_per_min_per_user' => 120,          // všechna POST/PUT/PATCH/DELETE (bulk akce + import jobs)
+        'read_per_min_per_user'     => 1200,         // GET endpointy (CRM dashboard ~16 paralelně, časté refresh)
         'ares_per_min_per_user'     => 30,           // proxy na ARES (cachované, ale brzdí abuse)
+        'ai_per_5min_per_user'      => 30,           // Anthropic AI extract + inbox scan (BYOK billing protection)
         'setup_per_hour_per_ip'     => 5,            // /setup wizard endpoint
     ],
     'brute_force' => [
@@ -236,6 +237,18 @@ return [
         'allowed_exts'   => ['gpc', 'txt'],          // jen tyto přípony se zpracují
         'auto_match'     => true,                    // automatické párování transakcí na faktury podle VS
         'partial_match_tolerance' => 1.00,           // částečná shoda částky: 1.00 = jen přesně, 0.99 = ±1%, 0.0 = jakákoliv částka
+    ],
+
+    // Scan adresáře s PDF/ISDOC pro automatický import přijatých faktur.
+    // Admin spustí v UI "Nascanovat inbox" → projde rekurzivně inbox_dir, dedup
+    // přes SHA-256 (proti purchase_invoices.pdf_hash), z ISDOC vytvoří draft.
+    // Plain PDF (bez embedded ISDOC) se ve fázi 1 přeskakují — AI extrakce v fázi 2c je doplní.
+    'purchase_invoice' => [
+        'inbox_dir'         => '',                   // absolutní cesta (např. 'C:/inetpub/wwwroot/myinvoice.cz/inbox' nebo '/var/lib/myinvoice/inbox'); prázdné = scan vypnutý
+        'inbox_recursive'   => true,                 // procházet i podadresáře
+        'allowed_exts'      => ['pdf', 'isdoc', 'xml'],  // jen tyto přípony se zpracují (.xml = ISDOC payload bez wrapping PDF)
+        'move_processed_to' => '',                   // volitelný podadresář (např. 'processed'); prázdné = soubory zůstanou na místě a budou skipnuté při dalším scanu díky pdf_hash dedup
+        'archive_storage'   => __DIR__ . '/storage/purchase-invoices', // kam přesouvat originální PDF po importu (mimo webroot)
     ],
 
     // Cron retention (api/bin/cron-cleanup.php + cron-backup.php)

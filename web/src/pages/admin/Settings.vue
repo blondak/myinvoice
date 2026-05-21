@@ -87,6 +87,18 @@ async function saveSupplier() {
       invoice_number_period: supplier.value.invoice_number_period,
       email_branding_enabled: supplier.value.email_branding_enabled,
       email_accent_color: supplier.value.email_accent_color,
+      // Tax settings (EPO výkazy DPH/KH)
+      taxpayer_type: (supplier.value as any).taxpayer_type ?? null,
+      vat_period: (supplier.value as any).vat_period ?? null,
+      financial_office_code: (supplier.value as any).financial_office_code ?? null,
+      workplace_code: (supplier.value as any).workplace_code ?? null,
+      cz_nace_code: (supplier.value as any).cz_nace_code ?? null,
+      data_box_type: (supplier.value as any).data_box_type ?? null,
+      data_box_id: (supplier.value as any).data_box_id ?? null,
+      sest_jmeno: (supplier.value as any).sest_jmeno ?? null,
+      sest_telefon: (supplier.value as any).sest_telefon ?? null,
+      sest_email: (supplier.value as any).sest_email ?? null,
+      sest_funkce: (supplier.value as any).sest_funkce ?? null,
     })
     toast.success(t('common.saved'))
     bumpPreview()
@@ -343,9 +355,13 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
         </div>
 
-        <!-- Číslování faktur — per-supplier templ + period (migrace 0014) -->
-        <div class="mt-6 pt-4 border-t border-neutral-200">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">{{ t('settings.numbering_section') }}</h3>
+      </section>
+
+      <!-- Číslování faktur — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.numbering_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.numbering_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-1">{{ t('settings.numbering_hint_intro') }}</p>
           <ul class="text-xs text-neutral-500 mb-3 space-y-0.5 ml-2">
             <li><code class="bg-neutral-100 px-1 rounded">{YYYY}</code> &mdash; {{ t('settings.numbering_hint_yyyy') }} <span class="text-neutral-400">(2026)</span></li>
@@ -402,9 +418,88 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
         </div>
 
-        <!-- Pohoda XML export config (volitelné) -->
-        <div class="mt-6 pt-4 border-t border-neutral-200">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">{{ t('settings.pohoda_section') }}</h3>
+      </section>
+
+      <!-- Daňové nastavení (EPO výkazy DPH/KH/DPFO/DPPO) — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.tax_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.tax_section') }}</h3>
+          <p class="text-xs text-neutral-500 mb-3">{{ t('settings.tax_hint') }}</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.taxpayer_type') }}</label>
+              <select v-model="supplier.taxpayer_type" class="w-full h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+                <option :value="null">— {{ t('common.unset') }} —</option>
+                <option value="fo">{{ t('settings.taxpayer_fo') }}</option>
+                <option value="po">{{ t('settings.taxpayer_po') }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.vat_period') }}</label>
+              <select v-model="supplier.vat_period" class="w-full h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+                <option :value="null">— {{ t('common.unset') }} —</option>
+                <option value="monthly">{{ t('settings.vat_monthly') }}</option>
+                <option value="quarterly">{{ t('settings.vat_quarterly') }}</option>
+              </select>
+              <p class="text-xs text-neutral-500 mt-1">{{ t('settings.vat_period_hint') }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.financial_office_code') }}</label>
+              <input v-model="supplier.financial_office_code" type="text" maxlength="8" placeholder="451"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+              <p class="text-xs text-neutral-500 mt-1">{{ t('settings.financial_office_hint') }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.workplace_code') }}</label>
+              <input v-model="supplier.workplace_code" type="text" maxlength="8"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.cz_nace_code') }}</label>
+              <input v-model="supplier.cz_nace_code" type="text" maxlength="8" placeholder="62.01"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.data_box_id') }}</label>
+              <input v-model="supplier.data_box_id" type="text" maxlength="16"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+          </div>
+
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mt-5 mb-2">{{ t('settings.sest_section') }}</h4>
+          <p class="text-xs text-neutral-500 mb-3">{{ t('settings.sest_hint') }}</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.sest_jmeno') }}</label>
+              <input v-model="supplier.sest_jmeno" type="text" maxlength="100"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.sest_funkce') }}</label>
+              <input v-model="supplier.sest_funkce" type="text" maxlength="80"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.sest_telefon') }}</label>
+              <input v-model="supplier.sest_telefon" type="text" maxlength="40"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.sest_email') }}</label>
+              <input v-model="supplier.sest_email" type="email" maxlength="120"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Pohoda XML export config (volitelné) — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.pohoda_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.pohoda_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-3">{{ t('settings.pohoda_hint') }}</p>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>

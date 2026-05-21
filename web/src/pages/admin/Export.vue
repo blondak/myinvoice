@@ -74,10 +74,22 @@ const monthLabel = (m: string): string => {
           <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('export.format') }} *</label>
           <div class="space-y-2">
             <label v-for="f in (['pdf-zip', 'isdoc', 'pohoda'] as const)" :key="f"
-              class="flex items-start gap-2 p-2.5 border rounded-md cursor-pointer"
-              :class="format === f ? 'border-primary-500 bg-primary-50' : 'border-neutral-200'">
-              <input v-model="format" type="radio" :value="f" class="mt-0.5" />
-              <div>
+              class="flex items-start gap-3 p-3 border rounded-md cursor-pointer transition"
+              :class="format === f ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500/20' : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'">
+              <input v-model="format" type="radio" :value="f" class="sr-only" />
+              <!-- Barevné ikony per formát — sjednoceno s /purchase-invoices/export -->
+              <svg v-if="f === 'pdf-zip'" class="w-6 h-7 shrink-0" viewBox="0 0 32 36" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#dc2626" d="M4 2h16l8 8v22a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                <path fill="#ffffff" opacity="0.35" d="M20 2v8h8z"/>
+                <text x="16" y="26" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" text-anchor="middle" letter-spacing="0.3">PDF</text>
+              </svg>
+              <svg v-else-if="f === 'pohoda'" class="w-6 h-7 shrink-0 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414"/>
+              </svg>
+              <svg v-else class="w-6 h-7 shrink-0 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2"/>
+              </svg>
+              <div class="flex-1">
                 <div class="text-sm font-medium">{{ t('export.format_' + f.replace('-', '_')) }}</div>
                 <div class="text-xs text-neutral-500">{{ t('export.format_' + f.replace('-', '_') + '_hint') }}</div>
               </div>

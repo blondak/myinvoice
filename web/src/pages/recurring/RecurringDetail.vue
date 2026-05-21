@@ -162,7 +162,7 @@ async function removeAction() {
 </script>
 
 <template>
-  <div class="p-4 md:p-6 max-w-5xl mx-auto">
+  <div class="max-w-5xl">
     <div v-if="loading" class="text-center text-neutral-400 py-12">…</div>
 
     <div v-else-if="tpl" class="space-y-4">

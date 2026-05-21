@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
+import { purchaseInvoicesApi, type PurchaseInvoice } from '@/api/purchaseInvoices'
 import { recurringApi, type RecurringTemplate } from '@/api/recurring'
 import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
 import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
@@ -25,6 +26,57 @@ const invoicesTotal = ref(0)
 const invoicesPage = ref(1)
 const invoicesPages = ref(1)
 const recurringTemplates = ref<RecurringTemplate[]>([])
+const purchaseInvoices = ref<PurchaseInvoice[]>([])
+const purchaseInvoicesLoading = ref(false)
+
+// Aggregace přijatých faktur per měsíc / rok (paralel se statistikami vystavených).
+// Server zatím nevrací aggregated dataset, takže computované client-side z purchaseInvoices.
+const purchaseByMonth = computed(() => {
+  const m = new Map<string, { total: number, count: number, currency: string }>()
+  for (const pi of purchaseInvoices.value) {
+    if (pi.status === 'draft' || pi.status === 'cancelled') continue
+    const key = (pi.issue_date || '').slice(0, 7) // YYYY-MM
+    if (!key) continue
+    const cur = m.get(key) ?? { total: 0, count: 0, currency: pi.currency || 'CZK' }
+    cur.total += Number(pi.total_with_vat) || 0
+    cur.count += 1
+    m.set(key, cur)
+  }
+  return Array.from(m.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, ...v }))
+})
+
+const purchaseByYear = computed(() => {
+  const m = new Map<string, { total: number, count: number, currency: string }>()
+  for (const pi of purchaseInvoices.value) {
+    if (pi.status === 'draft' || pi.status === 'cancelled') continue
+    const year = (pi.issue_date || '').slice(0, 4)
+    if (!year) continue
+    const cur = (pi.currency || 'CZK')
+    const key = `${year}|${cur}`
+    const v = m.get(key) ?? { total: 0, count: 0, currency: cur }
+    v.total += Number(pi.total_with_vat) || 0
+    v.count += 1
+    m.set(key, v)
+  }
+  return Array.from(m.entries())
+    .map(([key, v]) => ({ year: key.split('|')[0], ...v }))
+    .sort((a, b) => b.year.localeCompare(a.year))
+})
+
+const purchaseMonthlyChart = computed(() => ({
+  labels: purchaseByMonth.value.map(r => r.month),
+  values: purchaseByMonth.value.map(r => r.total),
+}))
+
+const purchaseTotalsByCurrency = computed(() => {
+  const m = new Map<string, number>()
+  for (const r of purchaseByYear.value) {
+    m.set(r.currency, (m.get(r.currency) ?? 0) + r.total)
+  }
+  return Array.from(m.entries()).map(([currency, total]) => ({ currency, total }))
+})
 
 // Pro graf: primární měna = nejčastější v datech, fallback default
 const primaryCurrency = computed(() => {
@@ -66,21 +118,25 @@ async function load() {
   const id = Number(route.params.id)
   loading.value = true
   invoicesLoading.value = true
+  purchaseInvoicesLoading.value = true
   invoicesPage.value = 1
   try {
-    const [c, grouped, rec] = await Promise.all([
+    const [c, grouped, rec, purchaseGrouped] = await Promise.all([
       clientsApi.get(id),
       invoicesApi.listGrouped({ client_id: id, page: 1 }),
       recurringApi.list({ client_id: id }).catch(() => [] as RecurringTemplate[]),
+      purchaseInvoicesApi.listGrouped({ vendor_id: id }).catch(() => ({ data: [] as Array<{invoices: PurchaseInvoice[]}> })),
     ])
     client.value = c
     invoices.value = grouped.data.flatMap(g => g.invoices)
     invoicesTotal.value = grouped.meta.total
     invoicesPages.value = grouped.meta.pages ?? 1
     recurringTemplates.value = rec
+    purchaseInvoices.value = (purchaseGrouped.data ?? []).flatMap((g: any) => g.invoices ?? [])
   } finally {
     loading.value = false
     invoicesLoading.value = false
+    purchaseInvoicesLoading.value = false
   }
 }
 
@@ -261,6 +317,36 @@ async function deleteClient() {
       </div>
     </div>
 
+    <!-- Náklady (přijaté faktury) — graf po měsících + sumace po letech -->
+    <div v-if="purchaseByMonth.length > 0" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-2 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div class="flex items-baseline justify-between mb-3">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.costs_by_month') }}</h3>
+          <span class="text-xs font-mono text-neutral-500">{{ primaryCurrency }}</span>
+        </div>
+        <MonthlyRevenueChart :labels="purchaseMonthlyChart.labels" :values="purchaseMonthlyChart.values" :currency="primaryCurrency" />
+      </div>
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('client.costs_by_year') }}</h3>
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="r in purchaseByYear" :key="`${r.year}-${r.currency}`">
+              <td class="py-2 text-neutral-900 font-medium">{{ r.year }}</td>
+              <td class="py-2 text-right font-mono text-neutral-900">{{ formatMoney(r.total, r.currency) }}</td>
+              <td class="py-2 pl-3 text-right text-xs text-neutral-500 whitespace-nowrap">{{ t('client.year_invoices', { n: r.count }) }}</td>
+            </tr>
+            <tr v-for="t in purchaseTotalsByCurrency" :key="`total-${t.currency}`" class="font-semibold border-t-2 border-neutral-200 pt-2">
+              <td class="py-2 text-neutral-700">{{ $t('client.total') }}</td>
+              <td class="py-2 text-right font-mono text-neutral-700">{{ formatMoney(t.total, t.currency) }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Obrat podle zakázek — graf + tabulka -->
     <div v-if="projectsTable.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
@@ -298,8 +384,9 @@ async function deleteClient() {
       </div>
     </div>
 
-    <!-- Zakázky -->
-    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+    <!-- Zakázky — visible pokud is_customer NEBO existují zakázky -->
+    <div v-if="client.is_customer !== false || (client.projects?.length ?? 0) > 0"
+         class="bg-white border border-neutral-200 rounded-lg shadow-sm">
       <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
         <h3 class="font-semibold">{{ t('client.projects') }}</h3>
         <RouterLink :to="`/projects/new?client_id=${client.id}`"
@@ -378,10 +465,10 @@ async function deleteClient() {
       </div>
     </div>
 
-    <!-- Faktury -->
-    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+    <!-- Vystavené faktury — visible pokud is_customer NEBO existují vystavené faktury -->
+    <div v-if="client.is_customer !== false || invoices.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm">
       <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="font-semibold">{{ t('nav.invoices') }} <span v-if="invoicesTotal" class="text-neutral-400 font-normal">({{ invoicesTotal }})</span></h3>
+        <h3 class="font-semibold">{{ t('client.issued_invoices') }} <span v-if="invoicesTotal" class="text-neutral-400 font-normal">({{ invoicesTotal }})</span></h3>
         <RouterLink :to="`/invoices/new?client_id=${client.id}`"
           class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md inline-flex items-center">
           {{ t('invoice.new') }}
@@ -467,8 +554,50 @@ async function deleteClient() {
       </div>
     </div>
 
-    <!-- Pravidelné fakturace -->
-    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+    <!-- Přijaté faktury — visible pokud is_vendor NEBO existují přijaté faktury -->
+    <div v-if="client.is_vendor === true || purchaseInvoices.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+      <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+        <h3 class="font-semibold">{{ t('client.received_invoices') }} <span v-if="purchaseInvoices.length" class="text-neutral-400 font-normal">({{ purchaseInvoices.length }})</span></h3>
+        <RouterLink :to="`/purchase-invoices/new?vendor_id=${client.id}`"
+          class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md inline-flex items-center">
+          {{ t('purchase_invoice.actions.new') }}
+        </RouterLink>
+      </div>
+      <div v-if="purchaseInvoicesLoading" class="p-8 text-center text-neutral-500 text-sm">{{ t('common.loading') }}</div>
+      <div v-else-if="!purchaseInvoices.length" class="p-8 text-center text-neutral-500 text-sm">
+        {{ t('common.no_data') }}
+      </div>
+      <div v-else class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.vendor_invoice_number') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.issue_date') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.due_date') }}</th>
+            <th class="text-right px-4 py-2.5 font-medium">{{ t('purchase_invoice.totals.with_vat') }}</th>
+            <th class="text-center px-4 py-2.5 font-medium">{{ t('invoice.status_label') }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+          <tr v-for="pi in purchaseInvoices" :key="pi.id" class="cursor-pointer hover:bg-neutral-50"
+              @click="router.push(`/purchase-invoices/${pi.id}`)">
+            <td class="px-4 py-2.5 font-mono">{{ pi.vendor_invoice_number || `#${pi.id}` }}</td>
+            <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.issue_date) }}</td>
+            <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.due_date) }}</td>
+            <td class="px-4 py-2.5 text-right font-mono">{{ formatMoney(pi.total_with_vat, pi.currency || 'CZK') }}</td>
+            <td class="px-4 py-2.5 text-center">
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                :class="pi.status === 'paid' ? 'bg-success-50 text-success-600' :
+                        pi.status === 'cancelled' ? 'bg-neutral-100 text-neutral-500' :
+                        'bg-primary-50 text-primary-700'">{{ pi.status }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <!-- Pravidelné fakturace — visible pokud is_customer NEBO existují recurring -->
+    <div v-if="client.is_customer !== false || recurringTemplates.length > 0"
+         class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
         <h3 class="font-semibold">
           {{ t('recurring.title') }}

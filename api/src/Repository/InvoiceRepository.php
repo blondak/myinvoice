@@ -340,8 +340,8 @@ final class InvoiceRepository
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
              issue_date, tax_date, due_date, currency_id, reverse_charge, language,
              note_above_items, note_below_items, advance_paid_amount, varsymbol,
-             payment_method, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)';
+             payment_method, status, vat_classification_code, revenue_category, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -361,6 +361,8 @@ final class InvoiceRepository
             (float) ($data['advance_paid_amount'] ?? 0),
             $manualVarsymbol,
             $paymentMethod,
+            !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
+            !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
             $userId,
         ]);
 
@@ -396,7 +398,8 @@ final class InvoiceRepository
                 issue_date = ?, tax_date = ?, due_date = ?,
                 currency_id = ?, reverse_charge = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
-                advance_paid_amount = ?'
+                advance_paid_amount = ?,
+                vat_classification_code = ?, revenue_category = ?'
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ($hasPaymentMethod ? ', payment_method = ?' : '')
               . ' WHERE id = ?';
@@ -413,6 +416,8 @@ final class InvoiceRepository
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             (float) ($data['advance_paid_amount'] ?? 0),
+            !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
+            !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
         ];
         if ($hasVarsymbol) $params[] = $manualVarsymbol;
         if ($hasPaymentMethod) $params[] = $paymentMethod;

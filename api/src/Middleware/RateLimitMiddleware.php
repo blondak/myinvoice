@@ -20,6 +20,7 @@ use Slim\Psr7\Factory\ResponseFactory;
  *   login_per_min_per_ip      → 60s window, key = "rl:login:ip:{ip/24}"
  *   forgot_per_hour_per_email → 3600s window, key = "rl:forgot:email:{sha1}"
  *   ares_per_min_per_user     → 60s window, key = "rl:ares:user:{id}"
+ *   ai_per_5min_per_user      → 300s window, key = "rl:ai:user:{id}" (AI extract + inbox scan)
  *   setup_per_hour_per_ip     → 3600s window, key = "rl:setup:ip:{ip}"
  *   mutation_per_min_per_user → 60s window, key = "rl:mut:user:{id}" (POST/PUT/PATCH/DELETE)
  *   read_per_min_per_user     → 60s window, key = "rl:read:user:{id}" (GET)
@@ -141,6 +142,15 @@ final class RateLimitMiddleware implements MiddlewareInterface
         // ARES / VIES lookups (per user) — chrání 24h cache před zaplněním
         if (in_array($path, ['/api/clients/lookup-ares', '/api/clients/lookup-vies'], true) && $userId > 0) {
             return ['rl:ares:user:' . $userId, (int) ($rl['ares_per_min_per_user'] ?? 30), 60];
+        }
+
+        // AI / inbox scan endpoints — costly Anthropic API calls (BYOK billing risk
+        // při kompromitované admin session). Sliding window 5 min / per user.
+        if ($userId > 0 && $method === 'POST' && in_array($path, [
+            '/api/admin/imports/ai-extract-pdf',
+            '/api/purchase-invoices/scan-inbox',
+        ], true)) {
+            return ['rl:ai:user:' . $userId, (int) ($rl['ai_per_5min_per_user'] ?? 30), 300];
         }
 
         // Generic per-user mutation/read limit (jen pro přihlášené, mimo public)

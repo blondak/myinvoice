@@ -14,6 +14,7 @@ use MyInvoice\Service\Invoice\InvoiceCalculator;
 use MyInvoice\Service\Invoice\InvoiceDefaults;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Pdf\InvoicePdfRenderer;
+use MyInvoice\Service\Report\VatClassificationDefaulter;
 use MyInvoice\Service\Stats\StatsRecomputer;
 use MyInvoice\Service\Validation\InvoiceValidation;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -30,6 +31,7 @@ final class UpdateInvoiceAction
         private readonly StatsRecomputer $stats,
         private readonly ExchangeRateApplier $rateApplier,
         private readonly InvoicePdfRenderer $pdf,
+        private readonly VatClassificationDefaulter $vatDefaulter,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -76,6 +78,9 @@ final class UpdateInvoiceAction
             return Json::error($response, 'validation_failed', 'Validace selhala', 400, ['fields' => $errors]);
         }
 
+        // Auto-default VAT klasifikace pokud user nezadal (s multi-tenant scope)
+        $this->applyVatClassificationDefaults($body, \MyInvoice\Http\SupplierGuard::currentId($request));
+
         $this->repo->updateDraft($id, $body);
         $this->repo->replaceItems($id, (array) ($body['items'] ?? []));
         $this->calc->recompute($id);
@@ -119,5 +124,42 @@ final class UpdateInvoiceAction
             $invoice['_meta'] = ['exchange_rate' => $rateMeta];
         }
         return Json::ok($response, $invoice);
+    }
+
+    /**
+     * Auto-default vat_classification_code (sale direction) podle vat_rate na řádcích a header.
+     */
+    private function applyVatClassificationDefaults(array &$body, int $supplierId): void
+    {
+        $vatRates = $this->repo->vatRateMap();
+        $reverseCharge = !empty($body['reverse_charge']);
+
+        if (!empty($body['items']) && is_array($body['items'])) {
+            foreach ($body['items'] as &$item) {
+                if (!empty($item['vat_classification_code'])) continue;
+                $rateId = (int) ($item['vat_rate_id'] ?? 0);
+                $rate = (float) ($vatRates[$rateId] ?? 0);
+                $taxDate = $body['tax_date'] ?? $body['issue_date'] ?? null;
+                $item['vat_classification_code'] = $this->vatDefaulter->defaultForSale($rate, $reverseCharge, $taxDate, $supplierId);
+            }
+            unset($item);
+        }
+
+        if (empty($body['vat_classification_code']) && !empty($body['items'])) {
+            $itemsWithTotals = array_map(function ($it) use ($vatRates) {
+                $rateId = (int) ($it['vat_rate_id'] ?? 0);
+                $rate = (float) ($vatRates[$rateId] ?? 0);
+                $qty = (float) ($it['quantity'] ?? 1);
+                $price = (float) ($it['unit_price_without_vat'] ?? 0);
+                return ['vat_rate' => $rate, 'total_with_vat' => $qty * $price * (1 + $rate / 100)];
+            }, (array) $body['items']);
+            $body['vat_classification_code'] = $this->vatDefaulter->suggestHeaderForInvoice(
+                $itemsWithTotals,
+                (bool) ($body['reverse_charge'] ?? false),
+                'sale',
+                $body['tax_date'] ?? $body['issue_date'] ?? null,
+                $supplierId,
+            );
+        }
     }
 }

@@ -1962,6 +1962,800 @@ paths:
                   new_next_run_date: { type: string, format: date, nullable: true }
                   template_status:   { type: string, enum: [active, paused, expired] }
 
+  # ============================================================================
+  # Purchase invoices (přijaté faktury) — fáze 1 integrace forku
+  # ============================================================================
+  /api/v1/purchase-invoices:
+    get:
+      tags: [Purchase invoices]
+      summary: Seznam přijatých faktur seskupený po měsících
+      description: |
+        Vrací přijaté faktury aktuálního tenant (supplier_id), seskupené podle
+        `COALESCE(tax_date, issue_date)` per měsíc. Stejný response tvar jako
+        `/invoices` ale s `vendor_*` poli místo `client_*`.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: filter[status]
+          schema: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        - in: query
+          name: filter[document_kind]
+          schema: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        - in: query
+          name: filter[vendor_id]
+          schema: { type: integer }
+        - in: query
+          name: filter[year]
+          schema: { type: integer }
+        - in: query
+          name: filter[month]
+          schema: { type: integer }
+        - in: query
+          name: filter[unpaid_only]
+          schema: { type: boolean }
+        - in: query
+          name: filter[overdue]
+          schema: { type: boolean }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: string, example: "2026-05" }
+                        count: { type: integer }
+                        totals_per_currency:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              currency: { type: string }
+                              without_vat: { type: number }
+                              vat: { type: number }
+                              with_vat: { type: number }
+                        invoices:
+                          type: array
+                          items: { $ref: '#/components/schemas/PurchaseInvoiceListItem' }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      per_page: { type: integer }
+                      pages: { type: integer }
+    post:
+      tags: [Purchase invoices]
+      summary: Vytvoří draft přijaté faktury
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PurchaseInvoicePayload' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '400': { description: Validation error }
+
+  /api/v1/purchase-invoices/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Purchase invoices]
+      summary: Detail přijaté faktury
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '404': { description: Nenalezeno }
+    put:
+      tags: [Purchase invoices]
+      summary: Update přijaté faktury (jen draft)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: force
+          description: Admin override pro received status (booked/paid/cancelled neumožněno).
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PurchaseInvoicePayload' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '409': { description: Not editable }
+    delete:
+      tags: [Purchase invoices]
+      summary: Smaže draft (vystavené faktury použij transition cancel)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200': { description: OK }
+        '409': { description: Lze smazat jen draft }
+
+  /api/v1/purchase-invoices/{id}/items:
+    put:
+      tags: [Purchase invoices]
+      summary: Přepíše položky a přepočte sumy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/PurchaseInvoiceItemPayload' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+
+  /api/v1/purchase-invoices/{id}/exchange-rate:
+    post:
+      tags: [Purchase invoices]
+      summary: Nastaví exchange rate manuálně
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rate: { type: number, nullable: true }
+                rate_date: { type: string, format: date, nullable: true }
+                source: { type: string, enum: [cnb, manual, idoklad, fakturoid], default: manual }
+      responses:
+        '200': { description: OK }
+
+  /api/v1/purchase-invoices/{id}/transition:
+    post:
+      tags: [Purchase invoices]
+      summary: Přechod stavu (state machine draft → received → booked → paid; + cancelled)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target: { type: string, enum: [received, booked, paid, cancelled] }
+                paid_date:
+                  type: string
+                  format: date
+                  description: Pouze pro target=paid (default = dnes)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PurchaseInvoice' }
+        '409': { description: Invalid transition }
+
+  /api/v1/purchase-invoices/{id}/pdf:
+    post:
+      tags: [Purchase invoices]
+      summary: Upload originálního PDF od dodavatele (archive + SHA-256 dedup)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF dokument (max 20 MiB, magic bytes %PDF- validation)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  pdf_path: { type: string }
+                  pdf_hash: { type: string, description: SHA-256 hex }
+                  pdf_size_bytes: { type: integer }
+                  pdf_original_name: { type: string }
+        '409':
+          description: Stejné PDF už archivováno u jiné faktury (existing_purchase_invoice_id v error.extra)
+        '413': { description: File too large (> 20 MiB) }
+    get:
+      tags: [Purchase invoices]
+      summary: Stáhne archivované PDF od dodavatele
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf: {}
+        '404': { description: K faktuře není archivovaný PDF }
+
+  /api/v1/purchase-invoices/{id}/our-pdf:
+    get:
+      tags: [Purchase invoices]
+      summary: Naše PDF rekonstrukce přijaté faktury (mPDF z dat)
+      description: |
+        Vygeneruje naši vlastní PDF kopii přijaté faktury. Užitečné když chybí
+        originál (importované jen metadata) nebo chceme vlastní layout.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: inline, schema: { type: integer, enum: [0,1] }, description: '1 = Content-Disposition: inline (iframe preview)' }
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf: {}
+        '404': { description: Faktura nenalezena }
+
+  /api/v1/purchase-invoices/{id}/isdoc:
+    get:
+      tags: [Purchase invoices]
+      summary: ISDOC 6.0 XML export přijaté faktury
+      description: |
+        Role inversion — pro přijatou je `AccountingSupplierParty` = vendor,
+        `AccountingCustomerParty` = náš tenant.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: ISDOC XML
+          content:
+            application/xml: {}
+        '404': { description: Faktura nenalezena }
+
+  /api/v1/purchase-invoices/{id}/pohoda:
+    get:
+      tags: [Purchase invoices]
+      summary: Pohoda XML (dataPack s `<pur:purchase>`) export přijaté faktury
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: Pohoda XML
+          content:
+            application/xml: {}
+        '404': { description: Faktura nenalezena }
+
+  /api/v1/purchase-invoices/scan-inbox:
+    post:
+      tags: [Purchase invoices]
+      summary: Scan adresáře s PDF/ISDOC pro automatický import (admin/accountant only)
+      description: |
+        Rekurzivně projde adresář nastavený v `cfg.purchase_invoice.inbox_dir`,
+        deduplikuje přes SHA-256 (vůči `purchase_invoices.pdf_hash`). Z PDF s embedded
+        ISDOC rozpozná data a automaticky vytvoří draft přijaté faktury. Pure PDF bez
+        ISDOC se přeskakují — pro AI extrakci použij endpoint
+        `POST /api/integrations/anthropic/extract` (BYOK).
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  description: True = jen vrátit seznam nálezů bez zápisu
+                  default: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboxScanResult' }
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphdp3/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled DPH přiznání (DPHDP3) pro období
+      description: |
+        ⚠️ XML vygenerovaný buildem je POUZE POMŮCKA. Před odesláním na EPO portál
+        MFČR vždy ověř s účetní.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,   required: true, schema: { type: integer, minimum: 2020, maximum: 2050 } }
+        - { in: query, name: month,  schema: { type: integer, minimum: 1, maximum: 12 }, description: 'Pro měsíční periodu' }
+        - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 }, description: 'Pro kvartální periodu' }
+      responses:
+        '200':
+          description: JSON summary (lines 1-29 + 40+, totals, deadline)
+          content:
+            application/json:
+              schema: { type: object }
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphdp3:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML DPH přiznání (DPHDP3 verzePis 03.01) pro EPO portál
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, required: true, schema: { type: integer } }
+        - { in: query, name: month, schema: { type: integer } }
+        - { in: query, name: quarter, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphkh1/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled Kontrolního hlášení (DPHKH1) — vždy měsíční
+      description: |
+        Kontrolní hlášení se podává **vždy měsíčně**, i pro kvartální plátce DPH.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer, minimum: 1, maximum: 12 } }
+      responses:
+        '200': { description: Summary s counts sekcí A.1/A.4/A.5/B.1/B.2/B.3 }
+        '403': { description: Pouze admin/accountant }
+
+  /api/v1/reports/dphkh1:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML Kontrolního hlášení (DPHKH1 verzePis 03.01)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
+  /api/v1/reports/dphshv/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled Souhrnného hlášení (EU dodání) — měsíční
+      description: |
+        Souhrnné hlášení podávají **plátci DPH i identifikované osoby** s alespoň
+        1 EU dodávkou v měsíci. Mapování VAT kódů: 20→0 (zboží), 22→2 (služby).
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Summary s řádky (country, vat_id, sh_type, amount, count) }
+
+  /api/v1/reports/dphshv:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML Souhrnného hlášení (DPHSHV verzePis 06.01)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year,  required: true, schema: { type: integer } }
+        - { in: query, name: month, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
+  /api/v1/reports/income-tax/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled daňového přiznání (DPFO/DPPO) — roční, MVP foundation
+      description: |
+        ⚠️ **MVP only** — výkaz NENÍ kompletní. Generuje XML kostru s identifikací
+        poplatníka a orientačními čísly (tržby/náklady z faktur). Účetní data
+        (odpisy, mzdy, soc/zdrav, zálohy, slevy) MyInvoice neeviduje — doplnit
+        v účetním software nebo ve spolupráci s poradcem.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, schema: { type: integer }, description: 'Default = předchozí rok' }
+        - { in: query, name: type, required: true, schema: { type: string, enum: [fo, po] } }
+      responses:
+        '200': { description: Orientational summary }
+
+  /api/v1/reports/income-tax:
+    get:
+      tags: [Reports]
+      summary: Stáhne XML daňového přiznání DPFO (DPFDP5) nebo DPPO (DPPDP9)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, schema: { type: integer } }
+        - { in: query, name: type, required: true, schema: { type: string, enum: [fo, po] } }
+      responses:
+        '200':
+          description: XML download (kostra)
+          content:
+            application/xml: {}
+
+  # ── Tax submissions archive ──────────────────────────────────────────────
+  /api/v1/reports/submissions:
+    get:
+      tags: [Reports]
+      summary: Historie všech generovaných EPO XML výkazů
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: List archived submissions
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+
+  /api/v1/reports/submissions/{id}:
+    get:
+      tags: [Reports]
+      summary: Detail záznamu (vč. XML)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: Submission detail }
+        '404': { description: Not found }
+    delete:
+      tags: [Reports]
+      summary: Smaže archivovaný záznam (jen admin)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: Deleted }
+        '403': { description: Pouze admin }
+
+  /api/v1/reports/submissions/{id}/xml:
+    get:
+      tags: [Reports]
+      summary: Stáhne archivované XML
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
+  # ── Codebooks: cnb-rate + expense-categories + vat-classifications ──────
+  /api/v1/codebooks/cnb-rate:
+    get:
+      tags: [Codebooks]
+      summary: ČNB exchange rate pro currency + datum
+      parameters:
+        - { in: query, name: currency, required: true, schema: { type: string, example: "EUR" } }
+        - { in: query, name: date, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'rate + rate_date + fallback_used + source' }
+
+  /api/v1/expense-categories:
+    get:
+      tags: [Codebooks]
+      summary: Seznam kategorií nákladů
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200': { description: List }
+    post:
+      tags: [Codebooks]
+      summary: Vytvoří kategorii (admin)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, label]
+              properties:
+                code: { type: string, maxLength: 20, pattern: '^[a-z0-9_-]+$' }
+                label: { type: string, maxLength: 100 }
+                fixed_or_var: { type: string, enum: [fixed, variable] }
+                display_order: { type: integer }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/expense-categories/{id}:
+    put:
+      tags: [Codebooks]
+      summary: Update kategorie nákladů
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: OK }
+    delete:
+      tags: [Codebooks]
+      summary: Smaže (nebo archivuje pokud má reference) kategorii
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: Deleted/archived }
+
+  /api/v1/vat-classifications:
+    get:
+      tags: [Codebooks]
+      summary: VAT klasifikační kódy (DPHDP3 / KH / SH)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: direction, schema: { type: string, enum: [sale, purchase] } }
+        - { in: query, name: include_archived, schema: { type: boolean } }
+      responses:
+        '200':
+          description: List kódů (globální seed + tenant overrides)
+    post:
+      tags: [Codebooks]
+      summary: Vytvoří custom VAT kód (per tenant)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '201': { description: Created }
+
+  /api/v1/vat-classifications/{id}:
+    put:
+      tags: [Codebooks]
+      summary: Update VAT kódu (jen tenant rows, globální seed read-only)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: OK }
+        '403': { description: Globální seed je read-only }
+    delete:
+      tags: [Codebooks]
+      summary: Smaže (nebo archivuje pokud má reference) VAT kód
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: Deleted/archived }
+
+  # ── Purchase invoices — chybějící endpointy ──────────────────────────────
+  /api/v1/purchase-invoices/export:
+    get:
+      tags: [Purchase invoices]
+      summary: Hromadný export přijatých faktur za měsíc (PDF ZIP / ISDOC ZIP / Pohoda dataPack)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: month, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}$' } }
+        - { in: query, name: format, required: true, schema: { type: string, enum: [pdf-zip, isdoc, pohoda] } }
+        - { in: query, name: date_by, schema: { type: string, enum: [tax, issue, received] } }
+      responses:
+        '200':
+          description: ZIP nebo XML stream
+          headers:
+            X-Export-Warnings:
+              schema: { type: string }
+              description: Per-invoice warnings (pokud byly skipnuté)
+
+  /api/v1/purchase-invoices/{id}/activity:
+    get:
+      tags: [Purchase invoices]
+      summary: Activity log pro přijatou fakturu
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: List events }
+
+  # ── CRM dashboard endpoints ──────────────────────────────────────────────
+  /api/v1/crm/overview:
+    get:
+      tags: [CRM]
+      summary: KPI overview (current month + last + YTD per currency)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses: { '200': { description: KPI } }
+
+  /api/v1/crm/monthly:
+    get:
+      tags: [CRM]
+      summary: Monthly history (revenue/costs/profit per měsíc)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12, minimum: 1, maximum: 36 } }
+        - { in: query, name: currency, schema: { type: string } }
+      responses: { '200': { description: Monthly rows } }
+
+  /api/v1/crm/top-clients:
+    get:
+      tags: [CRM]
+      summary: Top klienti podle revenue
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+        - { in: query, name: limit, schema: { type: integer, default: 10 } }
+        - { in: query, name: currency, schema: { type: string } }
+      responses: { '200': { description: Top klienti } }
+
+  /api/v1/crm/top-vendors:
+    get:
+      tags: [CRM]
+      summary: Top dodavatelé podle costs
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+        - { in: query, name: limit, schema: { type: integer, default: 10 } }
+      responses: { '200': { description: Top dodavatelé } }
+
+  /api/v1/crm/aging-receivables:
+    get:
+      tags: [CRM]
+      summary: Aging buckets pohledávek
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses: { '200': { description: Buckets not_due / overdue_30 / 60 / 90 / 90+ } }
+
+  /api/v1/crm/aging-payables:
+    get:
+      tags: [CRM]
+      summary: Aging buckets závazků
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses: { '200': { description: Buckets } }
+
+  /api/v1/crm/dso:
+    get:
+      tags: [CRM]
+      summary: Days Sales Outstanding (průměrná doba inkasa)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses: { '200': { description: 'avg_days + sample_size' } }
+
+  /api/v1/crm/payment-punctuality:
+    get:
+      tags: [CRM]
+      summary: "% faktur zaplacených včas"
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses: { '200': { description: 'on_time_pct + counts' } }
+
+  /api/v1/crm/concentration:
+    get:
+      tags: [CRM]
+      summary: Riziko koncentrace (Top 1/3/5 klient share + Pareto count)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+        - { in: query, name: currency, schema: { type: string } }
+      responses: { '200': { description: 'top1_share + pareto_80_count + risk_level' } }
+
+  /api/v1/crm/expense-breakdown:
+    get:
+      tags: [CRM]
+      summary: Náklady per kategorie
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses: { '200': { description: Per-category totals } }
+
+  /api/v1/crm/churn-risk:
+    get:
+      tags: [CRM]
+      summary: Klienti dlouho bez objednávky
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: days, schema: { type: integer, default: 60 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+      responses: { '200': { description: Churn risk klienti } }
+
+  /api/v1/crm/action-items:
+    get:
+      tags: [CRM]
+      summary: Daily TODO (overdue, recurring due, tax deadlines, churn)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses: { '200': { description: 'items + total' } }
+
+  /api/v1/crm/cash-flow-forecast:
+    get:
+      tags: [CRM]
+      summary: Cash flow prognóza N týdnů dopředu
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: weeks, schema: { type: integer, default: 4, minimum: 1, maximum: 12 } }
+        - { in: query, name: currency, schema: { type: string, default: CZK } }
+      responses: { '200': { description: 'weeks[] + total_in/out/net' } }
+
+  /api/v1/crm/late-risk:
+    get:
+      tags: [CRM]
+      summary: Late payment risk score per klient
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: limit, schema: { type: integer, default: 10 } }
+      responses: { '200': { description: Top risky klienti } }
+
+  /api/v1/crm/reminder-effectiveness:
+    get:
+      tags: [CRM]
+      summary: Funnel zaplaceno po N. upomínce
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses: { '200': { description: 'no_reminder + after_first/_second/_third_plus + never_paid' } }
+
+  /api/v1/crm/payment-time-histogram:
+    get:
+      tags: [CRM]
+      summary: Distribuce doby inkasa (buckets 0-7, 8-14, 15-30, 31-60, 61+)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: months, schema: { type: integer, default: 12 } }
+      responses: { '200': { description: 'buckets[] + median + p90' } }
+
+  /api/v1/crm/recompute:
+    post:
+      tags: [CRM]
+      summary: Manuální přepočet pre-aggregated stats (admin)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200': { description: 'ok + elapsed_ms' }
+        '403': { description: Pouze admin }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -3155,3 +3949,197 @@ components:
               unit_price_without_vat: { type: number, format: float, description: "Může být záporná pro slevový řádek, ale ne současně se záporným množstvím." }
               vat_rate_id: { type: integer }
               order_index: { type: integer }
+
+    # ========================================================================
+    # Purchase invoices (přijaté faktury) — fáze 1 integrace forku
+    # ========================================================================
+    PurchaseInvoiceListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        supplier_id: { type: integer }
+        vendor_id: { type: integer }
+        varsymbol: { type: string, nullable: true, description: "Naše interní číslo PF-YYYYMM-NNNN" }
+        vendor_invoice_number: { type: string }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true, description: "DUZP" }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        currency: { type: string }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        advance_paid_amount: { type: number }
+        amount_to_pay: { type: number, description: "Generated column = total_with_vat - advance_paid_amount" }
+        status: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        vendor_company_name: { type: string }
+        vendor_ic: { type: string, nullable: true }
+        month_bucket: { type: string, example: "2026-05" }
+
+    PurchaseInvoiceItem:
+      type: object
+      properties:
+        id: { type: integer }
+        purchase_invoice_id: { type: integer }
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string }
+        unit_price_without_vat: { type: number }
+        vat_rate_id: { type: integer }
+        vat_rate_snapshot: { type: number }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        order_index: { type: integer }
+        vat_classification_code:
+          type: string
+          nullable: true
+          description: "MFČR kód pro DPH/KH (připraveno pro fázi 6)"
+
+    PurchaseInvoiceItemPayload:
+      type: object
+      required: [description, quantity, unit_price_without_vat, vat_rate_id]
+      properties:
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string, default: ks }
+        unit_price_without_vat: { type: number }
+        vat_rate_id: { type: integer }
+        order_index: { type: integer }
+        vat_classification_code: { type: string, nullable: true }
+
+    PurchaseInvoice:
+      type: object
+      properties:
+        id: { type: integer }
+        supplier_id: { type: integer }
+        vendor_id: { type: integer }
+        varsymbol: { type: string, nullable: true }
+        vendor_invoice_number: { type: string }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance] }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        currency: { type: string }
+        exchange_rate: { type: number, nullable: true }
+        exchange_rate_date: { type: string, format: date, nullable: true }
+        exchange_rate_source: { type: string, enum: [cnb, manual, idoklad, fakturoid] }
+        reverse_charge: { type: boolean }
+        language: { type: string, enum: [cs, en] }
+        note_above_items: { type: string, nullable: true }
+        note_below_items: { type: string, nullable: true }
+        vendor_snapshot:
+          type: object
+          description: Immutable JSON snapshot vendor row at time of receipt
+        own_snapshot: { type: object, nullable: true }
+        total_without_vat: { type: number }
+        total_vat: { type: number }
+        total_with_vat: { type: number }
+        rounding: { type: number }
+        advance_paid_amount: { type: number }
+        amount_to_pay: { type: number }
+        payment_currency_id: { type: integer, nullable: true }
+        payment_exchange_rate: { type: number, nullable: true }
+        paid_amount_payment_ccy: { type: number, nullable: true }
+        paid_amount_invoice_ccy: { type: number, nullable: true }
+        exchange_diff_base:
+          type: number
+          nullable: true
+          description: "FX gain/loss v base ccy (CZK)"
+        status: { type: string, enum: [draft, received, booked, paid, cancelled] }
+        booked_at: { type: string, format: date-time, nullable: true }
+        paid_at: { type: string, format: date, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        pdf_path:
+          type: string
+          nullable: true
+          description: "Relative path within archive_storage"
+        pdf_hash: { type: string, nullable: true, description: "SHA-256 hex" }
+        pdf_size_bytes: { type: integer, nullable: true }
+        pdf_original_name: { type: string, nullable: true }
+        pdf_uploaded_at: { type: string, format: date-time, nullable: true }
+        vat_classification_code: { type: string, nullable: true }
+        created_by: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        vendor_company_name: { type: string }
+        vendor_ic: { type: string, nullable: true }
+        vendor_dic: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PurchaseInvoiceItem' }
+        vat_breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              vat_rate: { type: number }
+              without_vat: { type: number }
+              vat: { type: number }
+              with_vat: { type: number }
+        totals:
+          type: object
+          properties:
+            without_vat: { type: number }
+            vat: { type: number }
+            with_vat: { type: number }
+            rounding: { type: number }
+            advance_paid_amount: { type: number }
+            amount_to_pay: { type: number }
+
+    PurchaseInvoicePayload:
+      type: object
+      required: [vendor_id, vendor_invoice_number, issue_date, due_date, currency_id, items]
+      properties:
+        vendor_id: { type: integer }
+        vendor_invoice_number: { type: string, maxLength: 50 }
+        varsymbol: { type: string, nullable: true, maxLength: 20 }
+        document_kind: { type: string, enum: [invoice, receipt, credit_note, advance], default: invoice }
+        issue_date: { type: string, format: date }
+        tax_date: { type: string, format: date, nullable: true }
+        due_date: { type: string, format: date }
+        received_at: { type: string, format: date }
+        currency_id: { type: integer }
+        exchange_rate: { type: number, nullable: true }
+        exchange_rate_date: { type: string, format: date, nullable: true }
+        exchange_rate_source: { type: string, enum: [cnb, manual, idoklad, fakturoid], default: cnb }
+        reverse_charge: { type: boolean, default: false }
+        language: { type: string, enum: [cs, en], default: cs }
+        note_above_items: { type: string, nullable: true }
+        note_below_items: { type: string, nullable: true }
+        advance_paid_amount: { type: number, default: 0 }
+        payment_currency_id: { type: integer, nullable: true }
+        payment_exchange_rate: { type: number, nullable: true }
+        paid_amount_payment_ccy: { type: number, nullable: true }
+        paid_amount_invoice_ccy: { type: number, nullable: true }
+        exchange_diff_base: { type: number, nullable: true }
+        vat_classification_code: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PurchaseInvoiceItemPayload' }
+
+    InboxScanResult:
+      type: object
+      properties:
+        created: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        dry_run: { type: boolean }
+        inbox_dir: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              file: { type: string }
+              status:
+                type: string
+                enum: [created, skipped, failed, rejected, mapper_pending, config_missing, inbox_missing, limit_reached]
+              reason: { type: string, nullable: true }
+              purchase_invoice_id: { type: integer, nullable: true }
+              isdoc_invoice_count: { type: integer, nullable: true }
+              supplier_ic: { type: string, nullable: true }

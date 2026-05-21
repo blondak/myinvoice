@@ -1,0 +1,142 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Service\Validation;
+
+/**
+ * Validace přijaté faktury. Vrací mapu pole → list chyb (CZ texty z ErrorCatalog jsou pro
+ * runtime API messages; tato validace vrací technické zprávy, které jdou přes ErrorCatalog
+ * v Json::error).
+ */
+final class PurchaseInvoiceValidation
+{
+    public const ALLOWED_DOC_KINDS = ['invoice', 'receipt', 'credit_note', 'advance'];
+    public const ALLOWED_STATUSES  = ['draft', 'received', 'booked', 'paid', 'cancelled'];
+
+    /**
+     * @param array<int, float>|null $vatRates
+     * @return array<string, string[]>
+     */
+    public static function invoice(array $data, ?array $vatRates = null): array
+    {
+        $err = [];
+
+        if (empty($data['vendor_id']) || !is_numeric($data['vendor_id']) || (int) $data['vendor_id'] <= 0) {
+            $err['vendor_id'][] = 'Dodavatel je povinný';
+        }
+
+        $vendorInvNum = trim((string) ($data['vendor_invoice_number'] ?? ''));
+        if ($vendorInvNum === '') {
+            $err['vendor_invoice_number'][] = 'Číslo dokladu od dodavatele je povinné';
+        } elseif (strlen($vendorInvNum) > 50) {
+            $err['vendor_invoice_number'][] = 'Číslo dokladu má max 50 znaků';
+        } elseif (preg_match('/[\x00-\x1f\x7f]/', $vendorInvNum)) {
+            // Bez kontrolních znaků (anti-injection / log poisoning)
+            $err['vendor_invoice_number'][] = 'Číslo dokladu obsahuje neplatné znaky';
+        }
+
+        if (isset($data['document_kind'])) {
+            $kind = (string) $data['document_kind'];
+            if (!in_array($kind, self::ALLOWED_DOC_KINDS, true)) {
+                $err['document_kind'][] = 'Neplatný typ dokladu';
+            }
+        }
+
+        if (isset($data['currency_id']) && (int) $data['currency_id'] <= 0) {
+            $err['currency_id'][] = 'Neplatné currency_id';
+        }
+
+        if (!empty($data['issue_date']) && !self::isValidDate((string) $data['issue_date'])) {
+            $err['issue_date'][] = 'Neplatné datum vystavení';
+        } elseif (empty($data['issue_date'])) {
+            $err['issue_date'][] = 'Datum vystavení je povinné';
+        }
+
+        if (!empty($data['due_date']) && !self::isValidDate((string) $data['due_date'])) {
+            $err['due_date'][] = 'Neplatné datum splatnosti';
+        } elseif (empty($data['due_date'])) {
+            $err['due_date'][] = 'Datum splatnosti je povinné';
+        }
+
+        if (!empty($data['tax_date']) && !self::isValidDate((string) $data['tax_date'])) {
+            $err['tax_date'][] = 'Neplatné DUZP';
+        }
+
+        if (!empty($data['received_at']) && !self::isValidDate((string) $data['received_at'])) {
+            $err['received_at'][] = 'Neplatné datum přijetí';
+        }
+
+        // Manuální varsymbol — volitelný
+        if (array_key_exists('varsymbol', $data) && $data['varsymbol'] !== null && $data['varsymbol'] !== '') {
+            $vs = (string) $data['varsymbol'];
+            if (strlen($vs) > 20) {
+                $err['varsymbol'][] = 'Varsymbol má max 20 znaků';
+            }
+            if (preg_match('/[\x00-\x1f\x7f]/', $vs)) {
+                $err['varsymbol'][] = 'Varsymbol obsahuje neplatné znaky';
+            }
+        }
+
+        // Multi-currency platba
+        if (!empty($data['payment_currency_id']) && (int) $data['payment_currency_id'] <= 0) {
+            $err['payment_currency_id'][] = 'Neplatné payment_currency_id';
+        }
+        if (isset($data['payment_exchange_rate']) && $data['payment_exchange_rate'] !== null && $data['payment_exchange_rate'] !== '') {
+            $r = (float) $data['payment_exchange_rate'];
+            if ($r <= 0 || $r > 100000) {
+                $err['payment_exchange_rate'][] = 'Kurz platby je mimo rozumný rozsah';
+            }
+        }
+        if (isset($data['exchange_rate']) && $data['exchange_rate'] !== null && $data['exchange_rate'] !== '') {
+            $r = (float) $data['exchange_rate'];
+            if ($r <= 0 || $r > 100000) {
+                $err['exchange_rate'][] = 'Kurz faktury je mimo rozumný rozsah';
+            }
+        }
+
+        // Items
+        $items = $data['items'] ?? [];
+        if (!is_array($items)) {
+            $err['items'][] = 'items musí být pole';
+        } else {
+            foreach (array_values($items) as $i => $item) {
+                if (!is_array($item)) {
+                    $err["items.{$i}"][] = 'Neplatná položka';
+                    continue;
+                }
+                $itemErrors = InvoiceAmountPolicy::validateItem($item, $i);
+                if (!empty($itemErrors)) {
+                    $err = array_merge($err, $itemErrors);
+                }
+                // VAT rate musí existovat v číselníku
+                if ($vatRates !== null) {
+                    $rateId = (int) ($item['vat_rate_id'] ?? 0);
+                    if ($rateId === 0 || !array_key_exists($rateId, $vatRates)) {
+                        $err["items.{$i}.vat_rate_id"][] = 'Neznámá DPH sazba';
+                    }
+                }
+            }
+        }
+
+        $advance = (float) ($data['advance_paid_amount'] ?? 0);
+        if ($advance < 0) {
+            $err['advance_paid_amount'][] = 'Záloha nesmí být záporná';
+        }
+
+        // Notes — omezit velikost (anti-DoS na DB)
+        foreach (['note_above_items', 'note_below_items'] as $f) {
+            if (isset($data[$f]) && is_string($data[$f]) && strlen($data[$f]) > 65535) {
+                $err[$f][] = 'Poznámka přesahuje 64 KB';
+            }
+        }
+
+        return $err;
+    }
+
+    private static function isValidDate(string $date): bool
+    {
+        $d = \DateTimeImmutable::createFromFormat('Y-m-d', $date);
+        return $d !== false && $d->format('Y-m-d') === $date;
+    }
+}

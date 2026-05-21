@@ -13,6 +13,7 @@ useHotkey('ctrl+s', (e) => { e.preventDefault(); submit() })
 import { clientsApi, type Client, type ViesLookupResult } from '@/api/clients'
 import { projectsApi, type Project } from '@/api/projects'
 import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
+import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
 import { formatMoney, formatPercent } from '@/composables/useFormat'
 import { apiErrorMessage } from '@/api/errors'
 import { useSupplierStore } from '@/stores/supplier'
@@ -57,6 +58,7 @@ const varsymbolLabelKey = computed(() => {
 const clients = ref<Client[]>([])
 const projects = ref<Project[]>([])
 const vatRates = ref<VatRate[]>([])
+const vatClassifications = ref<VatClassification[]>([])
 const currencies = ref<Currency[]>([])
 const units = ref<Unit[]>([])
 
@@ -96,6 +98,8 @@ const form = ref<{
   payment_method: 'bank_transfer' | 'card' | 'cash' | 'other'
   exchange_rate: number | null
   varsymbol: string  // Ruční override čísla faktury (prázdný = generuje se při issue)
+  vat_classification_code: string | null
+  revenue_category: string | null
   items: InvoiceItem[]
 }>({
   invoice_type: 'invoice',
@@ -115,6 +119,8 @@ const form = ref<{
   payment_method: 'bank_transfer',
   exchange_rate: null,
   varsymbol: '',
+  vat_classification_code: null,
+  revenue_category: null,
   items: [],
 })
 
@@ -234,10 +240,16 @@ watch(() => form.value.invoice_type, (newType, oldType) => {
 })
 
 onMounted(async () => {
-  const [vr, cur, un] = await Promise.all([codebooksApi.vatRates('CZ'), codebooksApi.currencies(), codebooksApi.units()])
+  const [vr, cur, un, vc] = await Promise.all([
+    codebooksApi.vatRates('CZ'),
+    codebooksApi.currencies(),
+    codebooksApi.units(),
+    vatClassificationsApi.list('sale'),
+  ])
   vatRates.value = vr
   currencies.value = cur
   units.value = un
+  vatClassifications.value = vc
   if (form.value.currency_id === 0) {
     const def = cur.find(c => c.is_default && c.code === 'CZK') || cur[0]
     if (def) {
@@ -275,6 +287,8 @@ onMounted(async () => {
       items: inv.items.map(i => ({ ...i })),
       exchange_rate: inv.exchange_rate ?? null,
       varsymbol: inv.varsymbol ?? '',
+      vat_classification_code: (inv as any).vat_classification_code ?? null,
+      revenue_category: (inv as any).revenue_category ?? null,
     })
     loadedRate.value = (inv.exchange_rate && inv.currency !== 'CZK')
       ? { rate: inv.exchange_rate, date: (inv.exchange_rate_date ?? inv.issue_date).slice(0, 10), currency: inv.currency }
@@ -693,6 +707,8 @@ async function submit() {
       // Volitelný ruční varsymbol — backend ho akceptuje jen u draftu;
       // prázdný řetězec → backend uloží NULL a vygeneruje při issue automaticky.
       varsymbol: form.value.varsymbol.trim(),
+      vat_classification_code: form.value.vat_classification_code,
+      revenue_category: form.value.revenue_category,
       items: form.value.items.map((it, i) => ({
         description: it.description,
         quantity: it.quantity,
@@ -821,7 +837,7 @@ async function deleteDraft() {
                   <SearchableSelect
                     :model-value="form.client_id"
                     @update:model-value="(v) => { form.client_id = v; onClientChange() }"
-                    :options="clients.map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
+                    :options="clients.filter(c => c.is_customer !== false).map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
                     :placeholder="t('invoice.select_client')"
                     :clearable="false"
                   />
@@ -999,7 +1015,7 @@ async function deleteDraft() {
                   class="w-full px-2 py-1.5 border border-neutral-200 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
               </td>
               <td class="px-3 py-2">
-                <input v-model.number="item.quantity" type="number" step="0.001"
+                <input v-model="item.quantity" v-math type="text" inputmode="decimal"
                   :class="['w-full h-9 px-2 border rounded text-right font-mono text-sm', itemHasBothNegative(item) ? 'border-danger-400' : 'border-neutral-200']" />
               </td>
               <td class="px-3 py-2">
@@ -1009,7 +1025,7 @@ async function deleteDraft() {
                 </select>
               </td>
               <td class="px-3 py-2">
-                <input v-model.number="item.unit_price_without_vat" type="number" step="0.01"
+                <input v-model="item.unit_price_without_vat" v-math type="text" inputmode="decimal"
                   :class="['w-full h-9 px-2 border rounded text-right font-mono text-sm', itemHasBothNegative(item) ? 'border-danger-400' : 'border-neutral-200']" />
               </td>
               <td v-if="supplierIsVatPayer" class="px-3 py-2">
@@ -1055,7 +1071,7 @@ async function deleteDraft() {
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.items_table.qty') }}</label>
-                <input v-model.number="item.quantity" type="number" inputmode="decimal" step="0.001"
+                <input v-model="item.quantity" v-math type="text" inputmode="decimal"
                   :class="['w-full h-10 px-3 border rounded text-right font-mono text-sm', itemHasBothNegative(item) ? 'border-danger-400' : 'border-neutral-200']" />
               </div>
               <div>
@@ -1069,7 +1085,7 @@ async function deleteDraft() {
             <div :class="supplierIsVatPayer ? 'grid grid-cols-2 gap-2' : ''">
               <div>
                 <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.items_table.unit_price') }}</label>
-                <input v-model.number="item.unit_price_without_vat" type="number" inputmode="decimal" step="0.01"
+                <input v-model="item.unit_price_without_vat" v-math type="text" inputmode="decimal"
                   :class="['w-full h-10 px-3 border rounded text-right font-mono text-sm', itemHasBothNegative(item) ? 'border-danger-400' : 'border-neutral-200']" />
               </div>
               <div v-if="supplierIsVatPayer">
@@ -1083,6 +1099,30 @@ async function deleteDraft() {
               <span class="text-xs font-medium text-neutral-500 uppercase tracking-wide">{{ t('invoice.totals.total') }}</span>
               <span class="font-mono font-semibold">{{ formatMoney(itemTotal(item), form.currency) }}</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Klasifikace (VAT pro DPH přiznání + volitelný revenue tag) -->
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">{{ t('invoice.classification.title') }}</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('invoice.classification.vat_classification') }}</label>
+            <select v-model="form.vat_classification_code" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+              <option :value="null">— {{ t('invoice.classification.no_vat_class') }} —</option>
+              <option v-for="vc in vatClassifications" :key="vc.id" :value="vc.code">
+                {{ vc.code }} — {{ vc.label.length > 60 ? vc.label.slice(0, 60) + '…' : vc.label }}
+              </option>
+            </select>
+            <p class="text-xs text-neutral-500 mt-1">{{ t('invoice.classification.vat_classification_hint') }}</p>
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('invoice.classification.revenue_category') }}</label>
+            <input v-model="form.revenue_category" type="text" maxlength="40"
+                   class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm"
+                   :placeholder="t('invoice.classification.revenue_category_placeholder')" />
+            <p class="text-xs text-neutral-500 mt-1">{{ t('invoice.classification.revenue_category_hint') }}</p>
           </div>
         </div>
       </div>

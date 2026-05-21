@@ -23,6 +23,19 @@ use MyInvoice\Action\Approval\RequestApprovalTestAction;
 use MyInvoice\Action\Approval\UpdateApprovalStatusAction;
 use MyInvoice\Action\Admin\ExportAction;
 use MyInvoice\Action\Admin\ImportAction;
+use MyInvoice\Action\Admin\Import\StartIdokladImportAction;
+use MyInvoice\Action\Admin\Import\StartFakturoidImportAction;
+use MyInvoice\Action\Admin\Import\ImportJobStatusAction;
+use MyInvoice\Action\Admin\Import\CancelImportJobAction;
+use MyInvoice\Action\Admin\Import\IdokladCredentialsAction;
+use MyInvoice\Action\Admin\Import\FakturoidCredentialsAction;
+use MyInvoice\Action\Admin\Import\AnthropicCredentialsAction;
+use MyInvoice\Action\Admin\Import\AiExtractPdfAction;
+use MyInvoice\Action\Crm\CrmDashboardAction;
+use MyInvoice\Action\Report\DphPriznaniAction;
+use MyInvoice\Action\Report\KontrolniHlaseniAction;
+use MyInvoice\Action\Report\SouhrnneHlaseniAction;
+use MyInvoice\Action\Report\IncomeTaxAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\CronJobsAction;
 use MyInvoice\Action\Admin\RunCronJobAction;
@@ -45,6 +58,22 @@ use MyInvoice\Action\Invoice\MarkPaidAction;
 use MyInvoice\Action\Invoice\UnmarkPaidAction;
 use MyInvoice\Action\Invoice\BulkReissueAction;
 use MyInvoice\Action\Invoice\CloneInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\CreatePurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\DeletePurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\DeletePurchaseInvoicePdfAction;
+use MyInvoice\Action\PurchaseInvoice\DownloadPurchaseInvoicePdfAction;
+use MyInvoice\Action\PurchaseInvoice\OurPdfPurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\ExportPurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\ExportPurchaseInvoicesAction;
+use MyInvoice\Action\PurchaseInvoice\GetPurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\ListPurchaseInvoicesAction;
+use MyInvoice\Action\PurchaseInvoice\PurchaseInvoiceActivityAction;
+use MyInvoice\Action\PurchaseInvoice\ScanInboxAction;
+use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceExchangeRateAction;
+use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceItemsAction;
+use MyInvoice\Action\PurchaseInvoice\TransitionPurchaseInvoiceStatusAction;
+use MyInvoice\Action\PurchaseInvoice\UpdatePurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\UploadPurchaseInvoicePdfAction;
 use MyInvoice\Action\Recurring\RecurringTemplateAction;
 use MyInvoice\Action\Invoice\IssueFinalFromProformaAction;
 use MyInvoice\Action\Invoice\PdfAction;
@@ -138,6 +167,19 @@ final class Routes
         $app->get('/api/codebooks/currencies', [CodebookAction::class, 'currencies']);
         $app->get('/api/codebooks/vat-rates',  [CodebookAction::class, 'vatRates']);
         $app->get('/api/codebooks/units',      [CodebookAction::class, 'units']);
+        $app->get('/api/codebooks/cnb-rate',   \MyInvoice\Action\Codebook\CnbRateAction::class);
+
+        // Expense categories (pro rozpad nákladů v CRM dashboardu)
+        $app->get   ('/api/expense-categories',                  [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'list']);
+        $app->post  ('/api/expense-categories',                  [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'create']);
+        $app->put   ('/api/expense-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'update']);
+        $app->delete('/api/expense-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'delete']);
+
+        // VAT klasifikační kódy (pro DPHDP3 + KH)
+        $app->get   ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'list']);
+        $app->post  ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'create']);
+        $app->put   ('/api/vat-classifications/{id:[0-9]+}',     [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'update']);
+        $app->delete('/api/vat-classifications/{id:[0-9]+}',     [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'delete']);
 
         // Clients
         $app->get   ('/api/clients',                 ListClientsAction::class);
@@ -187,6 +229,28 @@ final class Routes
         $app->post   ('/api/invoices/bulk-reminder',         BulkSendRemindersAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/clone',     CloneInvoiceAction::class);
 
+        // Přijaté faktury (purchase invoices) — fáze 1 integrace forku.
+        // Všechny chráněné AuthMiddleware + SupplierScopeMiddleware (skrz globální group).
+        // scan-inbox je admin/accountant only (check v Action).
+        $app->post   ('/api/purchase-invoices/scan-inbox',                ScanInboxAction::class);
+        $app->get    ('/api/purchase-invoices/export',                     ExportPurchaseInvoicesAction::class);
+        $app->get    ('/api/purchase-invoices',                           ListPurchaseInvoicesAction::class);
+        $app->post   ('/api/purchase-invoices',                           CreatePurchaseInvoiceAction::class);
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}',                GetPurchaseInvoiceAction::class);
+        $app->put    ('/api/purchase-invoices/{id:[0-9]+}',                UpdatePurchaseInvoiceAction::class);
+        $app->delete ('/api/purchase-invoices/{id:[0-9]+}',                DeletePurchaseInvoiceAction::class);
+        $app->put    ('/api/purchase-invoices/{id:[0-9]+}/items',          SetPurchaseInvoiceItemsAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/exchange-rate', SetPurchaseInvoiceExchangeRateAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/transition',     TransitionPurchaseInvoiceStatusAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/pdf',            UploadPurchaseInvoicePdfAction::class);
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/pdf',            DownloadPurchaseInvoicePdfAction::class);
+        $app->delete ('/api/purchase-invoices/{id:[0-9]+}/pdf',            DeletePurchaseInvoicePdfAction::class);
+        // Our generated PDF + Pohoda/ISDOC export pro přijatou
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/our-pdf',        OurPdfPurchaseInvoiceAction::class);
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/isdoc',          [ExportPurchaseInvoiceAction::class, 'isdoc']);
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/pohoda',         [ExportPurchaseInvoiceAction::class, 'pohoda']);
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/activity',       PurchaseInvoiceActivityAction::class);
+
         // Pravidelné fakturace (recurring templates)
         $app->get    ('/api/recurring',                       [RecurringTemplateAction::class, 'list']);
         $app->post   ('/api/recurring',                       [RecurringTemplateAction::class, 'create']);
@@ -222,6 +286,70 @@ final class Routes
         $app->get    ('/api/admin/invoices-zip',    InvoicesZipAction::class);  // legacy — drží se kvůli historickým bookmark URL
         $app->get    ('/api/admin/export',          ExportAction::class);       // generic export (?format=pdf-zip|isdoc|pohoda&month=YYYY-MM)
         $app->post   ('/api/admin/import',          ImportAction::class);       // import vystavených faktur z Pohoda XML / ISDOC (single nebo ZIP)
+
+        // iDoklad API import (fáze 2a) — credentials + background job lifecycle
+        $app->get    ('/api/admin/imports/idoklad/credentials', [IdokladCredentialsAction::class, 'status']);
+        $app->put    ('/api/admin/imports/idoklad/credentials', [IdokladCredentialsAction::class, 'update']);
+        $app->delete ('/api/admin/imports/idoklad/credentials', [IdokladCredentialsAction::class, 'delete']);
+        $app->post   ('/api/admin/imports/idoklad/start',       StartIdokladImportAction::class);
+
+        // Fakturoid (fáze 2b) — credentials + start
+        $app->get    ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'status']);
+        $app->put    ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'update']);
+        $app->delete ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'delete']);
+        $app->post   ('/api/admin/imports/fakturoid/start',       StartFakturoidImportAction::class);
+
+        // Anthropic Claude AI extraction (fáze 2c) — BYOK + synchronní PDF extract
+        $app->get    ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'status']);
+        $app->put    ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'update']);
+        $app->delete ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'delete']);
+        $app->post   ('/api/admin/imports/ai-extract-pdf',        AiExtractPdfAction::class);
+
+        // CRM dashboard (fáze 5)
+        $app->get    ('/api/crm/overview',     [CrmDashboardAction::class, 'overview']);
+        $app->get    ('/api/crm/monthly',      [CrmDashboardAction::class, 'monthly']);
+        $app->get    ('/api/crm/top-clients',  [CrmDashboardAction::class, 'topClients']);
+        $app->get    ('/api/crm/top-vendors',  [CrmDashboardAction::class, 'topVendors']);
+        $app->get    ('/api/crm/aging-receivables', [CrmDashboardAction::class, 'agingReceivables']);
+        $app->get    ('/api/crm/aging-payables',    [CrmDashboardAction::class, 'agingPayables']);
+        $app->get    ('/api/crm/yearly',            [CrmDashboardAction::class, 'yearly']);
+        $app->get    ('/api/crm/dso',               [CrmDashboardAction::class, 'dso']);
+        $app->get    ('/api/crm/payment-punctuality', [CrmDashboardAction::class, 'punctuality']);
+        $app->get    ('/api/crm/concentration',     [CrmDashboardAction::class, 'concentration']);
+        $app->get    ('/api/crm/expense-breakdown', [CrmDashboardAction::class, 'expenseBreakdown']);
+        $app->get    ('/api/crm/churn-risk',        [CrmDashboardAction::class, 'churnRisk']);
+        $app->get    ('/api/crm/action-items',      [CrmDashboardAction::class, 'actionItems']);
+        $app->post   ('/api/crm/action-items/dismiss', [CrmDashboardAction::class, 'dismissActionItem']);
+        $app->post   ('/api/crm/action-items/restore', [CrmDashboardAction::class, 'restoreActionItem']);
+        $app->post   ('/api/crm/action-items/restore-all', [CrmDashboardAction::class, 'restoreAllActionItems']);
+        $app->get    ('/api/crm/cash-flow-forecast', [CrmDashboardAction::class, 'cashFlowForecast']);
+        $app->get    ('/api/crm/late-risk',         [CrmDashboardAction::class, 'lateRisk']);
+        $app->get    ('/api/crm/reminder-effectiveness', [CrmDashboardAction::class, 'reminderEffectiveness']);
+        $app->get    ('/api/crm/payment-time-histogram', [CrmDashboardAction::class, 'paymentTimeHistogram']);
+        $app->post   ('/api/crm/recompute',    [CrmDashboardAction::class, 'recompute']);
+
+        // EPO výkazy (fáze 6) — DPH přiznání DPHDP3
+        $app->get    ('/api/reports/dphdp3/settings', [DphPriznaniAction::class, 'settings']);
+        $app->get    ('/api/reports/dphdp3/preview',  [DphPriznaniAction::class, 'preview']);
+        $app->get    ('/api/reports/dphdp3/trend',    [DphPriznaniAction::class, 'trend']);
+        $app->get    ('/api/reports/dphdp3',          [DphPriznaniAction::class, 'download']);
+        // Kontrolní hlášení DPHKH1 (vždy měsíční)
+        $app->get    ('/api/reports/dphkh1/preview',  [KontrolniHlaseniAction::class, 'preview']);
+        $app->get    ('/api/reports/dphkh1',          [KontrolniHlaseniAction::class, 'download']);
+        // Souhrnné hlášení DPHSHV (EU dodání, měsíční — podávají i identifikované osoby)
+        $app->get    ('/api/reports/dphshv/preview',  [SouhrnneHlaseniAction::class, 'preview']);
+        $app->get    ('/api/reports/dphshv',          [SouhrnneHlaseniAction::class, 'download']);
+        // Daň z příjmů FO/PO (MVP foundation — kostra XML s warning)
+        $app->get    ('/api/reports/income-tax/preview', [IncomeTaxAction::class, 'preview']);
+        $app->get    ('/api/reports/income-tax',         [IncomeTaxAction::class, 'download']);
+        // Tax submission archive (historie všech generovaných EPO XML)
+        $app->get    ('/api/reports/submissions',                 [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'list']);
+        $app->get    ('/api/reports/submissions/{id:[0-9]+}',     [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'detail']);
+        $app->get    ('/api/reports/submissions/{id:[0-9]+}/xml', [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'downloadXml']);
+        $app->delete ('/api/reports/submissions/{id:[0-9]+}',     [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'delete']);
+
+        $app->get    ('/api/admin/imports/{id:[0-9]+}',         ImportJobStatusAction::class);
+        $app->post   ('/api/admin/imports/{id:[0-9]+}/cancel',  CancelImportJobAction::class);
         $app->get    ('/api/admin/users',           [UserAdminAction::class, 'list']);
         $app->post   ('/api/admin/users',           [UserAdminAction::class, 'create']);
         $app->put    ('/api/admin/users/{id:[0-9]+}', [UserAdminAction::class, 'update']);

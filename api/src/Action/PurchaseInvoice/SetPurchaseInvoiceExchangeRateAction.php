@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Action\PurchaseInvoice;
+
+use MyInvoice\Http\Json;
+use MyInvoice\Http\SupplierGuard;
+use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Repository\PurchaseInvoiceRepository;
+use MyInvoice\Service\ActivityLogger;
+use MyInvoice\Service\IpMatcher;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+
+/**
+ * POST /api/purchase-invoices/{id}/exchange-rate
+ *
+ * Manuálně nastaví exchange_rate + exchange_rate_date + source.
+ * Body: { rate: 23.50, rate_date: "2026-05-15", source: "cnb"|"manual"|"idoklad"|"fakturoid" }
+ *
+ * NULL rate = reset (např. když uživatel změní currency na CZK).
+ */
+final class SetPurchaseInvoiceExchangeRateAction
+{
+    public function __construct(
+        private readonly PurchaseInvoiceRepository $repo,
+        private readonly ActivityLogger $logger,
+        private readonly IpMatcher $ipMatcher,
+    ) {}
+
+    public function __invoke(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) ($args['id'] ?? 0);
+        if ($id <= 0) {
+            return Json::error($response, 'invalid_id', 'Neplatné ID', 400);
+        }
+
+        $supplierId = SupplierGuard::currentId($request);
+        $existing = $this->repo->find($id, $supplierId);
+        if ($existing === null) {
+            return Json::error($response, 'not_found', 'Přijatá faktura nenalezena.', 404);
+        }
+
+        $body = (array) ($request->getParsedBody() ?? []);
+
+        $rate = null;
+        if (array_key_exists('rate', $body) && $body['rate'] !== null && $body['rate'] !== '') {
+            if (!is_numeric($body['rate'])) {
+                return Json::error($response, 'validation_failed', 'rate musí být číslo', 400);
+            }
+            $rate = (float) $body['rate'];
+            if ($rate <= 0 || $rate > 100000) {
+                return Json::error($response, 'validation_failed', 'rate je mimo rozumný rozsah', 400);
+            }
+        }
+
+        $rateDate = null;
+        if (!empty($body['rate_date'])) {
+            $rateDate = (string) $body['rate_date'];
+            $d = \DateTimeImmutable::createFromFormat('Y-m-d', $rateDate);
+            if ($d === false || $d->format('Y-m-d') !== $rateDate) {
+                return Json::error($response, 'validation_failed', 'Neplatné rate_date', 400);
+            }
+        }
+
+        $source = (string) ($body['source'] ?? 'manual');
+        if (!in_array($source, ['cnb', 'manual', 'idoklad', 'fakturoid'], true)) {
+            return Json::error($response, 'validation_failed', 'Neplatný source', 400);
+        }
+
+        $this->repo->setExchangeRate($id, $rate, $rateDate, $source, $supplierId);
+
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $this->logger->log('purchase_invoice.exchange_rate_set', $user['id'] ?? null, 'purchase_invoice', $id,
+            ['rate' => $rate, 'rate_date' => $rateDate, 'source' => $source], $ip, $request->getHeaderLine('User-Agent'));
+
+        return Json::ok($response, $this->repo->find($id, $supplierId));
+    }
+}

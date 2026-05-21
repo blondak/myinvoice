@@ -134,64 +134,128 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
     </div>
 
     <div v-else-if="summary" class="space-y-6">
-      <!-- KPI tiles — dynamicky N sloupců dle počtu měn (1 měna → 4 boxy, 2 měny → 5 boxů…) -->
+      <!-- ═══ Sekce 1: VYSTAVENÉ FAKTURY ═══ -->
+      <section class="space-y-3">
+        <h2>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-700">
+            {{ t('dashboard.section_issued') }}
+          </span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Revenue card (wide — 2 sloupce na lg+) -->
+          <div v-for="c in summary.kpi.per_currency" :key="c.currency"
+            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm md:col-span-2">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.revenue', { year: summary.year, currency: c.currency }) }}</div>
+            <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(c.this_year, c.currency) }}</div>
+            <div v-if="c.change_pct !== null" class="text-xs mt-1" :class="c.change_pct >= 0 ? 'text-success-600' : 'text-danger-500'"
+              :title="t('dashboard.yoy_ytd_tooltip', { year: summary.prev_year, total: formatMoney(c.prev_year, c.currency), ytd: formatMoney(c.prev_year_ytd, c.currency) })">
+              {{ c.change_pct >= 0 ? '▲' : '▼' }} {{ Math.abs(c.change_pct) }} % {{ t('dashboard.vs_prev_ytd', { year: summary.prev_year }) }}
+            </div>
+            <div v-else class="text-xs text-neutral-400 mt-1">{{ t('dashboard.no_prev_year', { year: summary.prev_year }) }}</div>
+            <div class="mt-3" v-if="sparklineFor(c.currency).values.some(v => v !== 0)">
+              <SparklineChart
+                :labels="sparklineFor(c.currency).labels"
+                :values="sparklineFor(c.currency).values"
+                :format="(v: number) => formatMoney(v, c.currency)"
+              />
+            </div>
+          </div>
+
+          <!-- 4 single-column boxes: issued count, overdue, upcoming, avg payment -->
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.issued_count', { year: summary.year }) }}</div>
+            <div class="text-2xl font-semibold text-neutral-900">{{ summary.kpi.issued_count_ytd }}</div>
+            <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.invoices_unit') }}</div>
+          </div>
+
+          <div class="bg-white border rounded-lg p-5 shadow-sm" :class="summary.kpi.overdue_count > 0 ? 'border-danger-500/40' : 'border-neutral-200'">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.overdue') }}</div>
+            <div class="text-2xl font-semibold" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-900'">
+              {{ summary.kpi.overdue_count }}
+            </div>
+            <div class="text-xs mt-1 flex flex-wrap gap-x-3" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-400'">
+              <span v-for="o in summary.kpi.overdue_per_currency" :key="o.currency">{{ formatMoney(o.total, o.currency) }}</span>
+              <span v-if="summary.kpi.overdue_count === 0">{{ t('dashboard.all_ok') }}</span>
+            </div>
+          </div>
+
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.upcoming') }}</div>
+            <div class="text-2xl font-semibold text-neutral-900">{{ summary.unpaid_upcoming.length }}</div>
+            <div class="text-xs mt-1 text-neutral-400 flex flex-wrap gap-x-3">
+              <span v-for="u in upcomingPerCurrency" :key="u.currency">{{ formatMoney(u.total, u.currency) }}</span>
+              <span v-if="!upcomingPerCurrency.length">{{ t('dashboard.upcoming_none') }}</span>
+            </div>
+          </div>
+
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.avg_payment') }}</div>
+            <div class="text-2xl font-semibold text-neutral-900">
+              {{ summary.kpi.avg_payment_days !== null ? summary.kpi.avg_payment_days + ' ' + t('dashboard.days') : '—' }}
+            </div>
+            <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.this_year_paid') }}</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ Sekce 2: PŘIJATÉ FAKTURY (visible jen pokud existují YTD) ═══ -->
+      <section v-if="(summary.kpi.purchase_count_ytd ?? 0) > 0" class="space-y-3">
+        <h2>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-warning-50 text-warning-600">
+            {{ t('dashboard.section_purchase') }}
+          </span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Costs YTD -->
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_costs_ytd', { year: summary.year }) }}</div>
+            <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(summary.kpi.purchase_costs_ytd, 'CZK') }}</div>
+            <div class="text-xs text-neutral-400 mt-1">{{ summary.kpi.purchase_count_ytd }} {{ t('dashboard.invoices_unit') }}</div>
+          </div>
+
+          <!-- Unpaid -->
+          <div class="bg-white border rounded-lg p-5 shadow-sm"
+            :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'border-warning-500/40' : 'border-neutral-200'">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_unpaid') }}</div>
+            <div class="text-2xl font-semibold"
+              :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'text-warning-600' : 'text-neutral-900'">
+              {{ summary.kpi.purchase_unpaid_count }}
+            </div>
+            <div class="text-xs mt-1"
+              :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'text-warning-600' : 'text-neutral-400'">
+              {{ formatMoney(summary.kpi.purchase_unpaid_total, 'CZK') }}
+            </div>
+          </div>
+
+          <!-- Overdue (vždy zobrazené pro grid alignment, červené pokud > 0) -->
+          <div class="bg-white border rounded-lg p-5 shadow-sm"
+            :class="(summary.kpi.purchase_overdue_count ?? 0) > 0 ? 'border-danger-500/40' : 'border-neutral-200'">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_overdue') }}</div>
+            <div class="text-2xl font-semibold"
+              :class="(summary.kpi.purchase_overdue_count ?? 0) > 0 ? 'text-danger-500' : 'text-neutral-900'">
+              {{ summary.kpi.purchase_overdue_count }}
+            </div>
+            <div class="text-xs mt-1"
+              :class="(summary.kpi.purchase_overdue_count ?? 0) > 0 ? 'text-danger-500' : 'text-neutral-400'">
+              <RouterLink v-if="(summary.kpi.purchase_overdue_count ?? 0) > 0"
+                to="/purchase-invoices?overdue=1" class="hover:underline">
+                {{ t('dashboard.purchase_overdue_link') }}
+              </RouterLink>
+              <span v-else>{{ t('dashboard.all_ok') }}</span>
+            </div>
+          </div>
+
+          <!-- 4. box: link do CRM dashboardu (akce + analytics) -->
+          <RouterLink to="/crm"
+            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm hover:bg-neutral-50 hover:border-primary-300 transition">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_details') }}</div>
+            <div class="text-2xl font-semibold text-primary-700">CRM →</div>
+            <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.purchase_details_hint') }}</div>
+          </RouterLink>
+        </div>
+      </section>
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :class="kpiGridCols">
-        <div v-for="c in summary.kpi.per_currency" :key="c.currency" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm lg:col-span-2">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.revenue', { year: summary.year, currency: c.currency }) }}</div>
-          <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(c.this_year, c.currency) }}</div>
-          <div v-if="c.change_pct !== null" class="text-xs mt-1" :class="c.change_pct >= 0 ? 'text-success-600' : 'text-danger-500'"
-            :title="t('dashboard.yoy_ytd_tooltip', { year: summary.prev_year, total: formatMoney(c.prev_year, c.currency), ytd: formatMoney(c.prev_year_ytd, c.currency) })">
-            {{ c.change_pct >= 0 ? '▲' : '▼' }} {{ Math.abs(c.change_pct) }} % {{ t('dashboard.vs_prev_ytd', { year: summary.prev_year }) }}
-          </div>
-          <div v-else class="text-xs text-neutral-400 mt-1">{{ t('dashboard.no_prev_year', { year: summary.prev_year }) }}</div>
-          <!-- Sparkline 12m pod částkou — vizuální trend. -->
-          <div class="mt-3" v-if="sparklineFor(c.currency).values.some(v => v !== 0)">
-            <SparklineChart
-              :labels="sparklineFor(c.currency).labels"
-              :values="sparklineFor(c.currency).values"
-              :format="(v: number) => formatMoney(v, c.currency)"
-            />
-          </div>
-        </div>
-
-        <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.issued_count', { year: summary.year }) }}</div>
-          <div class="text-2xl font-semibold text-neutral-900">{{ summary.kpi.issued_count_ytd }}</div>
-          <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.invoices_unit') }}</div>
-        </div>
-
-        <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm" :class="{'border-danger-500/40': summary.kpi.overdue_count > 0}">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.overdue') }}</div>
-          <div class="text-2xl font-semibold" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-900'">
-            {{ summary.kpi.overdue_count }}
-          </div>
-          <div class="text-xs mt-1 flex flex-wrap gap-x-3" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-400'">
-            <span v-for="o in summary.kpi.overdue_per_currency" :key="o.currency">
-              {{ formatMoney(o.total, o.currency) }}
-            </span>
-            <span v-if="summary.kpi.overdue_count === 0">{{ t('dashboard.all_ok') }}</span>
-          </div>
-        </div>
-
-        <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.upcoming') }}</div>
-          <div class="text-2xl font-semibold text-neutral-900">{{ summary.unpaid_upcoming.length }}</div>
-          <div class="text-xs mt-1 text-neutral-400 flex flex-wrap gap-x-3">
-            <span v-for="u in upcomingPerCurrency" :key="u.currency">
-              {{ formatMoney(u.total, u.currency) }}
-            </span>
-            <span v-if="!upcomingPerCurrency.length">{{ t('dashboard.upcoming_none') }}</span>
-          </div>
-        </div>
-
-        <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.avg_payment') }}</div>
-          <div class="text-2xl font-semibold text-neutral-900">
-            {{ summary.kpi.avg_payment_days !== null ? summary.kpi.avg_payment_days + ' ' + t('dashboard.days') : '—' }}
-          </div>
-          <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.this_year_paid') }}</div>
-        </div>
-
         <!-- Pending approvals tile (admin only, jen pokud existují requested) -->
         <RouterLink
           v-if="isAdmin && summary.pending_approvals && summary.pending_approvals.requested > 0"
@@ -213,8 +277,15 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
         </RouterLink>
       </div>
 
-      <!-- Splatnost: dnes / tento týden / tento měsíc — kumulativní karty -->
-      <div v-if="summary.due_buckets.length" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- ═══ Sekce 3: SPLATNOST POHLEDÁVEK (vystavené, příchozí platby) ═══ -->
+      <section v-if="summary.due_buckets.length" class="space-y-3">
+        <h2 class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-success-50 text-success-600">
+            {{ t('dashboard.section_receivables_due') }}
+          </span>
+          <span class="text-xs text-neutral-400">{{ t('dashboard.receivables_hint') }}</span>
+        </h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div v-for="b in summary.due_buckets" :key="`db-today-${b.currency}`"
           class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm"
           :class="{ 'border-warning-500/40 bg-warning-50/20': b.today_count > 0 }">
@@ -239,6 +310,7 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
           <div class="text-xs mt-1 font-mono text-neutral-500">{{ formatMoney(b.month_total, b.currency) }}</div>
         </div>
       </div>
+      </section>
 
       <!-- Cash-flow forecast 30 / 60 / 90 dní — kolik se očekává inkasovat -->
       <div v-if="summary.cashflow_forecast.length" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
