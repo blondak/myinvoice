@@ -249,7 +249,13 @@ async function loadAiStatus() {
 }
 
 async function saveAiCreds() {
-  if (!aiApiKey.value || !aiApiKey.value.startsWith('sk-ant-')) {
+  // Při změně jen modelu (klíč už uložen) povol prázdné aiApiKey — backend zachová stávající klíč.
+  const keyProvided = aiApiKey.value !== ''
+  if (keyProvided && !aiApiKey.value.startsWith('sk-ant-')) {
+    toast.error('API key musí začínat "sk-ant-"')
+    return
+  }
+  if (!keyProvided && !aiStatus.value?.configured) {
     toast.error('API key musí začínat "sk-ant-"')
     return
   }

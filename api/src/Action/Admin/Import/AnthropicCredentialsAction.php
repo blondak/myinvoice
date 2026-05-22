@@ -66,19 +66,36 @@ final class AnthropicCredentialsAction
         $apiKey = (string) ($body['api_key'] ?? '');
         $model  = (string) ($body['default_model'] ?? 'claude-haiku-4-5');
 
+        if (!in_array($model, self::ALLOWED_MODELS, true)) {
+            return Json::error($response, 'validation_failed', 'Neplatný model.', 400);
+        }
+
+        $existing = $this->anthropic->getCredentials($supplierId);
+        $userId = (int) ($user['id'] ?? 0);
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+
+        // Pouze změna modelu (klíč už existuje, nový klíč prázdný) → neretestujeme.
+        if ($apiKey === '' && $existing !== null) {
+            $this->anthropic->updateDefaultModel($supplierId, $model);
+            $this->logger->log('import.anthropic_model_changed', $userId, 'supplier', $supplierId, [
+                'default_model' => $model,
+            ], $ip, $request->getHeaderLine('User-Agent'));
+            return Json::ok($response, [
+                'saved'      => true,
+                'test_ok'    => true,
+                'test_error' => null,
+                'model'      => $model,
+            ]);
+        }
+
         if ($apiKey === '') {
             return Json::error($response, 'validation_failed', 'api_key je povinné.', 400);
         }
         if (!str_starts_with($apiKey, 'sk-ant-') || strlen($apiKey) > 256) {
             return Json::error($response, 'validation_failed', 'api_key má neplatný formát (musí začínat "sk-ant-").', 400);
         }
-        if (!in_array($model, self::ALLOWED_MODELS, true)) {
-            return Json::error($response, 'validation_failed', 'Neplatný model.', 400);
-        }
 
         $this->anthropic->setCredentials($supplierId, $apiKey, $model);
-        $userId = (int) ($user['id'] ?? 0);
-        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('import.anthropic_credentials_set', $userId, 'supplier', $supplierId, [
             'default_model' => $model,
         ], $ip, $request->getHeaderLine('User-Agent'));

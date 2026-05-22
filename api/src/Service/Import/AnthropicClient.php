@@ -85,6 +85,13 @@ final class AnthropicClient
         )->execute([$enc, $model, $supplierId]);
     }
 
+    public function updateDefaultModel(int $supplierId, string $defaultModel): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE supplier SET anthropic_default_model = ? WHERE id = ?'
+        )->execute([$defaultModel, $supplierId]);
+    }
+
     /**
      * Test connectivity — pošle minimalistický prompt, ověří 200 OK.
      */
