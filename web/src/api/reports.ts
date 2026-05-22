@@ -37,6 +37,14 @@ export interface DphTrendRow {
   vat_due: number
 }
 
+export interface DphDraftsPrediction {
+  vat_output: number
+  vat_input: number
+  tax_due: number
+  sale_count: number
+  purchase_count: number
+}
+
 export const reportsApi = {
   dphSettings: () =>
     api.get<DphSettings>('/reports/dphdp3/settings').then(r => r.data),
@@ -48,6 +56,9 @@ export const reportsApi = {
 
   dphTrend: (months = 12) =>
     api.get<DphTrendRow[]>('/reports/dphdp3/trend', { params: { months } }).then(r => r.data),
+
+  dphDraftsPrediction: () =>
+    api.get<DphDraftsPrediction>('/reports/dphdp3/drafts-prediction').then(r => r.data),
 
   khPreview: (year: number, month: number) =>
     api.get<{

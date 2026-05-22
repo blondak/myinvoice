@@ -60,6 +60,62 @@ final class DphPriznaniAction
     }
 
     /**
+     * GET /api/reports/dphdp3/drafts-prediction → součet VAT z koncept faktur
+     * (predikce DPH pro budoucí přiznání). Returns:
+     *   { vat_output, vat_input, tax_due, sale_count, purchase_count }
+     *
+     * Pravidla:
+     * - sale (vydané): status='draft', invoice_type IN (invoice, credit_note)
+     * - purchase (přijaté): status='draft'
+     * - Multi-currency: total_vat × COALESCE(exchange_rate, 1) → CZK. Drafty bez
+     *   nastaveného kurzu se počítají jako 1:1 (UI v 4. boxu varuje, že je to
+     *   pouze odhad).
+     */
+    public function draftsPrediction(Request $request, Response $response): Response
+    {
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        if (!in_array(($user['role'] ?? ''), ['admin', 'accountant'], true)) {
+            return Json::error($response, 'forbidden', 'Pouze admin nebo účetní.', 403);
+        }
+        $supplierId = SupplierGuard::currentId($request);
+        $pdo = $this->db->pdo();
+
+        $saleStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(i.total_vat * COALESCE(IF(cur.code='CZK', 1, i.exchange_rate), 1)), 0) AS vat,
+                    COUNT(*) AS cnt
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.status = 'draft'
+                AND i.invoice_type IN ('invoice', 'credit_note')"
+        );
+        $saleStmt->execute([$supplierId]);
+        $sale = $saleStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0];
+
+        $purchaseStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(pi.total_vat * COALESCE(IF(cur.code='CZK', 1, pi.exchange_rate), 1)), 0) AS vat,
+                    COUNT(*) AS cnt
+               FROM purchase_invoices pi
+               JOIN currencies cur ON cur.id = pi.currency_id
+              WHERE pi.supplier_id = ?
+                AND pi.status = 'draft'"
+        );
+        $purchaseStmt->execute([$supplierId]);
+        $purchase = $purchaseStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0];
+
+        $vatOutput = (float) $sale['vat'];
+        $vatInput  = (float) $purchase['vat'];
+
+        return Json::ok($response, [
+            'vat_output'     => $vatOutput,
+            'vat_input'      => $vatInput,
+            'tax_due'        => $vatOutput - $vatInput,
+            'sale_count'     => (int) $sale['cnt'],
+            'purchase_count' => (int) $purchase['cnt'],
+        ]);
+    }
+
+    /**
      * GET /api/reports/dphdp3/trend?months=12 → list měsíčních souhrnů DPH
      * (output, input, due) pro graf.
      */

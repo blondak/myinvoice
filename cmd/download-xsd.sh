@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stáhne XSD schémata EPO MFČR do storage/xsd/.
+# Stáhne XSD schémata EPO MFČR do api/xsd/ — typicky 1× ročně po vydání nových
+# verzí na MFČR portálu (typically leden). Default check-in má aktuální verze.
 #
 # Použití:
 #   bash cmd/download-xsd.sh           — stáhne všech 5 schémat
@@ -9,7 +10,7 @@
 
 set -euo pipefail
 
-DIR="$(cd "$(dirname "$0")/.." && pwd)/storage/xsd"
+DIR="$(cd "$(dirname "$0")/.." && pwd)/api/xsd"
 BASE="https://adisspr.mfcr.cz/adis/jepo/schema"
 FORMS=("dphdp3" "dphkh1" "dphshv" "dpfdp5" "dppdp9")
 

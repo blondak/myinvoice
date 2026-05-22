@@ -44,12 +44,17 @@ final class GetClientAction
         $vatStmt->execute([$sid]);
         $rev = ((bool) $vatStmt->fetchColumn()) ? 'i.total_without_vat' : 'i.total_with_vat';
 
+        // CZK přepočet: pro klienty s multi-currency obratem chceme graf v jedné měně.
+        // i.exchange_rate je CZK / 1 jednotka cizí měny, fixovaná k DUZP (CNB).
+        // CZK řádky mají exchange_rate buď NULL nebo 1 → COALESCE(.., 1) ošetří oba případy.
+        $revCzk = "$rev * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)";
+
         // Obrat po měsících za posledních 24 měsíců.
         // Zahrnuje invoice + credit_note (dobropis má záporné částky, automaticky odečte).
         // Vyloučeno: koncepty (draft), zálohovky (proforma), storno (cancelled), interní cancellation.
         $stmtM = $pdo->prepare(
             "SELECT DATE_FORMAT(COALESCE(i.tax_date, i.issue_date), '%Y-%m') AS month,
-                    cur.code AS currency, SUM($rev) AS total
+                    cur.code AS currency, SUM($rev) AS total, SUM($revCzk) AS total_czk
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.client_id = ?
@@ -61,7 +66,12 @@ final class GetClientAction
         );
         $stmtM->execute([$id]);
         $client['revenue_by_month'] = array_map(
-            fn (array $r) => ['month' => $r['month'], 'currency' => $r['currency'], 'total' => (float) $r['total']],
+            fn (array $r) => [
+                'month'     => $r['month'],
+                'currency'  => $r['currency'],
+                'total'     => (float) $r['total'],
+                'total_czk' => (float) $r['total_czk'],
+            ],
             $stmtM->fetchAll(\PDO::FETCH_ASSOC)
         );
 
@@ -69,7 +79,7 @@ final class GetClientAction
         // vyloučí draft/proforma/cancelled/cancellation.
         $stmtY = $pdo->prepare(
             "SELECT YEAR(COALESCE(i.tax_date, i.issue_date)) AS year,
-                    cur.code AS currency, SUM($rev) AS total, COUNT(*) AS count
+                    cur.code AS currency, SUM($rev) AS total, SUM($revCzk) AS total_czk, COUNT(*) AS count
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.client_id = ?
@@ -81,10 +91,11 @@ final class GetClientAction
         $stmtY->execute([$id]);
         $client['revenue_by_year'] = array_map(
             fn (array $r) => [
-                'year' => (int) $r['year'],
-                'currency' => $r['currency'],
-                'total' => (float) $r['total'],
-                'count' => (int) $r['count'],
+                'year'      => (int) $r['year'],
+                'currency'  => $r['currency'],
+                'total'     => (float) $r['total'],
+                'total_czk' => (float) $r['total_czk'],
+                'count'     => (int) $r['count'],
             ],
             $stmtY->fetchAll(\PDO::FETCH_ASSOC)
         );
@@ -94,7 +105,7 @@ final class GetClientAction
         // Faktury bez project_id se agregují pod label "(bez zakázky)" (project_id NULL).
         $stmtP = $pdo->prepare(
             "SELECT i.project_id, p.name AS project_name,
-                    cur.code AS currency, SUM($rev) AS total, COUNT(*) AS count
+                    cur.code AS currency, SUM($rev) AS total, SUM($revCzk) AS total_czk, COUNT(*) AS count
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
           LEFT JOIN projects p ON p.id = i.project_id
@@ -111,16 +122,23 @@ final class GetClientAction
                 'project_name' => $r['project_name'],
                 'currency'     => $r['currency'],
                 'total'        => (float) $r['total'],
+                'total_czk'    => (float) $r['total_czk'],
                 'count'        => (int) $r['count'],
             ],
             $stmtP->fetchAll(\PDO::FETCH_ASSOC)
         );
 
-        // Nezaplaceno (issued/sent + invoice/credit_note) + Po splatnosti per měna
+        // Nezaplaceno (issued/sent + invoice/credit_note) + Po splatnosti per měna.
+        // _czk fieldy: stejný přepočet jako revenue_by_*, pro UI agregaci v multi-ccy scénáři.
         $stmtU = $pdo->prepare(
             "SELECT cur.code AS currency,
-                    SUM(i.amount_to_pay) AS unpaid_total, COUNT(*) AS unpaid_count,
+                    SUM(i.amount_to_pay) AS unpaid_total,
+                    SUM(i.amount_to_pay * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)) AS unpaid_total_czk,
+                    COUNT(*) AS unpaid_count,
                     SUM(CASE WHEN i.due_date <= CURDATE() THEN i.amount_to_pay ELSE 0 END) AS overdue_total,
+                    SUM(CASE WHEN i.due_date <= CURDATE()
+                             THEN i.amount_to_pay * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)
+                             ELSE 0 END) AS overdue_total_czk,
                     SUM(CASE WHEN i.due_date <= CURDATE() THEN 1 ELSE 0 END) AS overdue_count
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
@@ -132,11 +150,13 @@ final class GetClientAction
         $stmtU->execute([$id]);
         $client['unpaid_summary'] = array_map(
             fn (array $r) => [
-                'currency'      => $r['currency'],
-                'unpaid_total'  => (float) $r['unpaid_total'],
-                'unpaid_count'  => (int) $r['unpaid_count'],
-                'overdue_total' => (float) $r['overdue_total'],
-                'overdue_count' => (int) $r['overdue_count'],
+                'currency'           => $r['currency'],
+                'unpaid_total'       => (float) $r['unpaid_total'],
+                'unpaid_total_czk'   => (float) $r['unpaid_total_czk'],
+                'unpaid_count'       => (int) $r['unpaid_count'],
+                'overdue_total'      => (float) $r['overdue_total'],
+                'overdue_total_czk'  => (float) $r['overdue_total_czk'],
+                'overdue_count'      => (int) $r['overdue_count'],
             ],
             $stmtU->fetchAll(\PDO::FETCH_ASSOC)
         );

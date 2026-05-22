@@ -135,6 +135,8 @@ export interface PurchaseInvoiceListItem {
   currency: string
   currency_symbol?: string
   currency_decimals?: number
+  exchange_rate: number | null
+  exchange_rate_date: string | null
   total_without_vat: number
   total_vat: number
   total_with_vat: number

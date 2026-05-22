@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { reportsApi, type DphPriznaniPreview, type DphSettings, type DphTrendRow } from '@/api/reports'
+import { reportsApi, type DphPriznaniPreview, type DphSettings, type DphTrendRow, type DphDraftsPrediction } from '@/api/reports'
 import { apiErrorMessage } from '@/api/errors'
 import { formatMoney } from '@/composables/useFormat'
 
@@ -14,6 +14,7 @@ const month = ref(now.getMonth() + 1)
 const settings = ref<DphSettings | null>(null)
 const preview = ref<DphPriznaniPreview | null>(null)
 const trend = ref<DphTrendRow[]>([])
+const draftsPrediction = ref<DphDraftsPrediction | null>(null)
 const loading = ref(false)
 const error = ref('')
 
@@ -33,14 +34,16 @@ async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [s, p, tr] = await Promise.all([
+    const [s, p, tr, dp] = await Promise.all([
       reportsApi.dphSettings(),
       reportsApi.dphPreview(year.value, month.value, periodOverride.value || undefined),
       reportsApi.dphTrend(12),
+      reportsApi.dphDraftsPrediction().catch(() => null),
     ])
     settings.value = s
     preview.value = p
     trend.value = tr
+    draftsPrediction.value = dp
   } catch (e) {
     error.value = apiErrorMessage(e)
   } finally {
@@ -80,6 +83,9 @@ const linesSorted = computed(() => {
 
 const outputLines = computed(() => linesSorted.value.filter(l => Number(l.line) < 40))
 const inputLines = computed(() => linesSorted.value.filter(l => Number(l.line) >= 40))
+
+// Vývoj DPH řazený sestupně dle data — nejnovější měsíc nahoře.
+const trendSorted = computed(() => [...trend.value].sort((a, b) => b.period.localeCompare(a.period)))
 
 // Trend chart helpers
 const trendMaxVat = computed(() => {
@@ -234,6 +240,46 @@ onMounted(loadAll)
         </div>
       </div>
 
+      <!-- Predikce DPH z konceptů — zobrazí se pouze pokud existují drafty -->
+      <div v-if="draftsPrediction && (draftsPrediction.sale_count + draftsPrediction.purchase_count) > 0"
+        class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-warning-700 font-medium mb-1">{{ t('reports.dph.prediction_vat_output') }}</div>
+          <div class="text-xl font-bold font-mono text-neutral-900">
+            {{ formatMoney(draftsPrediction.vat_output, 'CZK') }}
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">
+            {{ t('reports.dph.prediction_n_sale_drafts', { n: draftsPrediction.sale_count }) }}
+          </div>
+        </div>
+        <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-warning-700 font-medium mb-1">{{ t('reports.dph.prediction_vat_input') }}</div>
+          <div class="text-xl font-bold font-mono text-neutral-900">
+            {{ formatMoney(draftsPrediction.vat_input, 'CZK') }}
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">
+            {{ t('reports.dph.prediction_n_purchase_drafts', { n: draftsPrediction.purchase_count }) }}
+          </div>
+        </div>
+        <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
+          <div class="text-xs uppercase tracking-wide text-warning-700 font-medium mb-1">
+            {{ draftsPrediction.tax_due >= 0 ? t('reports.dph.prediction_tax_due') : t('reports.dph.prediction_excess_deduction') }}
+          </div>
+          <div class="text-xl font-bold font-mono"
+            :class="draftsPrediction.tax_due >= 0 ? 'text-danger-500' : 'text-success-600'">
+            {{ formatMoney(Math.abs(draftsPrediction.tax_due), 'CZK') }}
+          </div>
+          <div class="text-xs text-neutral-500 mt-1">{{ t('reports.dph.prediction_tax_due_hint') }}</div>
+        </div>
+        <div class="bg-warning-100 border border-warning-500/50 rounded-lg shadow-sm p-5 flex flex-col justify-center">
+          <div class="text-xs uppercase tracking-wide text-warning-700 font-semibold mb-1 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 0 0 1.74-3l-6.93-12a2 2 0 0 0-3.48 0l-6.93 12a2 2 0 0 0 1.74 3z"/></svg>
+            {{ t('reports.dph.prediction_label') }}
+          </div>
+          <div class="text-xs text-neutral-700 leading-snug">{{ t('reports.dph.prediction_explanation') }}</div>
+        </div>
+      </div>
+
       <!-- Monthly DPH trend chart — tabulkový layout, čísla zarovnaná doprava -->
       <div v-if="trend.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
@@ -255,7 +301,7 @@ onMounted(loadAll)
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
-            <tr v-for="m in trend" :key="m.period">
+            <tr v-for="m in trendSorted" :key="m.period">
               <td class="px-5 py-2 font-medium text-neutral-700">{{ formatMonthLabel(m.period) }}</td>
               <td class="px-3 py-2 text-right font-mono text-neutral-700">{{ formatMoney(m.vat_output, 'CZK') }}</td>
               <td class="px-1 py-2 w-32">

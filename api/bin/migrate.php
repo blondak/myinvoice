@@ -6,9 +6,15 @@ declare(strict_types=1);
  * Jednoduchý migrator: spustí SQL soubory z db/migrations/ v abecedním pořadí
  * a sleduje, co už proběhlo, v tabulce `migrations`.
  *
+ * Po migracích automaticky detekuje "stale" data (chybějící exchange_rate,
+ * varsymbol, vat_classification_code) a spustí příslušné backfill skripty
+ * s --apply. Detekční queries jsou rychlé (COUNT s indexem), reálný backfill
+ * se rozjede jen pokud něco chybí. Idempotentní — opakovaný běh = no-op.
+ *
  * Použití:
- *   php api/bin/migrate.php          # spustí pending migrace
- *   php api/bin/migrate.php --status # vypíše stav bez aplikace
+ *   php api/bin/migrate.php                # migrace + auto-backfill
+ *   php api/bin/migrate.php --status       # jen stav, žádná akce
+ *   php api/bin/migrate.php --no-backfills # migrace BEZ auto-backfillu
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -58,10 +64,9 @@ $pending = array_filter($files, fn (string $f) => !isset($applied[basename($f)])
 
 if (empty($pending)) {
     echo "Žádné nové migrace k aplikaci.\n";
-    exit(0);
+} else {
+    echo "Pending migrations: " . count($pending) . "\n";
 }
-
-echo "Pending migrations: " . count($pending) . "\n";
 
 foreach ($pending as $file) {
     $name = basename($file);
@@ -109,6 +114,87 @@ foreach ($pending as $file) {
 }
 
 echo "Hotovo.\n";
+
+// Auto-backfill po migracích — detekuje stale data a spouští příslušné skripty
+// s --apply. Skip pokud user dal --no-backfills (CI / read-only deploy).
+if (!in_array('--no-backfills', $argv, true)) {
+    runAutoBackfills($db, __DIR__);
+}
+
+/**
+ * Detekuje 4 kategorie chybějících dat a spouští odpovídající backfill skripty.
+ * Idempotentní: prázdné COUNT → skip skript. Výstup skriptu se streamuje na
+ * stdout/stderr (passthru), aby uživatel viděl pokrok per řádek.
+ */
+function runAutoBackfills(\PDO $db, string $binDir): void
+{
+    $checks = [
+        [
+            'name'    => 'exchange-rates',
+            'reason'  => 'non-CZK přijaté faktury bez exchange_rate',
+            'count'   => "SELECT COUNT(*) FROM purchase_invoices pi
+                            JOIN currencies cur ON cur.id = pi.currency_id
+                           WHERE pi.exchange_rate IS NULL
+                             AND cur.code != 'CZK'
+                             AND pi.status != 'cancelled'",
+            'script'  => 'backfill-exchange-rates.php',
+        ],
+        [
+            'name'    => 'purchase-varsymbols',
+            'reason'  => 'přijaté faktury bez varsymbolu',
+            'count'   => "SELECT COUNT(*) FROM purchase_invoices
+                           WHERE varsymbol IS NULL
+                             AND status != 'cancelled'",
+            'script'  => 'backfill-purchase-varsymbols.php',
+        ],
+        [
+            'name'    => 'vat-classification (purchase)',
+            'reason'  => 'položky přijatých faktur bez vat_classification_code',
+            'count'   => "SELECT COUNT(*) FROM purchase_invoice_items pii
+                            JOIN purchase_invoices pi ON pi.id = pii.purchase_invoice_id
+                           WHERE pii.vat_classification_code IS NULL
+                             AND pi.status != 'cancelled'",
+            'script'  => 'backfill-vat-classification.php',
+        ],
+        [
+            'name'    => 'vat-classification (sale)',
+            'reason'  => 'položky vystavených faktur bez vat_classification_code',
+            'count'   => "SELECT COUNT(*) FROM invoice_items ii
+                            JOIN invoices i ON i.id = ii.invoice_id
+                           WHERE ii.vat_classification_code IS NULL
+                             AND i.status NOT IN ('draft', 'cancelled')
+                             AND i.invoice_type != 'proforma'",
+            'script'  => 'backfill-vat-classification-invoices.php',
+        ],
+    ];
+
+    echo "\n=== Auto-backfill check ===\n";
+    $ranAny = false;
+    foreach ($checks as $c) {
+        try {
+            $count = (int) $db->query($c['count'])->fetchColumn();
+        } catch (\Throwable $e) {
+            // Tabulka může chybět na čerstvé instalaci před prvními migracemi —
+            // tolerance: skip, neházet fatal.
+            echo "  [{$c['name']}] skip (DB query failed: " . $e->getMessage() . ")\n";
+            continue;
+        }
+        if ($count === 0) {
+            echo "  [{$c['name']}] OK — žádná stale data\n";
+            continue;
+        }
+        $ranAny = true;
+        echo "\n→ [{$c['name']}] nalezeno {$count} {$c['reason']}, spouštím {$c['script']} --apply\n";
+        $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($binDir . '/' . $c['script']) . ' --apply';
+        passthru($cmd, $exitCode);
+        if ($exitCode !== 0) {
+            fwrite(STDERR, "  ✗ {$c['script']} skončil s exit code {$exitCode}\n");
+        }
+    }
+    if (!$ranAny) {
+        echo "Vše OK, žádný backfill nepotřeba.\n";
+    }
+}
 
 /**
  * Rozdělí SQL na jednotlivé statementy podle aktuálního delimiteru.

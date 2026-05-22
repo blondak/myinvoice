@@ -202,7 +202,7 @@ function openClient(c: Client) {
             </td>
             <td class="px-4 py-3 text-right font-mono">
               <template v-if="roleFilter === 'vendors'">
-                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, c.currency_default) }}</span>
+                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, 'CZK') }}</span>
                 <span v-else class="text-neutral-300">—</span>
               </template>
               <template v-else>
@@ -237,7 +237,7 @@ function openClient(c: Client) {
             <div class="font-medium text-neutral-900 truncate">{{ c.company_name }}</div>
             <div class="font-mono text-sm whitespace-nowrap">
               <template v-if="roleFilter === 'vendors'">
-                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, c.currency_default) }}</span>
+                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, 'CZK') }}</span>
                 <span v-else class="text-neutral-300">—</span>
               </template>
               <template v-else>

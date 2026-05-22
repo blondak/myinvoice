@@ -182,8 +182,9 @@ async function addCurrency() {
       is_active: false,
       is_default: false,
     })
-    // Refresh list a vyber novou měnu
-    currencies.value = await codebooksApi.currencies()
+    // Refresh list a vyber novou měnu — include_inactive=true protože nově přidaná
+    // měna z editoru přijaté faktury má is_active=false (jen pro nákup).
+    currencies.value = await codebooksApi.currencies(true)
     const newCcy = currencies.value.find(c => c.code === code)
     if (newCcy) form.value.currency_id = newCcy.id
     showAddCurrency.value = false

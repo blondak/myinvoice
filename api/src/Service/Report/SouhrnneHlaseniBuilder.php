@@ -108,14 +108,22 @@ final class SouhrnneHlaseniBuilder
         $vetaP->setAttribute('stat', (string) ($supplier['country_iso2'] ?? 'CZ'));
         $shv->appendChild($vetaP);
 
-        // VetaA1 — jednotlivé řádky (per VAT_ID + typ plnění)
+        // VetaR — jednotlivé řádky souhrnného hlášení (per VAT_ID + typ plnění).
+        // Pozn.: schéma EPO2 přejmenovalo dřívější VetaA1 → VetaR a atributy:
+        //   vatid_pod  → c_vat
+        //   kod_plneni → k_pln_eu
+        // VetaS je vyhrazena pro storna (oprava předchozích období) — nepoužíváme.
         $totalRows = 0;
         $totalAmount = 0.0;
+        $rowNum = 0;
         foreach ($rows as $r) {
-            $v = $dom->createElement('VetaA1');
+            $rowNum++;
+            $v = $dom->createElement('VetaR');
+            $v->setAttribute('c_rad', (string) $rowNum);
+            $v->setAttribute('k_storno', 'N'); // N = řádné, není to oprava
             $v->setAttribute('k_stat', $r['country_iso2']);
-            $v->setAttribute('vatid_pod', $r['vat_id']);
-            $v->setAttribute('kod_plneni', $r['sh_type']);
+            $v->setAttribute('c_vat', $r['vat_id']);
+            $v->setAttribute('k_pln_eu', $r['sh_type']);
             $v->setAttribute('pln_hodnota', $this->formatAmount($r['amount']));
             $v->setAttribute('pln_pocet', (string) $r['count']);
             $shv->appendChild($v);

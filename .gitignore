@@ -33,7 +33,7 @@ desktop.ini
 .idea/
 
 
-# XSD schémata MFČR (volitelné — viz storage/xsd/README.md)
-storage/xsd/*.xsd
+# XSD schémata MFČR jsou nyní commitnutá v api/xsd/ (public schémata, ~250 KB).
+# Legacy: storage/xsd/ se už nepoužívá — zde držíme jen mpdf-temp/ exempci.
 storage/mpdf-temp/*
 !storage/mpdf-temp/.gitkeep

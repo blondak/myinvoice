@@ -1,5 +1,6 @@
 @echo off
-REM Stáhne XSD schémata EPO MFČR do storage/xsd/ (Windows verze).
+REM Stáhne XSD schémata EPO MFČR do api/xsd/ (Windows verze). Default jsou
+REM commitnutá v repo — skript použij jen pro upgrade na nové ročníky MFČR.
 REM
 REM Pouziti:
 REM   cmd\download-xsd.cmd           — stáhne všech 5 schémat
@@ -7,7 +8,7 @@ REM   cmd\download-xsd.cmd dphkh1    — stáhne jen jedno
 
 setlocal EnableDelayedExpansion
 
-set "DIR=%~dp0..\storage\xsd"
+set "DIR=%~dp0..\api\xsd"
 set "BASE=https://adisspr.mfcr.cz/adis/jepo/schema"
 
 if not exist "%DIR%" mkdir "%DIR%"

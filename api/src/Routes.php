@@ -332,6 +332,7 @@ final class Routes
         $app->get    ('/api/reports/dphdp3/settings', [DphPriznaniAction::class, 'settings']);
         $app->get    ('/api/reports/dphdp3/preview',  [DphPriznaniAction::class, 'preview']);
         $app->get    ('/api/reports/dphdp3/trend',    [DphPriznaniAction::class, 'trend']);
+        $app->get    ('/api/reports/dphdp3/drafts-prediction', [DphPriznaniAction::class, 'draftsPrediction']);
         $app->get    ('/api/reports/dphdp3',          [DphPriznaniAction::class, 'download']);
         // Kontrolní hlášení DPHKH1 (vždy měsíční)
         $app->get    ('/api/reports/dphkh1/preview',  [KontrolniHlaseniAction::class, 'preview']);

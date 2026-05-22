@@ -173,6 +173,7 @@ final class PurchaseInvoiceRepository
                        pi.vendor_id, pi.supplier_id,
                        pi.issue_date, pi.tax_date, pi.due_date, pi.received_at,
                        pi.currency_id, cur.code AS currency, cur.symbol AS currency_symbol, cur.decimals AS currency_decimals,
+                       pi.exchange_rate, pi.exchange_rate_date,
                        pi.total_without_vat, pi.total_vat, pi.total_with_vat,
                        pi.advance_paid_amount, pi.amount_to_pay,
                        pi.status, pi.booked_at, pi.paid_at, pi.cancelled_at,

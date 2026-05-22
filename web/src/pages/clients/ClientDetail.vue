@@ -31,14 +31,41 @@ const purchaseInvoicesLoading = ref(false)
 
 // Aggregace přijatých faktur per měsíc / rok (paralel se statistikami vystavených).
 // Server zatím nevrací aggregated dataset, takže computované client-side z purchaseInvoices.
+//
+// Multi-currency: pokud má dodavatel faktury ve více měnách (např. EUR + USD),
+// přepočítáme vše na CZK přes pi.exchange_rate (CNB k DUZP — fixovaný na faktuře).
+// `purchaseIsMultiCurrency` rozhodne, zda graf/totals zobrazit v CZK nebo původní měně.
+const purchaseCurrencies = computed(() => {
+  const s = new Set<string>()
+  for (const pi of purchaseInvoices.value) {
+    if (pi.status === 'draft' || pi.status === 'cancelled') continue
+    s.add(pi.currency || 'CZK')
+  }
+  return Array.from(s)
+})
+const purchaseIsMultiCurrency = computed(() => purchaseCurrencies.value.length > 1)
+const purchaseDisplayCurrency = computed(() =>
+  purchaseIsMultiCurrency.value ? 'CZK' : (purchaseCurrencies.value[0] || 'CZK')
+)
+
+function purchaseAmountInDisplayCcy(pi: PurchaseInvoice): number {
+  const total = Number(pi.total_with_vat) || 0
+  if (!purchaseIsMultiCurrency.value) return total
+  // V multi-ccy režimu vše na CZK; CZK faktury násobíme 1, ostatní přes exchange_rate.
+  if ((pi.currency || 'CZK') === 'CZK') return total
+  const rate = Number(pi.exchange_rate) || 0
+  return rate > 0 ? total * rate : total
+}
+
 const purchaseByMonth = computed(() => {
   const m = new Map<string, { total: number, count: number, currency: string }>()
+  const ccy = purchaseDisplayCurrency.value
   for (const pi of purchaseInvoices.value) {
     if (pi.status === 'draft' || pi.status === 'cancelled') continue
     const key = (pi.issue_date || '').slice(0, 7) // YYYY-MM
     if (!key) continue
-    const cur = m.get(key) ?? { total: 0, count: 0, currency: pi.currency || 'CZK' }
-    cur.total += Number(pi.total_with_vat) || 0
+    const cur = m.get(key) ?? { total: 0, count: 0, currency: ccy }
+    cur.total += purchaseAmountInDisplayCcy(pi)
     cur.count += 1
     m.set(key, cur)
   }
@@ -48,15 +75,17 @@ const purchaseByMonth = computed(() => {
 })
 
 const purchaseByYear = computed(() => {
+  // V single-ccy režimu zachováme rozpad per měna (BC, jen jedna měna stejně).
+  // V multi-ccy režimu sloučíme do CZK.
   const m = new Map<string, { total: number, count: number, currency: string }>()
   for (const pi of purchaseInvoices.value) {
     if (pi.status === 'draft' || pi.status === 'cancelled') continue
     const year = (pi.issue_date || '').slice(0, 4)
     if (!year) continue
-    const cur = (pi.currency || 'CZK')
+    const cur = purchaseIsMultiCurrency.value ? 'CZK' : (pi.currency || 'CZK')
     const key = `${year}|${cur}`
     const v = m.get(key) ?? { total: 0, count: 0, currency: cur }
-    v.total += Number(pi.total_with_vat) || 0
+    v.total += purchaseAmountInDisplayCcy(pi)
     v.count += 1
     m.set(key, v)
   }
@@ -78,32 +107,95 @@ const purchaseTotalsByCurrency = computed(() => {
   return Array.from(m.entries()).map(([currency, total]) => ({ currency, total }))
 })
 
-// Pro graf: primární měna = nejčastější v datech, fallback default
+// Multi-currency revenue: pokud má klient vystavené faktury ve více měnách (např. EUR+USD),
+// zobrazíme graf/tabulky v CZK (přepočet přes i.exchange_rate fixovaný k DUZP, dodaný backendem
+// jako *_czk fieldy). Pro single-currency klienta zachováme původní měnu.
+const revenueCurrencies = computed(() => {
+  const s = new Set<string>()
+  for (const r of client.value?.revenue_by_month ?? []) s.add(r.currency)
+  return Array.from(s)
+})
+const revenueIsMultiCurrency = computed(() => revenueCurrencies.value.length > 1)
 const primaryCurrency = computed(() => {
+  if (revenueIsMultiCurrency.value) return 'CZK'
+  // Single-ccy: nejčastější v datech, fallback default
   const tally: Record<string, number> = {}
   for (const r of client.value?.revenue_by_month ?? []) tally[r.currency] = (tally[r.currency] ?? 0) + r.total
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]
   return top?.[0] || client.value?.currency_default || 'CZK'
 })
 const overdueAny = computed(() => (client.value?.unpaid_summary ?? []).some(u => u.overdue_count > 0))
+
+// Single-ccy: zobrazujeme jednotlivé řádky per měna jako dnes (BC).
+// Multi-ccy: agregujeme přes všechny měny do CZK přes total_czk.
 const monthlyChart = computed(() => {
+  if (revenueIsMultiCurrency.value) {
+    // Sumace všech měn na CZK per měsíc
+    const m = new Map<string, number>()
+    for (const r of client.value?.revenue_by_month ?? []) {
+      m.set(r.month, (m.get(r.month) ?? 0) + r.total_czk)
+    }
+    const sorted = Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b))
+    return { labels: sorted.map(([k]) => k), values: sorted.map(([, v]) => v) }
+  }
   const data = (client.value?.revenue_by_month ?? []).filter(r => r.currency === primaryCurrency.value)
+  return { labels: data.map(r => r.month), values: data.map(r => r.total) }
+})
+
+const yearTable = computed(() => {
+  // Multi-ccy: sloučí roky do jednoho řádku v CZK.
+  if (revenueIsMultiCurrency.value) {
+    const m = new Map<number, { total: number, count: number }>()
+    for (const r of client.value?.revenue_by_year ?? []) {
+      const v = m.get(r.year) ?? { total: 0, count: 0 }
+      v.total += r.total_czk
+      v.count += r.count
+      m.set(r.year, v)
+    }
+    return Array.from(m.entries())
+      .sort(([a], [b]) => b - a)
+      .map(([year, v]) => ({ year, currency: 'CZK', total: v.total, count: v.count }))
+  }
+  return client.value?.revenue_by_year ?? []
+})
+
+const projectsChart = computed(() => {
+  if (revenueIsMultiCurrency.value) {
+    // Sloučí stejný projekt z různých měn → součet v CZK.
+    const m = new Map<string, number>()
+    for (const r of client.value?.revenue_by_project ?? []) {
+      if (r.total_czk <= 0) continue
+      const key = r.project_name ?? t('client.no_project')
+      m.set(key, (m.get(key) ?? 0) + r.total_czk)
+    }
+    const entries = Array.from(m.entries()).sort(([, a], [, b]) => b - a)
+    return { labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) }
+  }
+  const data = (client.value?.revenue_by_project ?? []).filter(r => r.currency === primaryCurrency.value && r.total > 0)
   return {
-    labels: data.map(r => r.month),
+    labels: data.map(r => r.project_name ?? t('client.no_project')),
     values: data.map(r => r.total),
   }
 })
 
-const projectsChart = computed(() => {
-  const data = (client.value?.revenue_by_project ?? []).filter(r => r.currency === primaryCurrency.value && r.total > 0)
-  const labels = data.map(r => r.project_name ?? t('client.no_project'))
-  const values = data.map(r => r.total)
-  return { labels, values }
-})
-
 const projectsTable = computed(() => {
-  // Tabulka — seřazená podle obratu sestupně, jen položky s nenulovým obratem.
-  return (client.value?.revenue_by_project ?? []).filter(r => r.total !== 0)
+  // Single-ccy: per-currency řádky jako dnes.
+  if (!revenueIsMultiCurrency.value) {
+    return (client.value?.revenue_by_project ?? []).filter(r => r.total !== 0)
+  }
+  // Multi-ccy: sloučí projekty z různých měn (např. EUR + USD řádek stejného projektu) do CZK.
+  const m = new Map<string, { project_id: number | null; project_name: string | null; total: number; count: number }>()
+  for (const r of client.value?.revenue_by_project ?? []) {
+    if (r.total_czk === 0) continue
+    const key = `${r.project_id ?? 'none'}|${r.project_name ?? ''}`
+    const v = m.get(key) ?? { project_id: r.project_id, project_name: r.project_name, total: 0, count: 0 }
+    v.total += r.total_czk
+    v.count += r.count
+    m.set(key, v)
+  }
+  return Array.from(m.values())
+    .sort((a, b) => b.total - a.total)
+    .map(v => ({ ...v, currency: 'CZK' }))
 })
 
 // Smazat lze jen klienta bez navázaných faktur a zakázek (jinak archivovat)
@@ -297,7 +389,7 @@ async function deleteClient() {
       <div class="md:col-span-2 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
         <div class="flex items-baseline justify-between mb-3">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.revenue_by_month') }}</h3>
-          <span class="text-xs font-mono text-neutral-500">{{ primaryCurrency }}</span>
+          <span class="text-xs font-mono text-neutral-500">{{ primaryCurrency }}<span v-if="revenueIsMultiCurrency" class="ml-1 text-neutral-400 normal-case">({{ t('client.converted_from', { ccys: revenueCurrencies.join(', ') }) }})</span></span>
         </div>
         <MonthlyRevenueChart :labels="monthlyChart.labels" :values="monthlyChart.values" :currency="primaryCurrency" />
       </div>
@@ -306,7 +398,7 @@ async function deleteClient() {
         <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <tbody class="divide-y divide-neutral-100">
-            <tr v-for="r in client.revenue_by_year || []" :key="`${r.year}-${r.currency}`">
+            <tr v-for="r in yearTable" :key="`${r.year}-${r.currency}`">
               <td class="py-2 text-neutral-900 font-medium">{{ r.year }}</td>
               <td class="py-2 text-right font-mono text-neutral-900">{{ formatMoney(r.total, r.currency) }}</td>
               <td class="py-2 pl-3 text-right text-xs text-neutral-500 whitespace-nowrap">{{ t('client.year_invoices', { n: r.count }) }}</td>
@@ -322,9 +414,9 @@ async function deleteClient() {
       <div class="md:col-span-2 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
         <div class="flex items-baseline justify-between mb-3">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.costs_by_month') }}</h3>
-          <span class="text-xs font-mono text-neutral-500">{{ primaryCurrency }}</span>
+          <span class="text-xs font-mono text-neutral-500">{{ purchaseDisplayCurrency }}<span v-if="purchaseIsMultiCurrency" class="ml-1 text-neutral-400 normal-case">({{ t('client.converted_from', { ccys: purchaseCurrencies.join(', ') }) }})</span></span>
         </div>
-        <MonthlyRevenueChart :labels="purchaseMonthlyChart.labels" :values="purchaseMonthlyChart.values" :currency="primaryCurrency" />
+        <MonthlyRevenueChart :labels="purchaseMonthlyChart.labels" :values="purchaseMonthlyChart.values" :currency="purchaseDisplayCurrency" />
       </div>
       <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('client.costs_by_year') }}</h3>

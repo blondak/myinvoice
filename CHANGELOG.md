@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] — 2026-05-22
+
+Patch release navazující na 4.0.0 — drobná vylepšení UX kolem multi-currency
+přehledů, predikce DPH z konceptů, robustnější migrace, CI fix, oprava EPO XSD
+souhrnného hlášení.
+
+### Added
+
+#### Multi-currency CZK přepočet u klientů
+- **`/clients?role=vendors` sloupec *Náklady*** zobrazuje hodnotu v CZK (SQL už
+  počítá multiplier přes `pi.exchange_rate`, frontend chybně labeloval s
+  `c.currency_default` — např. 96 089 CZK ukazoval jako EUR).
+- **`/clients/{id}` detail dodavatele**: při fakturách ve více měnách
+  (EUR + USD a další) se *graf Náklady po měsících*, *Náklady po letech* a
+  *Obrat po měsících/letech/zakázkách* automaticky přepočítají na CZK (přes
+  `i.exchange_rate` resp. `pi.exchange_rate` fixovaný k DUZP). Single-currency
+  klient zachovává původní měnu. V hlavičce karty se ukáže hint `CZK (přepočet
+  z EUR, USD)`.
+- Backend: `GetClientAction` doplnil `total_czk` k `revenue_by_month/year/project`
+  a `unpaid_total_czk` + `overdue_total_czk` k `unpaid_summary`.
+
+#### Predikce DPH z konceptů
+- **`/reports/dph` nový řádek 4 boxů** se zobrazí, pokud existují koncepty
+  vydaných nebo přijatých faktur (`status='draft'`). Ukazuje predikované DPH
+  na výstupu/vstupu a vlastní povinnost (nebo nadměrný odpočet), 4. box
+  vysvětluje, že jde o odhad ze zatím nevystavených/nepřijatých dokladů.
+- Backend: nový endpoint `GET /api/reports/dphdp3/drafts-prediction` se sumací
+  `total_vat` × `exchange_rate` (CZK přepočet), per tenant + role-guard.
+
+#### Auto-backfill v migrate.php
+- `php api/bin/migrate.php` po dokončení migrací detekuje 4 kategorie stale dat
+  a automaticky spustí příslušný backfill skript s `--apply`:
+  - non-CZK přijaté faktury bez `exchange_rate` → `backfill-exchange-rates.php`
+  - přijaté faktury bez `varsymbol` → `backfill-purchase-varsymbols.php`
+  - položky přijatých faktur bez `vat_classification_code` →
+    `backfill-vat-classification.php`
+  - položky vystavených faktur bez `vat_classification_code` →
+    `backfill-vat-classification-invoices.php`
+- Idempotentní: prázdné COUNT → skip; opakovaný běh = no-op.
+- Volitelný flag `--no-backfills` pro CI / read-only deploy.
+
+#### XSD schémata commitnutá v repo
+- MFČR EPO schémata (`dphdp3`, `dphkh1`, `dphshv`, `dpfdp5`, `dppdp9`) přesunuta
+  ze `storage/xsd/` (gitignored) do `api/xsd/` (commitnuté, ~250 KB).
+- Po `git clone` má vývojář funkční XSD validaci bez `bash cmd/download-xsd.sh`
+  setup kroku; CI runner projede `EpoXsdValidationTest` namísto soft-skipu.
+- Update workflow zachován — `bash cmd/download-xsd.sh` / `cmd\download-xsd.cmd`
+  stahují nové verze přímo do `api/xsd/`.
+
+### Changed
+- **`/reports/dph` *Vývoj DPH (12 měsíců)*** seřazený sestupně dle data — nejnovější
+  měsíc nahoře.
+- `cron-scan-purchase-inbox.cmd` při interaktivním spuštění streamuje výstup
+  řádek po řádku na konzoli + do logu (`Tee-Object`), PHP `-d output_buffering=0`
+  aby echo nedrhly v bufferu. Exit code se propaguje z PHP přes `$LASTEXITCODE`
+  (Task Scheduler monitoring zachován).
+
+### Fixed
+- **Currency dropdown v editoru přijaté faktury** (`/purchase-invoices/{id}/edit`):
+  po přidání nové měny (modal *„+ Přidat měnu"*) se nově přidaná měna neobjevila
+  v selectu — refresh chybně volal `currencies()` bez `include_inactive=true`,
+  takže měna s `is_active=false` ze seznamu vypadla. Nyní `currencies(true)`,
+  dropdown se ihned aktualizuje a měna se vybere.
+- **Graf nákladů a tabulka Náklady po letech v ClientDetail** zobrazovaly raw
+  `total_with_vat` (např. 1585.10 USD jako „CZK") namísto přepočtu, protože
+  `PurchaseInvoiceListItem` z `/api/purchase-invoices` neobsahoval `exchange_rate`.
+  Doplněno do SELECT v `PurchaseInvoiceRepository::listGroupedByMonth` + TS interface.
+- **`SouhrnneHlaseniBuilder` generoval `VetaA1`** ze starého schématu, ale aktuální
+  XSD `dphshv.xsd` (EPO2) očekává `VetaR` s přejmenovanými atributy
+  (`vatid_pod` → `c_vat`, `kod_plneni` → `k_pln_eu`, + povinné `c_rad`, `k_storno`).
+  Pre-existing bug, který se projevil teprve při auto-klasifikaci EU dodávek na kód
+  `22` v reálných datech.
+- **CI selhával na `EpoXsdValidationTest`** — `setUp()` volal `Bootstrap::buildApp()`
+  jako první krok, který fatálně padl na chybějícím `cfg.php` (gitignored) ještě
+  před soft-skipem uvnitř testů. Nově soft-skip kontroluje přítomnost XSD adresáře
+  jako úplně první krok v `setUp()`. Po commitnutí XSD do `api/xsd/` (viz výše)
+  CI projde testy plnohodnotně bez skipu.
+
+### Inspirace
+Mnoho funkcí z větve 4.0.0 (přijaté faktury, AI extrakce, DPH/KH výkazy,
+multi-currency, ISDOC) bylo inspirováno forkem [milhaus123/myinvoiceDph](https://github.com/milhaus123/myinvoiceDph) — díky Honzovi za prototyp DPH-aware fakturace a
+detailní zmapování českých účetních pravidel, který sloužil jako reference
+při návrhu vlastní implementace.
+
 ## [4.0.0] — 2026-05-22
 
 Major release. Z fakturačního systému se MyInvoice stává plnohodnotnou

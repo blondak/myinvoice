@@ -87,6 +87,9 @@ final class XmlSchemaValidator
         if (!in_array($formCode, $allowed, true)) {
             return null;
         }
-        return Bootstrap::rootDir() . '/storage/xsd/' . $formCode . '.xsd';
+        // XSD schémata jsou commitnutá v `api/xsd/` (MFČR public, ~250 KB celkem).
+        // Dřív byly v `storage/xsd/` (gitignored), což si vynucovalo `cmd/download-xsd.sh`
+        // setup krok a way CI testy skipovaly XSD validaci.
+        return Bootstrap::rootDir() . '/api/xsd/' . $formCode . '.xsd';
     }
 }
