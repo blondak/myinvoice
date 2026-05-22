@@ -169,10 +169,16 @@ původní vendor, *zákazník* = naše firma (opak vystavené).
 Pohoda dataPack XML pro import do účetního software Pohoda. Direction =
 purchase (`<pur:purchase>` místo `<inv:invoice>`).
 
-> [!NOTE]
-> **Bulk export** více přijatých faktur naráz (ZIP / dataPack) je v plánu pro v4.0.0.
-> Aktuálně exportuj jednotlivě v detailu každé faktury. Pro hromadný PDF export
-> originálních dodavatelských PDF použij **Přijaté faktury → Exporty** s formátem ZIP.
+### Hromadný export za měsíc
+
+V hlavním menu **Přijaté faktury → Exporty** vyber měsíc + formát:
+
+- **PDF ZIP** — archivované originální PDF od dodavatelů (faktura bez `pdf_path` se skipne s warningem).
+- **ISDOC ZIP** — jeden `.isdoc` XML soubor za fakturu, sbaleno do ZIP.
+- **Pohoda XML** — sloučený `<dataPack>` se všemi fakturami za měsíc (přímý import do Pohody, direction = purchase).
+
+„Datum dle" volí, podle kterého data se faktura zařadí do měsíce: DUZP (tax),
+datum vystavení (issue, default) nebo datum přijetí (received).
 
 ## 10.7 AI extrakce — kontrola výsledků
 

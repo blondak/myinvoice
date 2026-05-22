@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.7] — 2026-05-22
+
+Drobný hotfix — UI tlačítko pro hromadný export přijatých faktur ve formátech
+Pohoda XML a ISDOC ZIP nedělalo nic. Backend handlery byly už hotové
+(`ExportPurchaseInvoicesAction::exportIsdocZip` a `::exportPohodaDataPack`),
+ale frontend tlačítko **Stáhnout** pro tyto dva formáty silentně vypadlo
+z `download()` v `Export.vue` (zachované jen pdf-zip + komentář „v fázi 5/6").
+
+### Fixed
+
+- **`/purchase-invoices/export`** — Pohoda i ISDOC tlačítko teď reálně stahuje
+  XML / ZIP. `exportUrl()` v `web/src/api/purchaseInvoices.ts` přijímá třetí
+  parametr `format` (`pdf-zip` | `pohoda` | `isdoc`).
+
+### Changed
+
+- **Manuál 10.6** — sekce „Hromadný export za měsíc" nahradila NOTE o tom, že
+  bulk export je „v plánu pro v4.0.0".
+
 ## [4.0.6] — 2026-05-22
 
 DPH/KH XML kompletně odpovídá tomu, co posílá EPO portál: doplněny atributy

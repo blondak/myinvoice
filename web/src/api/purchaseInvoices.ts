@@ -376,9 +376,13 @@ export const purchaseInvoicesApi = {
    * Priorita: pokud purchase_invoice.pdf_path je set, použije ho; jinak fakturu skipne.
    * Vrací URL pro přímou navigaci (axios by stáhl jako blob).
    */
-  exportUrl: (month: string, dateBy: 'tax' | 'issue' | 'received' = 'tax') => {
+  exportUrl: (
+    month: string,
+    dateBy: 'tax' | 'issue' | 'received' = 'tax',
+    format: 'pdf-zip' | 'pohoda' | 'isdoc' = 'pdf-zip',
+  ) => {
     const sid = localStorage.getItem('myinvoice.current_supplier_id')
-    const params = new URLSearchParams({ month, format: 'pdf-zip', date_by: dateBy })
+    const params = new URLSearchParams({ month, format, date_by: dateBy })
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
     return `/api/purchase-invoices/export?${params.toString()}`
   },

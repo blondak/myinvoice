@@ -19,13 +19,10 @@ const month = ref<string>((() => {
 })())
 
 function download() {
-  // PDF ZIP je live, Pohoda/ISDOC pro přijaté jsou jen per-faktura v jejich detailu (bulk plánujeme do v4.0).
-  if (format.value === 'pdf-zip') {
-    window.open(purchaseInvoicesApi.exportUrl(month.value, dateBy.value), '_blank')
-    return
-  }
-  // Future: /api/purchase-invoices/export?format=pohoda|isdoc — implementace v fázi 5/6
-  // (vyžaduje VAT klasifikační kódy + naše vlastní PurchaseInvoicePdfRenderer pro fallback).
+  window.open(
+    purchaseInvoicesApi.exportUrl(month.value, dateBy.value, format.value),
+    '_blank',
+  )
 }
 
 // All 3 formats live (pdf-zip + isdoc + pohoda)
