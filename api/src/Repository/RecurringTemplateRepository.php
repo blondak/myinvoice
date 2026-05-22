@@ -66,7 +66,11 @@ final class RecurringTemplateRepository
      *   status?: string|null,
      * } $filters
      */
-    public function list(array $filters = []): array
+    /**
+     * @param int $page  1-based, ignored when $perPage<=0
+     * @param int $perPage  0 = bez paginace (returns vše, BC)
+     */
+    public function list(array $filters = [], int $page = 1, int $perPage = 0): array
     {
         $where = ['1=1'];
         $params = [];
@@ -78,11 +82,34 @@ final class RecurringTemplateRepository
             $where[] = 't.client_id = ?';
             $params[] = (int) $filters['client_id'];
         }
+
+        // Status counts — bez status filtru, ale se zbylými filtry (supplier + client).
+        // Counts pro tab badges; mají reflektovat všechny statusy pro daného supplier/client scope.
+        $whereForCounts = implode(' AND ', $where);
+        $stmtCounts = $this->db->pdo()->prepare(
+            "SELECT
+                SUM(CASE WHEN t.status = 'active'  THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN t.status = 'paused'  THEN 1 ELSE 0 END) AS paused,
+                SUM(CASE WHEN t.status = 'expired' THEN 1 ELSE 0 END) AS expired,
+                COUNT(*) AS all_templates
+             FROM recurring_invoice_templates t
+            WHERE $whereForCounts"
+        );
+        $stmtCounts->execute($params);
+        $statusCounts = $stmtCounts->fetch(PDO::FETCH_ASSOC) ?: ['active' => 0, 'paused' => 0, 'expired' => 0, 'all_templates' => 0];
+
         if (!empty($filters['status'])) {
             $where[] = 't.status = ?';
             $params[] = (string) $filters['status'];
         }
         $whereSql = implode(' AND ', $where);
+
+        // Total pro aktuální filter
+        $stmtTotal = $this->db->pdo()->prepare("SELECT COUNT(*) FROM recurring_invoice_templates t WHERE $whereSql");
+        $stmtTotal->execute($params);
+        $total = (int) $stmtTotal->fetchColumn();
+
+        $limitSql = $perPage > 0 ? ' LIMIT ? OFFSET ?' : '';
 
         $sql = "SELECT t.id, t.supplier_id, t.client_id, t.project_id, t.name,
                        t.frequency, t.day_of_month, t.end_of_month,
@@ -99,11 +126,34 @@ final class RecurringTemplateRepository
              LEFT JOIN projects p ON p.id = t.project_id
                   JOIN currencies cur ON cur.id = t.currency_id
                  WHERE $whereSql
-                 ORDER BY t.status = 'active' DESC, t.next_run_date ASC";
+                 ORDER BY t.status = 'active' DESC, t.next_run_date ASC{$limitSql}";
+
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute($params);
+        $idx = 1;
+        foreach ($params as $v) $stmt->bindValue($idx++, $v);
+        if ($perPage > 0) {
+            $offset = max(0, ($page - 1) * $perPage);
+            $stmt->bindValue($idx++, $perPage, PDO::PARAM_INT);
+            $stmt->bindValue($idx++, $offset,  PDO::PARAM_INT);
+        }
+        $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return array_map([$this, 'cast'], $rows);
+
+        return [
+            'data' => array_map([$this, 'cast'], $rows),
+            'meta' => [
+                'total'    => $total,
+                'page'     => $perPage > 0 ? $page : 1,
+                'per_page' => $perPage > 0 ? $perPage : $total,
+                'pages'    => $perPage > 0 ? (int) ceil($total / max(1, $perPage)) : 1,
+                'status_counts' => [
+                    'all'     => (int) $statusCounts['all_templates'],
+                    'active'  => (int) $statusCounts['active'],
+                    'paused'  => (int) $statusCounts['paused'],
+                    'expired' => (int) $statusCounts['expired'],
+                ],
+            ],
+        ];
     }
 
     /**

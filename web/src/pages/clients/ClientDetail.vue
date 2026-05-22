@@ -207,7 +207,8 @@ async function load() {
     const [c, grouped, rec, purchaseGrouped] = await Promise.all([
       clientsApi.get(id),
       invoicesApi.listGrouped({ client_id: id, page: 1 }),
-      recurringApi.list({ client_id: id }).catch(() => [] as RecurringTemplate[]),
+      // per_page=200 — v detailu klienta chceme všechny šablony naráz (vždy malé číslo).
+      recurringApi.list({ client_id: id, per_page: 200 }).catch(() => ({ data: [] as RecurringTemplate[] })),
       // per_page=200 = backend max, aby v detailu klienta byly všechny přijaté faktury najednou
       // (rok 2024 + starší by jinak vypadly z první stránky při per_page=20 v cfg.php).
       purchaseInvoicesApi.listGrouped({ vendor_id: id, per_page: 200 }).catch(() => ({ data: [] as Array<{invoices: PurchaseInvoice[]}> })),
@@ -216,7 +217,7 @@ async function load() {
     invoices.value = grouped.data.flatMap(g => g.invoices)
     invoicesTotal.value = grouped.meta.total
     invoicesPages.value = grouped.meta.pages ?? 1
-    recurringTemplates.value = rec
+    recurringTemplates.value = rec.data
     purchaseInvoices.value = (purchaseGrouped.data ?? []).flatMap((g: any) => g.invoices ?? [])
   } finally {
     loading.value = false

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { adminApi, type ApprovalInboxItem } from '@/api/admin'
@@ -14,36 +14,51 @@ const statusFilter = ref<StatusFilter>('requested')
 const overdueOnly = ref(false)
 const items = ref<ApprovalInboxItem[]>([])
 const loading = ref(true)
+const loadingMore = ref(false)
+const total = ref(0)
+const page = ref(1)
+const pages = ref(1)
+const counts = ref<{ all: number; requested: number; approved: number; rejected: number }>({
+  all: 0, requested: 0, approved: 0, rejected: 0,
+})
 
-// Fetch vždy všechno (status=all, bez overdue filtru) → filtrování děláme
-// lokálně. Tím máme přesné counts ve všech filtrech a klik na badge je instant.
-async function load() {
-  loading.value = true
+// Server-side filter + paginace. overdue_only se posílá jako overdue_days=5 do API.
+async function load(reset = true) {
+  if (reset) {
+    loading.value = true
+    page.value = 1
+  } else {
+    loadingMore.value = true
+    page.value++
+  }
   try {
-    items.value = await adminApi.listApprovals({ status: 'all' })
+    const r = await adminApi.listApprovals({
+      status: statusFilter.value,
+      overdue_days: overdueOnly.value ? 5 : undefined,
+      page: page.value,
+    })
+    if (reset) {
+      items.value = r.data
+    } else {
+      items.value.push(...r.data)
+    }
+    total.value = r.meta.total
+    pages.value = r.meta.pages
+    if (r.meta.status_counts) counts.value = r.meta.status_counts
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('errors.generic'))
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
-onMounted(load)
+onMounted(() => load(true))
+watch(statusFilter, () => load(true))
+watch(overdueOnly, () => load(true))
 
-const filteredItems = computed(() => {
-  let result = items.value
-  if (statusFilter.value !== 'all') {
-    result = result.filter(i => i.approval_status === statusFilter.value)
-  }
-  if (overdueOnly.value) {
-    const fiveDaysAgo = Date.now() - 5 * 86_400_000
-    result = result.filter(i => {
-      const last = i.approval_reminder_at || i.approval_requested_at
-      return last && new Date(last).getTime() <= fiveDaysAgo
-    })
-  }
-  return result
-})
+// Server už filtruje, frontend žádný extra filter neaplikuje.
+const filteredItems = computed(() => items.value)
 
 function badgeClass(s: ApprovalInboxItem): string {
   if (s.approval_status === 'requested') {
@@ -72,13 +87,6 @@ function daysSince(date: string | null): number | null {
   return Math.floor(ms / 86_400_000)
 }
 
-// Counts z všech načtených itemů (bez filtru) — vždy přesné
-const counts = computed(() => ({
-  requested: items.value.filter(i => i.approval_status === 'requested').length,
-  approved:  items.value.filter(i => i.approval_status === 'approved').length,
-  rejected:  items.value.filter(i => i.approval_status === 'rejected').length,
-  total:     items.value.length,
-}))
 </script>
 
 <template>
@@ -97,7 +105,7 @@ const counts = computed(() => ({
           ? 'bg-primary-600 text-white border-primary-600'
           : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50'">
         {{ t('approval_inbox.filter_' + opt) }}
-        <span class="text-xs opacity-80">({{ opt === 'all' ? counts.total : counts[opt] }})</span>
+        <span class="text-xs opacity-80">({{ counts[opt] }})</span>
       </button>
       <span class="ml-2 text-xs text-neutral-400">·</span>
       <label class="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer ml-2">
@@ -201,6 +209,15 @@ const counts = computed(() => ({
             {{ r.approval_rejection_reason }}
           </div>
         </RouterLink>
+      </div>
+
+      <div v-if="items.length" class="px-4 py-3 border-t border-neutral-200 flex items-center justify-between text-sm">
+        <span class="text-neutral-500">{{ t('common.loaded_count', { loaded: items.length, total: total }) }}</span>
+        <button v-if="page < pages" @click="load(false)" :disabled="loadingMore"
+          class="cursor-pointer h-9 px-4 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50 rounded-md inline-flex items-center gap-1.5">
+          {{ loadingMore ? t('common.loading_more') : t('common.load_more') }}
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+        </button>
       </div>
     </div>
   </div>

@@ -161,9 +161,11 @@ return [
     'pagination' => [
         // Velikost stránky pro tlačítko "Další" v UI seznamech.
         // Min/max hranice (5 / 200) se enforcují v API; mimo rozsah API hodnotu clampuje.
-        'invoices_per_page' => 50,
-        'clients_per_page'  => 50,
-        'projects_per_page' => 50,
+        // invoices_per_page slouží i pro purchase-invoices a admin approvals inbox.
+        'invoices_per_page'  => 50,
+        'clients_per_page'   => 50,
+        'projects_per_page'  => 50,
+        'recurring_per_page' => 50,
     ],
     'varsymbol' => [
         // Template pro var. symbol per typ dokladu.

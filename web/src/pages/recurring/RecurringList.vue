@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { recurringApi, type RecurringTemplate, type RecurringStatus } from '@/api/recurring'
@@ -11,24 +11,49 @@ const router = useRouter()
 
 const templates = ref<RecurringTemplate[]>([])
 const loading = ref(false)
+const loadingMore = ref(false)
 const statusFilter = ref<RecurringStatus | ''>('')
 const busy = ref<number | null>(null)
 
-const filtered = computed(() => {
-  if (!statusFilter.value) return templates.value
-  return templates.value.filter(t => t.status === statusFilter.value)
+const total = ref(0)
+const page = ref(1)
+const pages = ref(1)
+const statusCounts = ref<{ all: number; active: number; paused: number; expired: number }>({
+  all: 0, active: 0, paused: 0, expired: 0,
 })
 
-async function load() {
-  loading.value = true
+// Server-side filtering — frontend žádný extra filter neaplikuje.
+const filtered = computed(() => templates.value)
+
+async function load(reset = true) {
+  if (reset) {
+    loading.value = true
+    page.value = 1
+  } else {
+    loadingMore.value = true
+    page.value++
+  }
   try {
-    templates.value = await recurringApi.list()
+    const r = await recurringApi.list({
+      status: statusFilter.value || undefined,
+      page: page.value,
+    })
+    if (reset) {
+      templates.value = r.data
+    } else {
+      templates.value.push(...r.data)
+    }
+    total.value = r.meta.total
+    pages.value = r.meta.pages
+    if (r.meta.status_counts) statusCounts.value = r.meta.status_counts
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
-onMounted(load)
+onMounted(() => load(true))
+watch(statusFilter, () => load(true))
 
 function statusBadgeClass(s: RecurringStatus) {
   return {
@@ -254,6 +279,15 @@ function gotoClient(clientId: number) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div v-if="templates.length" class="px-4 py-3 border-t border-neutral-200 flex items-center justify-between text-sm">
+        <span class="text-neutral-500">{{ t('common.loaded_count', { loaded: templates.length, total: total }) }}</span>
+        <button v-if="page < pages" @click="load(false)" :disabled="loadingMore"
+          class="cursor-pointer h-9 px-4 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50 rounded-md inline-flex items-center gap-1.5">
+          {{ loadingMore ? t('common.loading_more') : t('common.load_more') }}
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+        </button>
       </div>
     </div>
   </div>

@@ -670,6 +670,8 @@ final class InvoiceRepository
         ?string $statusFilter = null,
         ?int $minDaysSince = null,
         ?int $maxReminders = null,
+        int $page = 1,
+        int $perPage = 0,
     ): array {
         $where = ['1=1'];
         $params = [];
@@ -678,6 +680,35 @@ final class InvoiceRepository
             $where[] = 'i.supplier_id = ?';
             $params[] = $supplierId;
         }
+
+        // Status counts pro tab badges — bez status filtru, ale se supplier scope
+        // (+ minDaysSince/maxReminders pokud explicit, takže badge sedí s aplikovanými filtry).
+        if ($perPage > 0) {
+            $whereForCounts = $where;
+            $paramsForCounts = $params;
+            $whereForCounts[] = "i.approval_status != 'none'";
+            if ($minDaysSince !== null) {
+                $whereForCounts[] = 'COALESCE(i.approval_reminder_at, i.approval_requested_at) <= DATE_SUB(NOW(), INTERVAL ? DAY)';
+                $paramsForCounts[] = $minDaysSince;
+            }
+            if ($maxReminders !== null) {
+                $whereForCounts[] = 'i.approval_reminder_count < ?';
+                $paramsForCounts[] = $maxReminders;
+            }
+            $whereCountsSql = implode(' AND ', $whereForCounts);
+            $stmtCounts = $this->db->pdo()->prepare(
+                "SELECT
+                    SUM(CASE WHEN i.approval_status = 'requested' THEN 1 ELSE 0 END) AS requested,
+                    SUM(CASE WHEN i.approval_status = 'approved'  THEN 1 ELSE 0 END) AS approved,
+                    SUM(CASE WHEN i.approval_status = 'rejected'  THEN 1 ELSE 0 END) AS rejected,
+                    COUNT(*) AS all_count
+                 FROM invoices i
+                WHERE $whereCountsSql"
+            );
+            $stmtCounts->execute($paramsForCounts);
+            $statusCounts = $stmtCounts->fetch(PDO::FETCH_ASSOC) ?: ['requested' => 0, 'approved' => 0, 'rejected' => 0, 'all_count' => 0];
+        }
+
         if ($statusFilter !== null) {
             $where[] = 'i.approval_status = ?';
             $params[] = $statusFilter;
@@ -695,6 +726,7 @@ final class InvoiceRepository
         }
 
         $whereSql = implode(' AND ', $where);
+        $limitSql = $perPage > 0 ? ' LIMIT ? OFFSET ?' : '';
         $sql = "SELECT i.id, i.varsymbol, i.invoice_type, i.status, i.supplier_id,
                        i.client_id, i.project_id, i.currency_id, i.language,
                        i.total_with_vat, i.amount_to_pay,
@@ -710,12 +742,47 @@ final class InvoiceRepository
              LEFT JOIN projects p ON p.id = i.project_id
                   JOIN currencies cur ON cur.id = i.currency_id
                  WHERE $whereSql
-                 ORDER BY i.approval_requested_at DESC";
+                 ORDER BY i.approval_requested_at DESC{$limitSql}";
 
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute($params);
+        $idx = 1;
+        foreach ($params as $v) $stmt->bindValue($idx++, $v);
+        if ($perPage > 0) {
+            $offset = max(0, ($page - 1) * $perPage);
+            $stmt->bindValue($idx++, $perPage, PDO::PARAM_INT);
+            $stmt->bindValue($idx++, $offset,  PDO::PARAM_INT);
+        }
+        $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return array_map(fn (array $r) => $this->castInvoice($r), $rows);
+        $items = array_map(fn (array $r) => $this->castInvoice($r), $rows);
+
+        // BC: bez paginace (perPage=0) cron volá a očekává plochý seznam.
+        if ($perPage <= 0) {
+            return $items;
+        }
+
+        // Total pro aktuální filter (jen v paginated cestě)
+        $stmtTotal = $this->db->pdo()->prepare(
+            "SELECT COUNT(*) FROM invoices i WHERE $whereSql"
+        );
+        $stmtTotal->execute($params);
+        $total = (int) $stmtTotal->fetchColumn();
+
+        return [
+            'data' => $items,
+            'meta' => [
+                'total'    => $total,
+                'page'     => $page,
+                'per_page' => $perPage,
+                'pages'    => (int) ceil($total / max(1, $perPage)),
+                'status_counts' => [
+                    'all'       => (int) ($statusCounts['all_count'] ?? 0),
+                    'requested' => (int) ($statusCounts['requested'] ?? 0),
+                    'approved'  => (int) ($statusCounts['approved'] ?? 0),
+                    'rejected'  => (int) ($statusCounts['rejected'] ?? 0),
+                ],
+            ],
+        ];
     }
 
     /**

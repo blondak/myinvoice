@@ -110,12 +110,27 @@ export interface GeneratedInvoiceRow {
   currency: string
 }
 
+export interface RecurringListMeta {
+  total: number
+  page: number
+  per_page: number
+  pages: number
+  status_counts?: { all: number; active: number; paused: number; expired: number }
+}
+
+export interface RecurringListResponse {
+  data: RecurringTemplate[]
+  meta: RecurringListMeta
+}
+
 export const recurringApi = {
-  list: (filters: { client_id?: number; status?: RecurringStatus } = {}) => {
+  list: (filters: { client_id?: number; status?: RecurringStatus; page?: number; per_page?: number } = {}) => {
     const params: Record<string, string | number> = {}
     if (filters.client_id) params.client_id = filters.client_id
     if (filters.status)    params.status = filters.status
-    return api.get<{ data: RecurringTemplate[] }>('/recurring', { params }).then(r => r.data.data)
+    if (filters.page)      params.page = filters.page
+    if (filters.per_page)  params.per_page = filters.per_page
+    return api.get<RecurringListResponse>('/recurring', { params }).then(r => r.data)
   },
   get:    (id: number) => api.get<RecurringTemplate>(`/recurring/${id}`).then(r => r.data),
   invoices: (id: number) =>

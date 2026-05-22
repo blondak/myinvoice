@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Action\Admin;
 
 use MyInvoice\Http\Json;
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
@@ -20,11 +21,13 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  * Query:
  *   ?status=requested|approved|rejected|all  (default: 'requested')
  *   ?overdue_days=N  (jen requested starší než N dní bez decize)
+ *   ?page=N, ?per_page=N (page size z cfg.pagination.invoices_per_page, default 50)
  */
 final class ApprovalListAction
 {
     public function __construct(
         private readonly InvoiceRepository $repo,
+        private readonly Config $config,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -50,13 +53,18 @@ final class ApprovalListAction
             ? (int) $q['overdue_days']
             : null;
 
-        $rows = $this->repo->listForApprovalInbox(
+        $page = max(1, (int) ($q['page'] ?? 1));
+        $default = (int) $this->config->get('pagination.invoices_per_page', 50);
+        $perPage = min(200, max(5, (int) ($q['per_page'] ?? $default)));
+
+        // Repository vrací ['data'=>..., 'meta'=>...] když perPage>0.
+        return Json::ok($response, $this->repo->listForApprovalInbox(
             supplierId: $supplierId,
             statusFilter: $statusFilter,
             minDaysSince: $overdueDays,
             maxReminders: null,
-        );
-
-        return Json::ok($response, ['data' => $rows]);
+            page: $page,
+            perPage: $perPage,
+        ));
     }
 }

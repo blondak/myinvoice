@@ -6,6 +6,7 @@ namespace MyInvoice\Action\Recurring;
 
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
@@ -40,6 +41,7 @@ final class RecurringTemplateAction
         private readonly IpMatcher $ipMatcher,
         private readonly Connection $db,
         private readonly InvoiceRepository $invoices,
+        private readonly Config $config,
     ) {}
 
     public function list(Request $request, Response $response): Response
@@ -50,8 +52,12 @@ final class RecurringTemplateAction
         if (!empty($q['client_id'])) $filters['client_id'] = (int) $q['client_id'];
         if (!empty($q['status']))    $filters['status'] = (string) $q['status'];
 
-        $rows = $this->repo->list($filters);
-        return Json::ok($response, ['data' => $rows]);
+        $page = max(1, (int) ($q['page'] ?? 1));
+        $default = (int) $this->config->get('pagination.recurring_per_page', 50);
+        $perPage = min(200, max(5, (int) ($q['per_page'] ?? $default)));
+
+        // Repository teď vrací ['data' => ..., 'meta' => ...] — předáme to přímo dál.
+        return Json::ok($response, $this->repo->list($filters, $page, $perPage));
     }
 
     public function get(Request $request, Response $response, array $args): Response

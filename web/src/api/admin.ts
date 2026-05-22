@@ -45,8 +45,8 @@ export const adminApi = {
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),
 
   // Approvals inbox
-  listApprovals: (params: { status?: 'requested' | 'approved' | 'rejected' | 'all'; overdue_days?: number } = {}) =>
-    api.get<{ data: ApprovalInboxItem[] }>('/admin/approvals', { params }).then(r => r.data.data),
+  listApprovals: (params: { status?: 'requested' | 'approved' | 'rejected' | 'all'; overdue_days?: number; page?: number; per_page?: number } = {}) =>
+    api.get<ApprovalListResponse>('/admin/approvals', { params }).then(r => r.data),
 
   // Email templates
   listEmailTemplates: () =>
@@ -92,6 +92,19 @@ export interface CronJob {
 export interface CronJobsResponse {
   jobs: CronJob[]
   server_time: string
+}
+
+export interface ApprovalListMeta {
+  total: number
+  page: number
+  per_page: number
+  pages: number
+  status_counts?: { all: number; requested: number; approved: number; rejected: number }
+}
+
+export interface ApprovalListResponse {
+  data: ApprovalInboxItem[]
+  meta: ApprovalListMeta
 }
 
 export interface ApprovalInboxItem {
