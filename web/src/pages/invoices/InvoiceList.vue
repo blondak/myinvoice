@@ -334,39 +334,77 @@ async function load(reset = true) {
   }
 }
 
+// Sync filtrů s URL query (stejný pattern jako PurchaseInvoiceList) — detekuje menu
+// link click přes route.query change z !empty na empty → reset.
+const DEFAULT_YEAR = new Date().getFullYear()
+
 onMounted(async () => {
-  // Pre-fill from query (?client_id=N → set filter)
-  if (route.query.client_id) {
-    clientFilter.value = Number(route.query.client_id)
-  }
+  loadFiltersFromQuery(route.query)
   // Načti seznam klientů + měn pro select (paralelně s prvním load)
   clientsApi.list({ archived: false, per_page: 200 }).then(r => { clients.value = r.data }).catch(() => {})
   codebooksApi.currencies().then(r => {
-    // Endpoint je supplier-scoped, ale multi-account schéma vrací 1 řádek per bank účet —
-    // dedupe by code pro dropdown filtru.
     const seen = new Set<string>()
     currencies.value = r.filter(c => c.is_active && !seen.has(c.code) && seen.add(c.code))
   }).catch(() => {})
   await load(true)
 })
 
-watch([statusFilter, typeFilter, clientFilter, yearFilter, monthFilter, dateFrom, dateTo, overdueOnly, unpaidOnly, currencyFilter], () => load(true))
+function loadFiltersFromQuery(q: typeof route.query) {
+  statusFilter.value = typeof q.status === 'string' ? q.status : ''
+  typeFilter.value   = typeof q.type === 'string' ? q.type : ''
+  clientFilter.value = typeof q.client_id === 'string' && q.client_id !== '' ? Number(q.client_id) : ''
+  overdueOnly.value  = q.overdue === '1' || q.overdue === 'true'
+  unpaidOnly.value   = q.unpaid === '1' || q.unpaid === 'true'
+  yearFilter.value   = typeof q.year === 'string' && q.year !== ''
+    ? (q.year === 'all' ? '' : Number(q.year))
+    : ((overdueOnly.value || unpaidOnly.value) ? '' : DEFAULT_YEAR)
+  monthFilter.value  = typeof q.month === 'string' && q.month !== '' ? Number(q.month) : ''
+  dateFrom.value     = typeof q.from === 'string' ? q.from : ''
+  dateTo.value       = typeof q.to === 'string' ? q.to : ''
+  currencyFilter.value = typeof q.currency === 'string' ? q.currency : ''
+  search.value       = typeof q.q === 'string' ? q.q : ''
+}
+
+let suppressUrlSync = false
+function syncFiltersToUrl() {
+  if (suppressUrlSync) return
+  const q: Record<string, string> = {}
+  if (statusFilter.value) q.status = statusFilter.value
+  if (typeFilter.value) q.type = typeFilter.value
+  if (clientFilter.value !== '') q.client_id = String(clientFilter.value)
+  if (yearFilter.value === '') q.year = 'all'
+  else if (yearFilter.value !== DEFAULT_YEAR) q.year = String(yearFilter.value)
+  if (monthFilter.value !== '') q.month = String(monthFilter.value)
+  if (dateFrom.value) q.from = dateFrom.value
+  if (dateTo.value) q.to = dateTo.value
+  if (currencyFilter.value) q.currency = currencyFilter.value
+  if (overdueOnly.value) q.overdue = '1'
+  if (unpaidOnly.value) q.unpaid = '1'
+  if (search.value) q.q = search.value
+  router.replace({ query: q })
+}
+
+watch([statusFilter, typeFilter, clientFilter, yearFilter, monthFilter, dateFrom, dateTo,
+       overdueOnly, unpaidOnly, currencyFilter], () => {
+  syncFiltersToUrl()
+  load(true)
+})
 // Když se vyčistí rok (vše/range), automaticky zrušit i měsíční filtr.
 watch(yearFilter, (y) => { if (y === '') monthFilter.value = '' })
 watch([dateFrom, dateTo], ([f, to]) => { if (f || to) monthFilter.value = '' })
 watch(search, () => {
   if (searchTimeout) clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => load(true), 300)
+  searchTimeout = setTimeout(() => { syncFiltersToUrl(); load(true) }, 300)
 })
 
-// Reset filtrů když uživatel klikne na menu link "Faktury" už když je na této stránce —
-// route se změní z /invoices?status=paid na /invoices (prázdná query).
+// Reset filtrů při menu link click (route.query je prázdná).
 watch(() => route.query, (newQ) => {
   if (Object.keys(newQ).length === 0) {
+    suppressUrlSync = true
     statusFilter.value = ''
     typeFilter.value = ''
     clientFilter.value = ''
-    yearFilter.value = new Date().getFullYear()
+    yearFilter.value = DEFAULT_YEAR
     monthFilter.value = ''
     dateFrom.value = ''
     dateTo.value = ''
@@ -374,6 +412,7 @@ watch(() => route.query, (newQ) => {
     unpaidOnly.value = false
     currencyFilter.value = ''
     search.value = ''
+    setTimeout(() => { suppressUrlSync = false }, 0)
   }
 })
 

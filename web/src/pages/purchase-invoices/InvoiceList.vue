@@ -49,35 +49,70 @@ const bulkBusy = ref(false)
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Sync filtrů s URL query: filter se zapíše do ?param=value formy, abychom mohli
+// detekovat menu click (= URL bez query → reset). Pro klika na menu link
+// "Přijaté faktury" už když je na této stránce a má aktivní filtr (např. overdue=1)
+// se URL změní zpět na čistou — watch fires reset všech ref.
+const DEFAULT_YEAR = new Date().getFullYear()
+
 onMounted(() => {
-  // Pre-fill filters from URL query (e.g. /purchase-invoices?overdue=1 from CRM action items)
-  const q = route.query
-  if (q.overdue === '1' || q.overdue === 'true') {
-    overdueOnly.value = true
-    yearFilter.value = ''
-  }
-  if (q.unpaid === '1' || q.unpaid === 'true') {
-    unpaidOnly.value = true
-    yearFilter.value = ''
-  }
-  if (typeof q.status === 'string') statusFilter.value = q.status as PurchaseInvoiceStatus
+  loadFiltersFromQuery(route.query)
   load()
 })
+
+function loadFiltersFromQuery(q: typeof route.query) {
+  overdueOnly.value = q.overdue === '1' || q.overdue === 'true'
+  unpaidOnly.value  = q.unpaid === '1' || q.unpaid === 'true'
+  statusFilter.value = typeof q.status === 'string' ? (q.status as PurchaseInvoiceStatus) : ''
+  kindFilter.value   = typeof q.kind === 'string' ? (q.kind as PurchaseDocumentKind) : ''
+  yearFilter.value   = typeof q.year === 'string' && q.year !== ''
+    ? (q.year === 'all' ? '' : Number(q.year))
+    : ((overdueOnly.value || unpaidOnly.value) ? '' : DEFAULT_YEAR)
+  monthFilter.value  = typeof q.month === 'string' && q.month !== '' ? Number(q.month) : ''
+  dateFrom.value     = typeof q.from === 'string' ? q.from : ''
+  dateTo.value       = typeof q.to === 'string' ? q.to : ''
+  currencyFilter.value = typeof q.currency === 'string' ? q.currency : ''
+  search.value       = typeof q.q === 'string' ? q.q : ''
+}
+
+let suppressUrlSync = false
+function syncFiltersToUrl() {
+  if (suppressUrlSync) return
+  const q: Record<string, string> = {}
+  if (statusFilter.value) q.status = statusFilter.value
+  if (kindFilter.value) q.kind = kindFilter.value
+  // year=DEFAULT_YEAR je default a nepatří do URL; explicit "" (Vše) ano (jako 'all').
+  if (yearFilter.value === '') q.year = 'all'
+  else if (yearFilter.value !== DEFAULT_YEAR) q.year = String(yearFilter.value)
+  if (monthFilter.value !== '') q.month = String(monthFilter.value)
+  if (dateFrom.value) q.from = dateFrom.value
+  if (dateTo.value) q.to = dateTo.value
+  if (currencyFilter.value) q.currency = currencyFilter.value
+  if (overdueOnly.value) q.overdue = '1'
+  if (unpaidOnly.value) q.unpaid = '1'
+  if (search.value) q.q = search.value
+  router.replace({ query: q })
+}
+
 watch([statusFilter, kindFilter, yearFilter, monthFilter, dateFrom, dateTo,
-       overdueOnly, unpaidOnly, currencyFilter], () => load())
+       overdueOnly, unpaidOnly, currencyFilter], () => {
+  syncFiltersToUrl()
+  load()
+})
 watch(search, () => {
   if (searchTimeout) clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(load, 300)
+  searchTimeout = setTimeout(() => { syncFiltersToUrl(); load() }, 300)
 })
 
-// Reset filtrů když uživatel klikne na menu link "Přijaté faktury" už když je na této stránce —
-// route se změní z /purchase-invoices?status=paid na /purchase-invoices (prázdná query).
-// Bez resetu by RouterLink ne-navigated nebo by zachoval starou query state.
+// Reset filtrů při menu link click (= route.query je prázdná).
 watch(() => route.query, (newQ) => {
   if (Object.keys(newQ).length === 0) {
+    // Reset bez triggering URL sync zpět (suppressUrlSync) — refs se nastaví, watch fires,
+    // ale URL update se přeskočí. Pak ručně syncneme (no-op pro prázdné).
+    suppressUrlSync = true
     statusFilter.value = ''
     kindFilter.value = ''
-    yearFilter.value = new Date().getFullYear()
+    yearFilter.value = DEFAULT_YEAR
     monthFilter.value = ''
     dateFrom.value = ''
     dateTo.value = ''
@@ -85,6 +120,8 @@ watch(() => route.query, (newQ) => {
     unpaidOnly.value = false
     currencyFilter.value = ''
     search.value = ''
+    // Uvolnit po flush (watch effects)
+    setTimeout(() => { suppressUrlSync = false }, 0)
   }
 })
 
