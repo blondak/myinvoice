@@ -10,6 +10,8 @@ use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\ClientRepository;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
 use MyInvoice\Service\Invoice\PurchaseInvoiceCalculator;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Wrapper kolem AnthropicClient — extrakuje data z PDF a vytvoří purchase_invoice draft.
@@ -28,6 +30,8 @@ use MyInvoice\Service\Invoice\PurchaseInvoiceCalculator;
  */
 final class AiPdfExtractor
 {
+    private readonly LoggerInterface $logger;
+
     public function __construct(
         private readonly Connection $db,
         private readonly AnthropicClient $anthropic,
@@ -39,7 +43,10 @@ final class AiPdfExtractor
         private readonly IsdocToPurchaseInvoiceMapper $isdocMapper,
         private readonly Config $config,
         private readonly \MyInvoice\Service\Currency\CnbExchangeRateClient $cnb,
-    ) {}
+        ?LoggerInterface $logger = null,
+    ) {
+        $this->logger = $logger ?? new NullLogger();
+    }
 
     /**
      * Extract + create draft purchase_invoice.
@@ -103,9 +110,29 @@ final class AiPdfExtractor
             ];
         }
 
-        // Cross-tenant guard — customer.ic musí matchovat tenant
+        // Cross-tenant guard — customer.ic musí matchovat tenant.
+        // Swap detection: AI občas zamění vendor↔customer (tenanta dá jako vendora).
+        // Imports jsou vždy purchase faktury (tenant je vždy customer/odběratel),
+        // takže pokud vendor.ic == tenant.ic, je to swap → prohodit zpět.
         $tenantIc = $this->fetchTenantIc($supplierId);
         $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
+        $vendorIc   = $this->normalizeIc((string) ($data['vendor']['ic'] ?? ''));
+
+        if ($tenantIc !== null && $vendorIc === $tenantIc && $customerIc !== null && $customerIc !== $tenantIc) {
+            // AI swap detected: tenant je v vendor pozici → prohodit s customer.
+            $this->logger->info('AI extractor: detected vendor↔customer swap (tenant in vendor slot), swapping back', [
+                'vendor_ic'   => $vendorIc,
+                'customer_ic' => $customerIc,
+                'tenant_ic'   => $tenantIc,
+                'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
+            ]);
+            $tmp = $data['vendor'] ?? [];
+            $data['vendor']   = $data['customer'] ?? [];
+            $data['customer'] = $tmp;
+            // Re-normalize po prohození pro guard níže
+            $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
+        }
+
         if ($tenantIc !== null && $customerIc !== null && $customerIc !== $tenantIc) {
             return [
                 'ok'      => false,
