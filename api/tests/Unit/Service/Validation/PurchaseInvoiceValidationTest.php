@@ -172,4 +172,27 @@ final class PurchaseInvoiceValidationTest extends TestCase
         $err = PurchaseInvoiceValidation::invoice($data);
         self::assertArrayHasKey('items', $err);
     }
+
+    // --- warnings() — non-blocking, vyhodnocuje se nad uloženou fakturou (issue #35) ---
+
+    public function testCreditNoteWithNegativeTotalHasNoWarning(): void
+    {
+        // Správný dobropis: záporné částky (qty −1 × 1000 → base −1000).
+        $invoice = ['document_kind' => 'credit_note', 'total_without_vat' => -1000.0];
+        self::assertSame([], PurchaseInvoiceValidation::warnings($invoice));
+    }
+
+    public function testCreditNoteWithPositiveTotalWarns(): void
+    {
+        // Dvojí negace (−1 ks × −1000) → base +1000 → ve výkazech by se přičetlo.
+        $invoice = ['document_kind' => 'credit_note', 'total_without_vat' => 1000.0];
+        self::assertSame(['credit_note_positive_total'], PurchaseInvoiceValidation::warnings($invoice));
+    }
+
+    public function testRegularInvoiceWithPositiveTotalHasNoWarning(): void
+    {
+        // Běžná faktura s kladným součtem je v pořádku — warning je jen pro dobropis.
+        $invoice = ['document_kind' => 'invoice', 'total_without_vat' => 1000.0];
+        self::assertSame([], PurchaseInvoiceValidation::warnings($invoice));
+    }
 }
