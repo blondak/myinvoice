@@ -33,7 +33,7 @@ final class KontrolniHlaseniBuilder
 
     public function __construct(
         private readonly Connection $db,
-        private readonly VatClassificationMapper $mapper,
+        private readonly VatLedgerService $ledger,
     ) {}
 
     /**
@@ -47,15 +47,9 @@ final class KontrolniHlaseniBuilder
         $start = sprintf('%04d-%02d-01', $year, $month);
         $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
 
-        // Sekce A.4 / A.5 (vystavené tuzemsko nad / do prahu)
-        [$a4, $a5] = $this->collectIssuedRows($supplierId, $start, $end);
-        // Sekce B.2 / B.3 (přijaté tuzemsko)
-        [$b2, $b3] = $this->collectReceivedRows($supplierId, $start, $end);
-        // Sekce A.1 / B.1 (reverse charge — výsledně směřujeme na kódy s is_reverse_charge=1)
-        $a1 = $this->collectReverseChargeIssued($supplierId, $start, $end);
-        $b1 = $this->collectReverseChargePurchases($supplierId, $start, $end);
-        // Sekce A.2 (pořízení zboží z JČS) — kódy s kh_section='A.2' (typicky kód 23)
-        $a2 = $this->collectEuAcquisitions($supplierId, $start, $end);
+        // Všechny sekce z jedné projekce kanonických řádků (VatLedgerService).
+        ['a1' => $a1, 'a2' => $a2, 'a4' => $a4, 'a5' => $a5, 'b1' => $b1, 'b2' => $b2, 'b3' => $b3]
+            = $this->collectSections($supplierId, $start, $end);
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $dom->preserveWhiteSpace = false;
@@ -264,321 +258,108 @@ final class KontrolniHlaseniBuilder
     }
 
     /**
-     * Vystavené faktury rozdělené do A.4 (nad limit, jednotlivě) a A.5 (do limitu, sumace).
+     * Projekce kanonických řádků (VatLedgerService) na sekce KH. Nahrazuje 5 původních
+     * SQL kolektorů + loadInvoiceVatBreakdown. Per faktura agregujeme základ/daň po
+     * sazbách + příznaky sekce, pak směrujeme:
+     *   - A.1 = vystavený reverse charge
+     *   - A.2 = pořízení zboží z JČS (kh_section A.2; samovyměřená daň ze služby)
+     *   - A.4/A.5 = vystavená tuzemská zdanitelná (nad/do limitu + DIČ)
+     *   - B.1 = přijatý tuzemský RC (ne A.2)
+     *   - B.2/B.3 = přijatá tuzemská zdanitelná
+     * Práh `abs()`, plnění bez DIČ → sumace, bez zdanitelného základu → vyloučeno.
      *
-     * @return array{0: list<array<string,mixed>>, 1: array<string,mixed>}
+     * @return array{a1:list<array<string,mixed>>, a2:list<array<string,mixed>>,
+     *   a4:list<array<string,mixed>>, a5:array<string,mixed>, b1:list<array<string,mixed>>,
+     *   b2:list<array<string,mixed>>, b3:array<string,mixed>}
      */
-    private function collectIssuedRows(int $supplierId, string $start, string $end): array
+    private function collectSections(int $supplierId, string $start, string $end): array
     {
-        $stmt = $this->db->pdo()->prepare("
-            SELECT i.id, i.varsymbol, COALESCE(i.tax_date, i.issue_date) AS tax_date,
-                   i.total_without_vat, i.total_vat, i.total_with_vat,
-                   i.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
-                   c.dic AS counterparty_dic, c.company_name AS counterparty_name
-              FROM invoices i
-              JOIN clients c ON c.id = i.client_id
-         LEFT JOIN currencies cur ON cur.id = i.currency_id
-             WHERE i.supplier_id = ?
-               AND i.status NOT IN ('draft', 'cancelled')
-               AND i.invoice_type != 'proforma'
-               AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        $a4 = [];
-        $a5 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
-        foreach ($rows as $r) {
-            // Per-invoice VAT breakdown — load items aggregated by rate (přepočet na CZK)
-            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'invoice', $rate);
-            $totalCzk = (float) $r['total_with_vat'] * $rate;
-            $row = [
-                'varsymbol'         => $r['varsymbol'],
-                'tax_date'          => $r['tax_date'],
-                'counterparty_dic'  => $this->cleanDic($r['counterparty_dic']),
-                'base21'            => $breakdown['base21'],
-                'vat21'             => $breakdown['vat21'],
-                'base12'            => $breakdown['base12'],
-                'vat12'             => $breakdown['vat12'],
-            ];
-            // Bez zdanitelného základu 21/12 % do A.4/A.5 nepatří — vyloučí reverse charge
-            // (sazba uložená 0), dodání do EU / vývoz a osvobozená plnění, která jinak
-            // tvořila nulové řádky / falešnou duplicitu s A.1 (symetricky k received side).
-            if (abs((float) $row['base21']) < 0.005 && abs((float) $row['base12']) < 0.005) {
-                continue;
-            }
-            // A.4 = jednotlivě jen plnění nad limit S DIČ příjemce (plátce). Plnění bez
-            // DIČ (B2C / zjednodušený daňový doklad) patří dle metodiky do sumace A.5
-            // bez ohledu na částku — dříve se nad limit bez DIČ tiše zahazovalo (issue #35).
-            // abs() — dobropis má záporné částky; záporný doklad nad limit jde do A.4.
-            $hasDic = ($row['counterparty_dic'] ?? '') !== '';
-            if (abs($totalCzk) >= self::ITEM_VS_BULK_THRESHOLD && $hasDic) {
-                $a4[] = $row;
-            } else {
-                $a5['count']++;
-                $a5['base21'] += $row['base21'];
-                $a5['vat21']  += $row['vat21'];
-                $a5['base12'] += $row['base12'];
-                $a5['vat12']  += $row['vat12'];
-            }
-        }
-        return [$a4, $a5];
-    }
-
-    /**
-     * Přijaté faktury rozdělené do B.2 (nad limit, jednotlivě) a B.3 (sumace).
-     */
-    private function collectReceivedRows(int $supplierId, string $start, string $end): array
-    {
-        // Vyloučit doklady patřící do jiných sekcí KH (symetricky k ostatním kolektorům),
-        // jinak by se objevily duplicitně i v B.2/B.3 s nulovou daní (issue #35):
-        //   - reverse charge příjemce (B.1) → collectReverseChargePurchases
-        //   - pořízení zboží z JČS (A.2)     → collectEuAcquisitions
-        // Klasifikace se posuzuje na úrovni faktury (pi.vat_classification_code) i řádku
-        // (pii.vat_classification_code) — A.2 kolektor čte item-level přes COALESCE.
-        $stmt = $this->db->pdo()->prepare("
-            SELECT pi.id, pi.vendor_invoice_number, COALESCE(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.total_with_vat, pi.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
-                   c.dic AS counterparty_dic, c.company_name AS counterparty_name
-              FROM purchase_invoices pi
-              JOIN clients c ON c.id = pi.vendor_id
-         LEFT JOIN currencies cur ON cur.id = pi.currency_id
-         LEFT JOIN vat_classifications vc ON vc.code = pi.vat_classification_code
-             WHERE pi.supplier_id = ?
-               AND pi.status NOT IN ('draft', 'cancelled')
-               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-               AND NOT (vc.is_reverse_charge = 1 OR (vc.code IS NULL AND pi.reverse_charge = 1))
-               AND (vc.kh_section IS NULL OR vc.kh_section NOT IN ('A.1', 'A.2', 'B.1'))
-               AND NOT EXISTS (
-                   SELECT 1
-                     FROM purchase_invoice_items pii
-                     JOIN vat_classifications vc2
-                       ON vc2.code = COALESCE(pii.vat_classification_code, pi.vat_classification_code)
-                    WHERE pii.purchase_invoice_id = pi.id
-                      AND (vc2.is_reverse_charge = 1 OR vc2.kh_section IN ('A.1', 'A.2', 'B.1'))
-               )
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        $b2 = [];
-        $b3 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
-        foreach ($rows as $r) {
-            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'purchase_invoice', $rate);
-            $totalCzk = (float) $r['total_with_vat'] * $rate;
-            $row = [
-                'vendor_invoice_number' => $r['vendor_invoice_number'],
-                'tax_date'              => $r['tax_date'],
-                'counterparty_dic'      => $this->cleanDic($r['counterparty_dic']),
-                'base21'                => $breakdown['base21'],
-                'vat21'                 => $breakdown['vat21'],
-                'base12'                => $breakdown['base12'],
-                'vat12'                 => $breakdown['vat12'],
-            ];
-            // Bez zdanitelného základu 21/12 % do B.2/B.3 nepatří (osvobozená přijatá
-            // plnění bez nároku na odpočet, 0% atd.) — jinak by tvořila nulové řádky.
-            if (abs((float) $row['base21']) < 0.005 && abs((float) $row['base12']) < 0.005) {
-                continue;
-            }
-            // B.2 = jednotlivě jen plnění nad limit S DIČ dodavatele (plátce). Bez DIČ
-            // (nákup od neplátce / doklad bez DIČ) patří do sumace B.3 bez ohledu na
-            // částku — dříve se nad limit bez DIČ tiše zahazovalo (issue #35).
-            // abs() — viz collectIssuedRows: záporný dobropis nad limit patří do B.2.
-            $hasDic = ($row['counterparty_dic'] ?? '') !== '';
-            if (abs($totalCzk) >= self::ITEM_VS_BULK_THRESHOLD && $hasDic) {
-                $b2[] = $row;
-            } else {
-                $b3['count']++;
-                $b3['base21'] += $row['base21'];
-                $b3['vat21']  += $row['vat21'];
-                $b3['base12'] += $row['base12'];
-                $b3['vat12']  += $row['vat12'];
-            }
-        }
-        return [$b2, $b3];
-    }
-
-    /**
-     * Reverse charge vystavené (sekce A.1) — kódy s is_reverse_charge=1.
-     *
-     * @return list<array<string,mixed>>
-     */
-    private function collectReverseChargeIssued(int $supplierId, string $start, string $end): array
-    {
-        // LEFT JOIN vat_classifications + fallback na i.reverse_charge flag, aby se do KH
-        // dostaly i faktury bez explicit vat_classification_code (regulatory: RC sekce A.1
-        // nesmí dropnout řádky tichou INNER JOIN ztrátou — historická data + recent imports
-        // bez auto-classifier).
-        $stmt = $this->db->pdo()->prepare("
-            SELECT i.id, i.varsymbol, COALESCE(i.tax_date, i.issue_date) AS tax_date,
-                   i.total_without_vat AS base, i.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
-                   c.dic AS counterparty_dic
-              FROM invoices i
-              JOIN clients c ON c.id = i.client_id
-         LEFT JOIN vat_classifications vc ON vc.code = i.vat_classification_code
-         LEFT JOIN currencies cur ON cur.id = i.currency_id
-             WHERE i.supplier_id = ?
-               AND i.status NOT IN ('draft', 'cancelled')
-               AND i.invoice_type != 'proforma'
-               AND (vc.is_reverse_charge = 1 OR (vc.code IS NULL AND i.reverse_charge = 1))
-               AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        return array_map(function ($r) {
-            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-            return array_merge($r, [
-                'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
-                'base'             => (float) $r['base'] * $rate, // přepočet na CZK
-                'vendor_invoice_number' => $r['varsymbol'],
-            ]);
-        }, $rows);
-    }
-
-    /**
-     * Pořízení zboží z jiného členského státu (sekce A.2) — kódy s `kh_section='A.2'`
-     * (typicky kód 23 "Pořízení zboží z JČS"). Sběr per řádek s rozdělením base/vat
-     * po sazbách (21% / 12%), kurz aplikovaný, samovyměřená daň dopočtená.
-     *
-     * @return list<array<string,mixed>>
-     */
-    private function collectEuAcquisitions(int $supplierId, string $start, string $end): array
-    {
-        $stmt = $this->db->pdo()->prepare("
-            SELECT pi.id,
-                   pi.vendor_invoice_number,
-                   COALESCE(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.exchange_rate,
-                   COALESCE(cur.code, 'CZK')            AS currency,
-                   c.dic                                AS counterparty_dic,
-                   co.iso2                              AS country_iso2,
-                   pii.vat_rate_snapshot,
-                   COALESCE(pii.total_without_vat, 0)   AS base,
-                   COALESCE(pii.total_vat, 0)           AS vat
-              FROM purchase_invoices pi
-              JOIN clients c                   ON c.id  = pi.vendor_id
-         LEFT JOIN countries co                ON co.id = c.country_id
-              JOIN purchase_invoice_items pii  ON pii.purchase_invoice_id = pi.id
-              JOIN vat_classifications vc      ON vc.code =
-                   COALESCE(pii.vat_classification_code, pi.vat_classification_code)
-         LEFT JOIN currencies cur              ON cur.id = pi.currency_id
-             WHERE pi.supplier_id = ?
-               AND pi.status NOT IN ('draft', 'cancelled')
-               AND vc.kh_section = 'A.2'
-               AND (vc.supplier_id IS NULL OR vc.supplier_id = pi.supplier_id)
-               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-
-        // Group per faktura, breakdown po sazbě
-        $byInvoice = [];
-        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            $id = (int) $r['id'];
-            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-            $vatRate = (float) $r['vat_rate_snapshot'];
-            $baseRaw = (float) $r['base'];
-            // RC: vendor fakturuje bez DPH, dopočti samovyměřenou daň
-            $vatRaw = (float) $r['vat'];
-            if ($vatRaw == 0.0) {
-                $vatRaw = round($baseRaw * $vatRate / 100, 2);
-            }
-            $baseCzk = round($baseRaw * $rate, 2);
-            $vatCzk  = round($vatRaw  * $rate, 2);
-
-            if (!isset($byInvoice[$id])) {
-                $byInvoice[$id] = [
+        // Agregace kanonických řádků per (zdroj, faktura).
+        $inv = [];
+        foreach ($this->ledger->rows($supplierId, $start, $end, includeDrafts: false) as $r) {
+            $key = $r['source'] . ':' . $r['invoice_id'];
+            if (!isset($inv[$key])) {
+                $inv[$key] = [
+                    'source'                => $r['source'],
+                    'varsymbol'             => $r['doc_number'],
                     'vendor_invoice_number' => $r['vendor_invoice_number'],
                     'tax_date'              => $r['tax_date'],
-                    'counterparty_dic'      => $r['counterparty_dic'],
-                    'country_iso2'          => strtoupper((string) ($r['country_iso2'] ?? '')),
-                    'base21' => 0.0, 'vat21' => 0.0,
-                    'base12' => 0.0, 'vat12' => 0.0,
+                    'dic'                   => $this->cleanDic($r['counterparty_dic']),
+                    'country_iso2'          => $r['country_iso2'],
+                    'total_czk'             => (float) $r['total_with_vat_czk'],
+                    'is_rc' => false, 'has_a2' => false, 'has_b1' => false,
+                    'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0, 'base_total' => 0.0,
+                    'a2_base21' => 0.0, 'a2_vat21' => 0.0, 'a2_base12' => 0.0, 'a2_vat12' => 0.0,
                 ];
             }
-            if ($vatRate >= 20.5) {
-                $byInvoice[$id]['base21'] += $baseCzk;
-                $byInvoice[$id]['vat21']  += $vatCzk;
-            } elseif ($vatRate > 0.5) {
-                $byInvoice[$id]['base12'] += $baseCzk;
-                $byInvoice[$id]['vat12']  += $vatCzk;
+            $g = &$inv[$key];
+            if ($r['is_reverse_charge']) $g['is_rc'] = true;
+            if ($r['kh_section'] === 'A.2') $g['has_a2'] = true;
+            if ($r['kh_section'] === 'B.1') $g['has_b1'] = true;
+            $base = (float) $r['base_czk'];
+            $vat  = (float) $r['vat_czk'];
+            $g['base_total'] += $base;
+            if ($r['vat_rate'] >= 20.5) { $g['base21'] += $base; $g['vat21'] += $vat; }
+            elseif ($r['vat_rate'] > 0) { $g['base12'] += $base; $g['vat12'] += $vat; }
+            if ($r['kh_section'] === 'A.2') {
+                if ($r['vat_rate'] >= 20.5) { $g['a2_base21'] += $base; $g['a2_vat21'] += $vat; }
+                elseif ($r['vat_rate'] > 0) { $g['a2_base12'] += $base; $g['a2_vat12'] += $vat; }
+            }
+            unset($g);
+        }
+
+        $a1 = []; $a2 = []; $a4 = []; $b1 = []; $b2 = [];
+        $a5 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
+        $b3 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
+        $zeroBase = fn (array $g) => abs($g['base21']) < 0.005 && abs($g['base12']) < 0.005;
+
+        foreach ($inv as $g) {
+            $hasDic = $g['dic'] !== '';
+            $overLimit = abs($g['total_czk']) >= self::ITEM_VS_BULK_THRESHOLD;
+
+            if ($g['source'] === 'sale') {
+                if ($g['is_rc']) {
+                    $a1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['varsymbol'],
+                             'tax_date' => $g['tax_date'], 'base' => $g['base_total']];
+                    continue;
+                }
+                if ($zeroBase($g)) continue; // osvobozené / EU dodání / vývoz → ne A.4/A.5
+                $row = ['varsymbol' => $g['varsymbol'], 'tax_date' => $g['tax_date'], 'counterparty_dic' => $g['dic'],
+                        'base21' => $g['base21'], 'vat21' => $g['vat21'], 'base12' => $g['base12'], 'vat12' => $g['vat12']];
+                if ($overLimit && $hasDic) {
+                    $a4[] = $row;
+                } else {
+                    $a5['count']++; $a5['base21'] += $g['base21']; $a5['vat21'] += $g['vat21'];
+                    $a5['base12'] += $g['base12']; $a5['vat12'] += $g['vat12'];
+                }
+            } else { // purchase
+                if ($g['has_a2']) {
+                    $a2[] = ['vendor_invoice_number' => $g['vendor_invoice_number'], 'tax_date' => $g['tax_date'],
+                             'counterparty_dic' => $g['dic'], 'country_iso2' => $g['country_iso2'],
+                             'base21' => $g['a2_base21'], 'vat21' => $g['a2_vat21'],
+                             'base12' => $g['a2_base12'], 'vat12' => $g['a2_vat12']];
+                    continue;
+                }
+                if ($g['is_rc']) { // tuzemský RC příjemce (A.2 už odchyceno výše)
+                    $b1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['vendor_invoice_number'],
+                             'tax_date' => $g['tax_date'], 'base' => $g['base_total']];
+                    continue;
+                }
+                if ($g['has_b1']) continue;       // B.1 sekce bez RC flagu → nepatří do B.2
+                if ($zeroBase($g)) continue;      // osvobozená přijatá bez nároku → ne B.2/B.3
+                $row = ['vendor_invoice_number' => $g['vendor_invoice_number'], 'tax_date' => $g['tax_date'],
+                        'counterparty_dic' => $g['dic'], 'base21' => $g['base21'], 'vat21' => $g['vat21'],
+                        'base12' => $g['base12'], 'vat12' => $g['vat12']];
+                if ($overLimit && $hasDic) {
+                    $b2[] = $row;
+                } else {
+                    $b3['count']++; $b3['base21'] += $g['base21']; $b3['vat21'] += $g['vat21'];
+                    $b3['base12'] += $g['base12']; $b3['vat12'] += $g['vat12'];
+                }
             }
         }
-        return array_values($byInvoice);
-    }
 
-    /**
-     * Reverse charge přijaté (sekce B.1) — kódy s is_reverse_charge=1.
-     */
-    private function collectReverseChargePurchases(int $supplierId, string $start, string $end): array
-    {
-        // LEFT JOIN + fallback na pi.reverse_charge (viz collectReverseChargeIssued komentář).
-        // GREATEST → COALESCE: tax_date je u purchase invoices někdy null, GREATEST dělá NULL;
-        // COALESCE(tax_date, issue_date) je správný behavior shodný se sales side.
-        $stmt = $this->db->pdo()->prepare("
-            SELECT pi.id, pi.vendor_invoice_number, COALESCE(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.total_without_vat AS base, pi.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
-                   c.dic AS counterparty_dic
-              FROM purchase_invoices pi
-              JOIN clients c ON c.id = pi.vendor_id
-         LEFT JOIN vat_classifications vc ON vc.code = pi.vat_classification_code
-         LEFT JOIN currencies cur ON cur.id = pi.currency_id
-             WHERE pi.supplier_id = ?
-               AND pi.status NOT IN ('draft', 'cancelled')
-               AND (vc.is_reverse_charge = 1 OR (vc.code IS NULL AND pi.reverse_charge = 1))
-               -- B.1 = jen tuzemský reverse charge; pořízení zboží z JČS (A.2, kód 23)
-               -- má is_reverse_charge=1, ale patří do VetaA2 (collectEuAcquisitions), ne B.1.
-               AND (vc.kh_section IS NULL OR vc.kh_section <> 'A.2')
-               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        return array_map(function ($r) {
-            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-            return array_merge($r, [
-                'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
-                'base'             => (float) $r['base'] * $rate,
-            ]);
-        }, $rows);
-    }
-
-    /**
-     * VAT breakdown per řádek faktury — sum total_without_vat / total_vat per rate.
-     *
-     * @return array{base21:float, vat21:float, base12:float, vat12:float}
-     */
-    /**
-     * VAT breakdown per VAT rate, vždy převedené na CZK (DPH přiznání je v CZK).
-     *
-     * @param float $exchangeRate kurz CZK / 1 invoice currency (default 1 = CZK)
-     */
-    private function loadInvoiceVatBreakdown(int $id, string $type, float $exchangeRate = 1.0): array
-    {
-        $table = $type === 'invoice' ? 'invoice_items' : 'purchase_invoice_items';
-        $fk = $type === 'invoice' ? 'invoice_id' : 'purchase_invoice_id';
-        $stmt = $this->db->pdo()->prepare(
-            "SELECT vat_rate_snapshot, SUM(total_without_vat) AS base, SUM(total_vat) AS vat
-               FROM {$table} WHERE {$fk} = ? GROUP BY vat_rate_snapshot"
-        );
-        $stmt->execute([$id]);
-        $result = ['base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
-        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            $rate = (float) $r['vat_rate_snapshot'];
-            $baseCzk = (float) $r['base'] * $exchangeRate;
-            $vatCzk  = (float) $r['vat']  * $exchangeRate;
-            // Základní sazba (21 %) vs snížená (12 %, KH má jen dvě sazbové kolonky).
-            // Rozsahy místo přesné shody, aby se historické sazby (15 %, 10 %) nezahodily
-            // tiše do nuly — spadnou do snížené. += kvůli více skupinám v jedné kolonce.
-            if ($rate >= 20.5) {
-                $result['base21'] += $baseCzk;
-                $result['vat21']  += $vatCzk;
-            } elseif ($rate > 0.5) {
-                $result['base12'] += $baseCzk;
-                $result['vat12']  += $vatCzk;
-            }
-        }
-        return $result;
+        return ['a1' => $a1, 'a2' => $a2, 'a4' => $a4, 'a5' => $a5, 'b1' => $b1, 'b2' => $b2, 'b3' => $b3];
     }
 
     /** @return list<string> warnings */
