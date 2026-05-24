@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] — 2026-05-24
+
+Velký combo release reagující na pět GitHub issues od externích uživatelů
+(#29, #30, #31, #33, #34). Hlavně dvě regulační opravy DPH výkazů — reverse
+charge v cizí měně a pořízení dlouhodobého majetku — plus Fakturoid OAuth2,
+dynamický year dropdown, GPC bank import v EUR a Docker deploy fixes.
+
 ### Added (Fakturoid)
 
 - **Podpora OAuth2 Client Credentials** (issue #31) — Fakturoid v roce 2024
@@ -24,12 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OAuth2 má prioritu. Žádný impact na existující uživatele — kdo má dnes
   uložený personal API token, ten dál fachá beze změny.
 
-### Migration
-
-- **0046**: `supplier.fakturoid_client_id`, `fakturoid_client_secret_enc`,
-  `fakturoid_access_token_enc`, `fakturoid_access_token_expires_at` pro
-  OAuth2 flow vedle stávajících BasicAuth polí (migrace 0031).
-
 ### Fixed (UI)
 
 - **Year dropdown hardcoded na posledních 5 let** (issue #33) — importovaná
@@ -41,13 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vybraný rok z URL (ať `?year=2018` byl v dropdownu i bez dat). Opraveno
   na `/invoices`, `/purchase-invoices` a všech 5 reportech (DPH přiznání,
   KH, Souhrnné hlášení, Kniha DPH, daň z příjmů).
-
-## [4.1.0] — 2026-05-24
-
-Dvě regulační opravy DPH výkazů (issue #29, Pavel Třešňák) — reverse charge
-v cizí měně a pořízení dlouhodobého majetku. Stejné úpravy se promítly do
-DPHDP3, kontrolního hlášení i interní Knihy DPH. Plus dvě Docker / deploy
-opravy reportované týmiž uživateli na PaaS prostředích.
 
 ### Fixed (Banka)
 
@@ -85,10 +79,6 @@ opravy reportované týmiž uživateli na PaaS prostředích.
 - **Sloupec měny v seznamu /bank** + měnový badge na mobilních kartách.
   Zůstatek je nyní formátován měnou výpisu (předtím vždy CZK).
 
-### Migration
-
-- **0045**: `bank_statements.file_content MEDIUMBLOB NULL` pro download.
-
 ### Fixed (Docker / deploy)
 
 - **ARES/VIES lookup na ENV-only deploy** (issue #30): image-baked stub
@@ -111,12 +101,12 @@ opravy reportované týmiž uživateli na PaaS prostředích.
 
 
 
-### Fixed
+### Fixed (DPH výkazy)
 
-- **Reverse charge / EU pořízení v cizí měně**: kurz se nyní aplikuje na
-  základ DPH (1 000 € × 25 = 25 000 Kč na ř. 3) a samovyměřená daň se
-  dopočítá ze sazby (5 250 Kč). Současně se mirror odpočet zobrazí na
-  ř. 43 a v kontrolním hlášení se vygeneruje sekce **A.2** s atributy
+- **Reverse charge / EU pořízení v cizí měně** (issue #29): kurz se nyní
+  aplikuje na základ DPH (1 000 € × 25 = 25 000 Kč na ř. 3) a samovyměřená
+  daň se dopočítá ze sazby (5 250 Kč). Současně se mirror odpočet zobrazí
+  na ř. 43 a v kontrolním hlášení se vygeneruje sekce **A.2** s atributy
   `k_stat`, `vatid_dod`, `c_evid_dd`, `dppd`, `zakl_dane1/dan1`,
   `zakl_dane2/dan2`. Migrace 0044 doplnila `dphdp3_line_secondary='43'`
   pro kódy 5 (tuzemský RC) a 23 (EU pořízení zboží), takže mirror
@@ -127,14 +117,14 @@ opravy reportované týmiž uživateli na PaaS prostředích.
   `nar_maj`, ...). Dříve některé řádky (3-13) propadaly bez ukládání do
   XML a ř. 40/41 šel do špatného atributu.
 
-### Added
+### Added (DPH výkazy)
 
-- **Pořízení dlouhodobého majetku — ř. 47 DPHDP3**: nový příznak
-  `is_fixed_asset` na hlavičce přijaté faktury (a per řádek pro mixed
-  doklady). Když je nastaven a doklad jde do odpočtu (ř. 40-45 přímo
+- **Pořízení dlouhodobého majetku — ř. 47 DPHDP3** (issue #29): nový
+  příznak `is_fixed_asset` na hlavičce přijaté faktury (a per řádek pro
+  mixed doklady). Když je nastaven a doklad jde do odpočtu (ř. 40-45 přímo
   nebo přes RC mirror na ř. 43), hodnota majetku se navíc uvede na ř. 47
-  jako doplňující údaj (atribut `nar_maj`). Daň se neduplikuje
-  v součtu — ř. 47 je informativní řádek vedle ř. 40.
+  jako doplňující údaj (atribut `nar_maj`). Daň se neduplikuje v součtu —
+  ř. 47 je informativní řádek vedle ř. 40.
 - **Editor přijaté faktury**: checkbox „Pořízení dlouhodobého majetku"
   vedle reverse charge, plus tooltip s odkazem na § 4 odst. 4 písm. c).
 - **Kniha DPH** ukazuje samovyměřenou daň u RC řádků (předtím byla 0)
@@ -148,11 +138,20 @@ opravy reportované týmiž uživateli na PaaS prostředích.
 - `VatClassificationMapper::aggregateForDphPriznani` přepočítá per řádek
   (ne per agregaci) kvůli aplikaci kurzu, dopočtu samovyměřené daně
   a podpoře secondary line.
+- `openapi.yaml` doplněn o `GET /api/v1/codebooks/years`,
+  `DELETE /api/v1/bank-statements/{id}`,
+  `GET /api/v1/bank-statements/{id}/download` a o nová pole
+  (`BankStatement.currency`/`has_file`, `PurchaseInvoice.is_fixed_asset`).
+  Aditivní změny, API version "1.0" zachována.
 
-### Migration
+### Migrations
 
-- **0044**: `is_fixed_asset` sloupec na `purchase_invoices` i
+- **0044** — `is_fixed_asset` sloupec na `purchase_invoices` i
   `purchase_invoice_items`; secondary line `'43'` pro kódy 5 a 23.
+- **0045** — `bank_statements.file_content MEDIUMBLOB NULL` pro download.
+- **0046** — `supplier.fakturoid_client_id`, `fakturoid_client_secret_enc`,
+  `fakturoid_access_token_enc`, `fakturoid_access_token_expires_at` pro
+  OAuth2 flow vedle stávajících BasicAuth polí (migrace 0031).
 
 ## [4.0.7] — 2026-05-22
 
