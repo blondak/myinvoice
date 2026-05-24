@@ -179,6 +179,13 @@ if exist manual\generated move manual\generated manual\generated.bak >nul
 if exist manual\manual.pdf.bak del /q manual\manual.pdf.bak
 if exist manual\manual.pdf move manual\manual.pdf manual\manual.pdf.bak >nul
 
+REM tools/money-s3-import: na deploy-temp jsme ho odebrali z indexu (nema jit na
+REM produkci), cimz se ve working tree stal untracked. Na master je ale TRACKED,
+REM takze `git checkout master` by jinak selhal ("untracked working tree files
+REM would be overwritten") a nechal by nas trcet na deploy-temp. Smazat working
+REM copy; checkout master ji obnovi z master HEAD (committed, nic se neztrati).
+if exist tools\money-s3-import rmdir /s /q tools\money-s3-import
+
 REM Vzdy se vratit zpet na master + cleanup.
 REM POZN.: vse co bylo committed v deploy-temp ale netracked v master uz neni v
 REM working tree (vyse stashnuto/cachnuto), takze checkout master nic nesmaze.
