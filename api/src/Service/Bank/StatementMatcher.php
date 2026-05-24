@@ -12,10 +12,19 @@ use PDO;
  * Matchne bankovní transakci na fakturu podle VS + amount.
  *
  * Strategie:
- *   1. Příchozí (amount > 0) — hledá unpaid invoice se shodným varsymbol
- *      a) amount == amount_to_pay → 'auto_exact', faktura → paid
- *      b) |amount - amount_to_pay| <= 1 Kč → 'auto_partial' (jen log, faktura zůstane)
- *   2. Odchozí (amount < 0) — neshodujeme (může být refund / náš výdaj)
+ *   1. Příchozí (amount > 0) — hledá fakturu se shodným varsymbol
+ *      a) |amount - amount_to_pay| <= 0.05 Kč → 'auto_exact', faktura → paid
+ *      b) |amount - amount_to_pay| <= 1 Kč → 'auto_partial' (částečná platba)
+ *   2. Odchozí (amount < 0) — hledá přijatou fakturu (varsymbol nebo
+ *      vendor_invoice_number), payment_matches N:N.
+ *
+ * Tolerance 0.05 Kč pro exact match: typické zaokrouhlení 21 % DPH na
+ * vícepoložkové faktuře dává ±0.01 — ±0.04 Kč rozdíl mezi součtem
+ * položek a total_with_vat. Příklad: 1241.34 × 1.21 = 1502.0214 →
+ * zaokrouhlí buď na 1502.02 (per řádek po výpočtu DPH) nebo 1502.00
+ * (suma per řádek bez DPH × sazba). Bank převod je za jednu z hodnot,
+ * faktura má druhou — diff 0.02 je legitní. Před 0.05 tolerancí toto
+ * padalo do auto_partial a faktura zůstávala neoznačena jako paid.
  *
  * Multi-supplier: VS je unique per (supplier_id, varsymbol). Matcher určuje
  * supplier_id z bank_statement.account_number → currencies.account_number → supplier_id.
@@ -24,6 +33,11 @@ use PDO;
  */
 final class StatementMatcher
 {
+    /** Tolerance pro auto_exact match — pokrývá DPH zaokrouhlení (±2-4 haléře typicky). */
+    private const EXACT_MATCH_TOLERANCE = 0.05;
+    /** Tolerance pro auto_partial — vyšší rozdíly už se ručně rozeznají (splátka / přeplatek). */
+    private const PARTIAL_MATCH_TOLERANCE = 1.0;
+
     public function __construct(
         private readonly Connection $db,
         private readonly FinalFromProformaCreator $finalCreator,
@@ -124,7 +138,7 @@ final class StatementMatcher
 
         $alreadyPaid = ($inv['status'] === 'paid');
         $diff = abs($amount - (float) $inv['amount_to_pay']);
-        if ($diff < 0.01) {
+        if ($diff <= self::EXACT_MATCH_TOLERANCE) {
             // Exact match — pokud faktura ještě není paid, označit ji a (u proformy) vyrobit final draft.
             // Pro již ručně paid fakturu jen navážeme transakci (status/paid_at netknuté).
             $pdo->beginTransaction();
@@ -159,7 +173,7 @@ final class StatementMatcher
             }
             return $result;
         }
-        if ($diff <= 1.0) {
+        if ($diff <= self::PARTIAL_MATCH_TOLERANCE) {
             // Partial match — flag, ale nepaint paid (uživatel rozhodne)
             $pdo->prepare(
                 "UPDATE bank_transactions
@@ -216,7 +230,7 @@ final class StatementMatcher
 
         $alreadyPaid = ($pi['status'] === 'paid');
         $diff = abs($absAmount - (float) $pi['amount_to_pay']);
-        if ($diff < 0.01) {
+        if ($diff <= self::EXACT_MATCH_TOLERANCE) {
             $pdo->beginTransaction();
             try {
                 if (!$alreadyPaid) {
@@ -248,7 +262,7 @@ final class StatementMatcher
             }
             return $result;
         }
-        if ($diff <= 1.0) {
+        if ($diff <= self::PARTIAL_MATCH_TOLERANCE) {
             // Partial: zaznam do payment_matches + status na tx, ať UI vidí link
             // (předtím tady byl jen `return` bez zápisu — transakce zůstávaly
             // unmatched, partial match se v UI nikdy nezobrazil).
