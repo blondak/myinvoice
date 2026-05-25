@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.2] — 2026-05-25
+
+Chytřejší **párování plateb** v bance a oprava **importu z iDokladu**.
+
+### Added (banka)
+
+- **Návrhy ke spárování dle částky.** Když transakce nemá VS (nebo nesedí),
+  dialog „Spárovat" nabídne faktury odpovídající částkou v okně **±14 dní** —
+  vydané i přijaté (dobropisy obracejí směr platby). Klik = spárováno; ruční
+  zadání VS zůstává jako druhá možnost.
+- **Párování v cizí měně přes kurz.** Tuzemská (CZK) platba cizoměnové faktury
+  (EUR/USD) se porovnává přes kurz faktury (CZK = částka × kurz) s relativní
+  tolerancí 4 % (bankovní spread + drift kurzu). Platí pro automatické i ruční
+  párování. Cizoměnový účet × jiná měna faktury se bezpečně nepáruje.
+- **Spárování i s už zaplacenou fakturou** (duplicitní/druhá platba, doplatek,
+  dodatečné dohledání úhrady) — návrhy zahrnují i zaplacené doklady se štítkem
+  „Zaplaceno"; faktura se jen naváže (stav se nepřepisuje).
+
+### Fixed
+
+- **Import faktury z iDokladu** (#39) — iDoklad embeduje do PDF ISDOC XML
+  s vedoucím UTF-8 BOM, což rozbíjelo detekci formátu (`str_starts_with('<?xml')`,
+  kterou `ltrim` neočistí) a soubor padal na Pohoda parser s chybou
+  `Není Pohoda XML — root není dataPack`. Detekce teď rozpozná ISDOC podle
+  namespace nezávisle na BOM a vedoucí BOM odstraní.
+
 ## [4.2.1] — 2026-05-25
 
 Patch zaměřený na **ISDOC v cizí měně** — export i import teď odpovídají standardu
