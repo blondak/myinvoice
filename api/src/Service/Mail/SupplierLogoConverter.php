@@ -307,7 +307,7 @@ final class SupplierLogoConverter
         // rsvg-convert -h <maxHeight> -f png -o <out> <in>. Background default = transparent.
         $cmd = sprintf(
             '%s -h %d -f png -o %s %s 2>&1',
-            escapeshellcmd($bin),
+            escapeshellarg($bin),
             self::MAX_HEIGHT_PX,
             escapeshellarg($targetPath),
             escapeshellarg($sourcePath),

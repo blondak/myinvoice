@@ -107,7 +107,6 @@ function escapeHtml(s: string): string {
 export interface HealthResponse {
   status: 'ok'
   version: string
-  env: string
   db: boolean
   redis: boolean
   warnings: Array<{ code: string; message: string }>

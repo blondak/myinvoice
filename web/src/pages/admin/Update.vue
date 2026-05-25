@@ -145,7 +145,13 @@ function renderMarkdown(md: string): string {
     r = r.replace(/`([^`]+)`/g, '<code>$1</code>')
     r = r.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     r = r.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '<em>$1</em>')
-    r = r.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    // URL je už HTML-escapovaná (inline() escapuje celý řetězec výše). Povol jen bezpečná
+    // schémata — `javascript:`/`data:` apod. zahoď a vykresli jen text (XSS guard).
+    r = r.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, text: string, url: string) =>
+      /^(https?:\/\/|mailto:|\/|#)/i.test(url)
+        ? `<a href="${url}" target="_blank" rel="noopener">${text}</a>`
+        : text,
+    )
     return r
   }
 
