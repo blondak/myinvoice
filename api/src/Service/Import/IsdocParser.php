@@ -183,6 +183,11 @@ final class IsdocParser
         $unit = $qtyEl instanceof \DOMElement ? ($qtyEl->getAttribute('unitCode') ?: 'ks') : 'ks';
 
         if ($hasForeignCurrency) {
+            // <UnitPrice> je dle ISDOC vždy v lokální měně (CZK), ne v měně faktury.
+            // Cizoměnovou jednotkovou cenu odvodíme z <LineExtensionAmountCurr> / qty.
+            // Náš IsdocExporter Curr pole generuje (od fixu cizí měny); fallback na
+            // <UnitPrice> drží pro non-konformní exporty cizích systémů, které *Curr
+            // vynechají a cizí hodnotu (chybně) zapíšou rovnou do <UnitPrice>.
             $lineAmountCurr = $this->text($xpath, 'i:LineExtensionAmountCurr', $line);
             if ($lineAmountCurr !== '' && $quantity > 0.0) {
                 $unitPrice = (float) $lineAmountCurr / $quantity;

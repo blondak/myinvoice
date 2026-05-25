@@ -7,6 +7,7 @@ namespace MyInvoice\Tests\Unit\Service\Export;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\Export\IsdocExporter;
+use MyInvoice\Service\Import\IsdocParser;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -87,6 +88,82 @@ final class IsdocExporterSchemaTest extends TestCase
             'totals'          => ['without_vat' => 13000.0, 'with_vat' => 15460.0, 'rounding' => 0.0],
             'amount_to_pay'   => 15460.0,
         ])));
+    }
+
+    // ─── Měnová sémantika (business rule, kterou XSD samo nevynutí) ───
+
+    public function testForeignCurrencyEmitsLocalCzkBaseAndForeignCurr(): void
+    {
+        // 1 ks à 2520 EUR, kurz 24.36 → base v CZK = 61 387.20, Curr v EUR = 2520.00.
+        $xml = $this->exporter->buildXml($this->invoice([
+            'currency'      => 'EUR',
+            'exchange_rate' => 24.36,
+            'amount_to_pay' => 3049.2,   // s DPH
+        ]));
+
+        // <UnitPrice> je dle ISDOC vždy lokální (CZK) a Curr variantu nemá.
+        self::assertSame('61387.20', $this->xpathOne($xml, '//i:InvoiceLine/i:UnitPrice'));
+        self::assertNull($this->xpathOne($xml, '//i:InvoiceLine/i:UnitPriceCurr'), 'UnitPrice nemá Curr variantu');
+
+        // LineExtensionAmount: base v CZK, Curr v EUR.
+        self::assertSame('2520.00',  $this->xpathOne($xml, '//i:InvoiceLine/i:LineExtensionAmountCurr'));
+        self::assertSame('61387.20', $this->xpathOne($xml, '//i:InvoiceLine/i:LineExtensionAmount'));
+
+        // Celková částka k zaplacení: PayableAmount v CZK (3049.2 × 24.36), PayableAmountCurr v EUR.
+        self::assertSame('74278.51', $this->xpathOne($xml, '//i:LegalMonetaryTotal/i:PayableAmount'));
+        self::assertSame('3049.20',  $this->xpathOne($xml, '//i:LegalMonetaryTotal/i:PayableAmountCurr'));
+    }
+
+    public function testDomesticInvoiceEmitsNoCurrElementsAndIsUnchanged(): void
+    {
+        $xml = $this->exporter->buildXml($this->invoice(['amount_to_pay' => 3049.2]));
+
+        // ISDOC pravidlo: bez <ForeignCurrencyCode> nesmí existovat žádný *Curr element.
+        self::assertSame(0, substr_count($xml, 'Curr>'), 'CZK faktura nesmí mít žádné *Curr elementy');
+        self::assertNull($this->xpathOne($xml, '//i:ForeignCurrencyCode'));
+
+        // Base hodnoty zůstávají v CZK = vstupní hodnoty (kurz 1).
+        self::assertSame('2520.00', $this->xpathOne($xml, '//i:InvoiceLine/i:UnitPrice'));
+        self::assertSame('3049.20', $this->xpathOne($xml, '//i:LegalMonetaryTotal/i:PayableAmount'));
+    }
+
+    public function testForeignCurrencyRoundTripsThroughParser(): void
+    {
+        // Export EUR faktury → import zpět → jednotková cena musí být v EUR (ne CZK).
+        $xml = $this->exporter->buildXml($this->invoice([
+            'currency'      => 'EUR',
+            'exchange_rate' => 24.36,
+            'items'         => [$this->item([
+                'quantity'               => 4.0,
+                'unit_price_without_vat' => 125.0,
+                'total_without_vat'      => 500.0,
+                'total_vat'              => 105.0,
+                'total_with_vat'         => 605.0,
+            ])],
+            'vat_breakdown' => [['rate' => 21.0, 'base' => 500.0, 'vat' => 105.0]],
+            'totals'        => ['without_vat' => 500.0, 'with_vat' => 605.0, 'rounding' => 0.0],
+            'amount_to_pay' => 605.0,
+        ]));
+
+        $parsed = (new IsdocParser())->parse($xml);
+        $invoice = $parsed['invoices'][0];
+
+        self::assertSame('EUR', $invoice['currency']);
+        // LineExtensionAmountCurr (500 EUR) / qty 4 = 125 EUR.
+        self::assertSame(125.0, $invoice['items'][0]['unit_price_without_vat']);
+    }
+
+    /**
+     * Vrátí textový obsah prvního uzlu pro XPath výraz (namespace `i:`), nebo null.
+     */
+    private function xpathOne(string $xml, string $expr): ?string
+    {
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $xp = new \DOMXPath($dom);
+        $xp->registerNamespace('i', 'http://isdoc.cz/namespace/2013');
+        $node = $xp->query($expr)->item(0);
+        return $node?->textContent;
     }
 
     /**
