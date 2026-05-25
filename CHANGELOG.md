@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.3] — 2026-05-25
+
+Rozšíření role **readonly** + bezpečnostní hardening po hloubkovém auditu.
+
+### Changed (role readonly)
+
+- **`readonly` vidí a exportuje totéž co `accountant`.** Nově má přístup
+  k exportům (PDF / ISDOC / Pohoda / ZIP) i k daňovým výkazům (DPH, KH, SHV,
+  daň z příjmů, kniha DPH, archiv EPO) — náhled i stažení XML/PDF. Vše jsou
+  operace čtení; `readonly` dál **nic nevytvoří, neupraví ani nesmaže**. Rozdíl
+  mezi `accountant` a `readonly` je tak jediný: zápis.
+- **UI skrývá zápisová tlačítka podle role** (Nový / Upravit / Smazat i akce
+  jako odeslat, zaplaceno, párování banky). Zápisové stránky (`/…/new`,
+  `/…/edit`) jsou navíc chráněné route-guardem — `readonly` je z nich
+  přesměrován na nástěnku.
+
+### Security
+
+- **XSS guard** v náhledu release notes (Systém → Aktualizace) — vlastní
+  markdown renderer u odkazů povolí jen bezpečná schémata (`http(s)`,
+  `mailto:`, `/`, `#`); `javascript:` / `data:` zahodí a vykreslí jako text.
+- **`/api/health`** už nevrací pole `env` (drobný information disclosure).
+- **Konverze loga** (rsvg-convert) používá `escapeshellarg` i pro cestu
+  k binárce (robustnost cest s mezerami; nešlo o exploit).
+
+### Docs
+
+- Přepsaná specifikace rolí v manuálu — § 19.2.2 (uživatelská tabulka) a
+  § 20.5 RBAC (úplná matice oprávnění + jak je RBAC vynucené: backend / PAT / UI).
+
 ## [4.2.2] — 2026-05-25
 
 Chytřejší **párování plateb** v bance a oprava **importu z iDokladu**.

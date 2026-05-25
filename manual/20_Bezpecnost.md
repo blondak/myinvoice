@@ -192,16 +192,44 @@ Doporučení v produkci:
 
 ## 20.5 RBAC (role-based access)
 
-Tři role:
+Tři role. Hierarchie: **admin > accountant > readonly**.
 
-| Role | UI | API | Vystavování | Editace vystavené | Konfigurace | Uživatelé |
-|---|---|---|---|---|---|---|
-| **admin** | ✅ | ✅ | ✅ | ✅ (force) | ✅ | ✅ |
-| **accountant** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **readonly** | ✅ (read) | ✅ (read) | ❌ | ❌ | ❌ | ❌ |
+| Schopnost | admin | accountant | readonly |
+|---|:---:|:---:|:---:|
+| Prohlížení dat (faktury, klienti, zakázky, banka, CRM, statistiky) | ✅ | ✅ | ✅ |
+| **Exporty** (PDF / ISDOC / Pohoda / ZIP) | ✅ | ✅ | ✅ |
+| **Daňové výkazy** (DPH, KH, SHV, daň z příjmů, kniha DPH, archiv EPO) — náhled i stažení XML/PDF | ✅ | ✅ | ✅ |
+| Vystavování a editace dokladů, klienti, zakázky, recurring | ✅ | ✅ | ❌ |
+| Import faktur, párování / nahrávání bankovních výpisů | ✅ | ✅ | ❌ |
+| Editace / smazání **vystavené** faktury (force) | ✅ | ❌ | ❌ |
+| Konfigurace systému (nastavení, číselníky, integrace, e-mail šablony) | ✅ | ❌ | ❌ |
+| Správa uživatelů, activity log, cron, schvalování | ✅ | ❌ | ❌ |
 
-Per endpoint je v API kódu definovaná minimální role. UI se podle aktuální
-role uživatele schovává tlačítka, na která nemá nárok.
+**Klíčový princip:** `readonly` vidí **přesně totéž co `accountant`** (včetně exportů
+a daňových výkazů — to vše jsou operace čtení) a smí **data exportovat**, ale
+**nesmí nic vytvořit, upravit ani smazat**. Rozdíl mezi `accountant` a `readonly`
+je jediný: zápis.
+
+Vhodné použití:
+
+- **admin** — vlastník / správce instalace.
+- **accountant** — interní i externí účetní: plná práce s doklady a bankou, ale
+  bez konfigurace systému a správy uživatelů.
+- **readonly** — auditor, kontrolor nebo klient, který si má jen prohlížet a
+  stahovat data (vč. DPH podkladů) bez rizika nechtěné změny.
+
+### Jak je to vynucené
+
+1. **Backend (`RoleMiddleware`)** — `readonly` smí výhradně `GET` requesty; jakýkoli
+   zápis (`POST` / `PUT` / `PATCH` / `DELETE`) je odmítnut s `403`. Exporty i daňové
+   výkazy jsou `GET`, proto k nim `readonly` má přístup. Admin endpointy
+   (uživatelé, nastavení, integrace…) mají navíc **kontrolu role přímo v akci**.
+2. **API token (PAT)** — role uživatele se kontroluje **před** scope tokenu, takže
+   `readonly` uživatel nemůže obejít omezení ani tokenem se scopem `read_write`.
+3. **UI** — frontend podle role **skrývá zápisová tlačítka** (Nový / Upravit /
+   Smazat i akce jako odeslat, zaplaceno, párování banky). Zápisové stránky
+   (`/…/new`, `/…/edit`) jsou navíc chráněné route-guardem — `readonly` je z nich
+   přesměrován na nástěnku.
 
 ## 20.6 CSRF + Origin check
 

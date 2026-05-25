@@ -100,8 +100,12 @@ Tabulka uživatelů, kteří se mohou přihlásit. Tlačítko **+ Nový uživate
 | Role | Co může |
 |---|---|
 | **admin** | Vše — vystavování, konfigurace, uživatelé, force editace, smazání |
-| **accountant** | Vystavování faktur, klienti, banka, exporty. **Bez** konfigurace systému, **bez** force editace, **bez** správy uživatelů |
-| **readonly** | Pouze prohlížení — bez úprav, bez vystavování. Vhodné pro auditora / klienta |
+| **accountant** | Vystavování faktur, klienti, banka, exporty, daňové výkazy. **Bez** konfigurace systému, **bez** force editace, **bez** správy uživatelů |
+| **readonly** | Vidí **totéž co účetní** — vč. exportů a daňových výkazů (DPH/KH/…) — a smí **data exportovat**, ale **nic nemění** (nezakládá, neupravuje, nemaže). Vhodné pro auditora / klienta |
+
+> 🛈 Rozdíl mezi **accountant** a **readonly** je jediný: zápis. Obě role vidí a
+> exportují stejná data; `readonly` jen nemá žádná tlačítka pro úpravy. Úplná
+> matice oprávnění je v [§ 20.5 RBAC](20_Bezpecnost.md).
 
 > 🛈 Systém má **guard proti odebrání posledního aktivního admina** — pokud
 > jsi sám admin a zkusíš si snížit roli, vrátí 409. Musí být minimálně 1
@@ -205,6 +209,8 @@ Použití:
 - **Test šablony** vždy před produkčním nasazením — typo v Twig syntaxi by
   rozbilo odesílání všem klientům.
 - **Role accountant** je dobrá pro externí účetní — vidí faktury, banku,
-  exporty, ale nemůže upravit uživatele ani konfiguraci.
+  exporty i daňové výkazy, ale nemůže upravit uživatele ani konfiguraci.
+- **Role readonly** dej auditorovi nebo klientovi — vidí a exportuje totéž co
+  účetní (vč. DPH podkladů), ale nemůže nic změnit.
 - **Z Activity logu** zjistíš všechno — i kdo neúspěšně se zkoušel přihlásit
   (filter akce `auth.login_failed`).
