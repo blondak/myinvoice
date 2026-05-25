@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.4] — 2026-05-25
+
+Opravy importu/exportu (**reverse charge**) a **zálohování na Docker/PaaS**.
+
+### Fixed
+
+- **Reverse charge u importu z iDokladu** ([#41](https://github.com/radekhulan/myinvoice/issues/41)) — faktura od neplátce DPH se chybně označovala jako reverse charge. ISDOC `<VATApplicable>false</>` znamená *neplátce / plnění mimo DPH*, ne přenesenou daň. povinnost. Reverse charge se teď čte výhradně z `<LocalReverseChargeFlag>`.
+  - Stejný typ chyby opraven i v **Pohoda importu** (RC z `<inv:classificationVAT>` PDP kódu, ne z `<inv:isExecuted>`), v **ISDOC exportu** (`VATApplicable` dle plátcovství dodavatele + reverse charge přes `<LocalReverseChargeFlag>`) a **Pohoda exportu** (zrušeno zneužití `<inv:isExecuted>`).
+- **Záloha DB selhávala `rc=2` na Docker/PaaS** ([#42](https://github.com/radekhulan/myinvoice/issues/42)) — `cron-backup` měl `errFile` a fallback `.dump.cnf` natvrdo v `rootDir/storage/backup`, který při `MYINVOICE_DATA_DIR` mimo app kořen neexistuje → shell redirect selhal ještě před spuštěním `mariadb-dump`. Obojí teď míří do vyřešeného výstupního adresáře zálohy (zbytek po [#34](https://github.com/radekhulan/myinvoice/issues/34)).
+
 ## [4.2.3] — 2026-05-25
 
 Rozšíření role **readonly** + bezpečnostní hardening po hloubkovém auditu.
