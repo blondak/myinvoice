@@ -4,6 +4,7 @@ import type { PaymentMethod } from './invoices'
 export type Frequency = 'monthly' | 'quarterly' | 'semi_annually' | 'annually'
 export type RecurringStatus = 'active' | 'paused' | 'expired'
 export type TaxDateMode = 'same_as_issue' | 'previous_month_last_day'
+export type DraftOpenMode = 'at_issue' | 'period_start'
 
 export interface RecurringTemplateItem {
   id?: number
@@ -42,6 +43,8 @@ export interface RecurringTemplate {
   reverse_charge: boolean
   payment_due_days: number
   tax_date_mode: TaxDateMode
+  draft_open_mode: DraftOpenMode
+  reminder_days_before: number
   note_above_items: string | null
   note_below_items: string | null
   increment_month_in_descriptions: boolean
@@ -73,6 +76,8 @@ export interface RecurringTemplatePayload {
   reverse_charge?: boolean
   payment_due_days?: number
   tax_date_mode?: TaxDateMode
+  draft_open_mode?: DraftOpenMode
+  reminder_days_before?: number
   note_above_items?: string | null
   note_below_items?: string | null
   increment_month_in_descriptions?: boolean

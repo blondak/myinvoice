@@ -58,6 +58,8 @@ const form = ref<{
   reverse_charge: boolean
   payment_due_days: number
   tax_date_mode: 'same_as_issue' | 'previous_month_last_day'
+  draft_open_mode: 'at_issue' | 'period_start'
+  reminder_days_before: number
   note_above_items: string
   note_below_items: string
   increment_month_in_descriptions: boolean
@@ -80,6 +82,8 @@ const form = ref<{
   reverse_charge: false,
   payment_due_days: 14,
   tax_date_mode: 'same_as_issue',
+  draft_open_mode: 'at_issue',
+  reminder_days_before: 1,
   note_above_items: '',
   note_below_items: '',
   increment_month_in_descriptions: true,
@@ -249,6 +253,17 @@ watch(() => form.value.auto_issue, (ai) => {
   if (!ai) form.value.auto_send_email = false
 })
 
+// „Otevřený koncept" (period_start) zatím podporujeme jen pro měsíční periodicitu
+// a vyžaduje auto-vystavení (koncept se na konci období uzavře sám).
+watch(() => form.value.frequency, (f) => {
+  if (f !== 'monthly' && form.value.draft_open_mode === 'period_start') {
+    form.value.draft_open_mode = 'at_issue'
+  }
+})
+watch(() => form.value.draft_open_mode, (m) => {
+  if (m === 'period_start') form.value.auto_issue = true
+})
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -336,6 +351,8 @@ onMounted(async () => {
         reverse_charge: tpl.reverse_charge,
         payment_due_days: tpl.payment_due_days,
         tax_date_mode: tpl.tax_date_mode ?? 'same_as_issue',
+        draft_open_mode: tpl.draft_open_mode ?? 'at_issue',
+        reminder_days_before: tpl.reminder_days_before ?? 1,
         note_above_items: tpl.note_above_items ?? '',
         note_below_items: tpl.note_below_items ?? '',
         increment_month_in_descriptions: tpl.increment_month_in_descriptions,
@@ -367,6 +384,16 @@ async function submit() {
     error.value = t('recurring.auto_send_requires_issue')
     return
   }
+  if (form.value.draft_open_mode === 'period_start') {
+    if (form.value.frequency !== 'monthly') {
+      error.value = t('recurring.period_start_requires_monthly')
+      return
+    }
+    if (!form.value.auto_issue) {
+      error.value = t('recurring.period_start_requires_auto_issue')
+      return
+    }
+  }
   if (hasNonPositiveAmountToPay.value) {
     error.value = t('invoice.amount_positive_required')
     return
@@ -390,6 +417,8 @@ async function submit() {
       reverse_charge: form.value.reverse_charge,
       payment_due_days: form.value.payment_due_days,
       tax_date_mode: form.value.tax_date_mode,
+      draft_open_mode: form.value.draft_open_mode,
+      reminder_days_before: form.value.reminder_days_before,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
       increment_month_in_descriptions: form.value.increment_month_in_descriptions,
@@ -443,7 +472,7 @@ async function submit() {
                 <SearchableSelect
                   :model-value="form.client_id"
                   @update:model-value="(v) => { form.client_id = v }"
-                  :options="clients.map(c => ({ value: c.id, label: c.company_name }))"
+                  :options="clients.filter(c => c.is_customer !== false).map(c => ({ value: c.id, label: c.company_name }))"
                   :placeholder="t('recurring.client')"
                 />
               </div>
@@ -691,6 +720,28 @@ async function submit() {
       <!-- Automation -->
       <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm space-y-3">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('recurring.section_automation') }}</h3>
+
+        <div>
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('recurring.draft_open_mode') }}</label>
+          <select v-model="form.draft_open_mode"
+            class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white">
+            <option value="at_issue">{{ t('recurring.draft_open_mode_at_issue') }}</option>
+            <option value="period_start" :disabled="form.frequency !== 'monthly'">
+              {{ t('recurring.draft_open_mode_period_start') }}
+            </option>
+          </select>
+          <p class="mt-1 text-xs text-neutral-500">
+            {{ form.frequency === 'monthly' ? t('recurring.draft_open_mode_hint') : t('recurring.draft_open_mode_monthly_only') }}
+          </p>
+        </div>
+
+        <div v-if="form.draft_open_mode === 'period_start'">
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('recurring.reminder_days_before') }}</label>
+          <input v-model.number="form.reminder_days_before" type="number" min="0" max="14"
+            class="w-full md:w-40 h-10 px-3 border border-neutral-300 rounded-md" />
+          <p class="mt-1 text-xs text-neutral-500">{{ t('recurring.reminder_days_before_hint') }}</p>
+        </div>
+
         <label class="flex items-start gap-2 text-sm text-neutral-700">
           <input v-model="form.increment_month_in_descriptions" type="checkbox" class="mt-1 rounded border-neutral-300 text-primary-600" />
           <span>{{ t('recurring.increment_month') }}</span>

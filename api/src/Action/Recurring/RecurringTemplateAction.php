@@ -291,6 +291,25 @@ final class RecurringTemplateAction
                 $err['tax_date_mode'][] = 'Neplatný režim DUZP';
             }
         }
+        $draftOpenMode = (string) ($data['draft_open_mode'] ?? 'at_issue');
+        if (!in_array($draftOpenMode, ['at_issue', 'period_start'], true)) {
+            $err['draft_open_mode'][] = 'Neplatný režim otevření konceptu';
+        }
+        if ($draftOpenMode === 'period_start') {
+            // „Otevřený koncept" zatím jen pro měsíční periodicitu a s auto-vystavením
+            // (koncept se na konci období uzavře sám — viz issuePeriod()).
+            if ($frequency !== 'monthly') {
+                $err['draft_open_mode'][] = 'Režim „Na začátku období" lze použít jen u měsíční periodicity.';
+            }
+            if (empty($data['auto_issue'])) {
+                $err['draft_open_mode'][] = 'Režim „Na začátku období" vyžaduje automatické vystavení.';
+            }
+        }
+        if (array_key_exists('reminder_days_before', $data) && $data['reminder_days_before'] !== null && $data['reminder_days_before'] !== '') {
+            if (!is_numeric($data['reminder_days_before']) || (int) $data['reminder_days_before'] < 0 || (int) $data['reminder_days_before'] > 14) {
+                $err['reminder_days_before'][] = 'Připomenutí musí být 0–14 dní.';
+            }
+        }
         // auto_send_email vyžaduje auto_issue (nelze poslat draft)
         if (!empty($data['auto_send_email']) && empty($data['auto_issue'])) {
             $err['auto_send_email'][] = 'Automatické odeslání vyžaduje automatické vystavení.';

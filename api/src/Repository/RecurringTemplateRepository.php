@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Repository;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Invoice\PeriodicityCalculator;
 use PDO;
 
 /**
@@ -157,8 +158,13 @@ final class RecurringTemplateRepository
     }
 
     /**
-     * Načte šablony, které mají dnes nebo dříve `next_run_date`, jsou aktivní,
-     * a jejich supplier má zapnutý kill-switch auto_generate_recurring.
+     * Načte šablony, u kterých má dnes cron něco udělat — jsou aktivní a jejich
+     * supplier má zapnutý kill-switch auto_generate_recurring, a navíc buď:
+     *   - next_run_date <= today (čas vystavit / legacy generovat), NEBO
+     *   - draft_open_mode='period_start' A už začalo fakturované období
+     *     (1. den měsíce next_run_date <= today) → čas otevřít koncept.
+     *
+     * Cron pak dle draft_open_mode a datumů rozhodne open vs. issue.
      */
     public function findDue(): array
     {
@@ -167,9 +173,13 @@ final class RecurringTemplateRepository
                FROM recurring_invoice_templates t
                JOIN supplier s ON s.id = t.supplier_id
               WHERE t.status = 'active'
-                AND t.next_run_date <= CURDATE()
                 AND (t.end_date IS NULL OR t.next_run_date <= t.end_date)
                 AND s.auto_generate_recurring = 1
+                AND (
+                      t.next_run_date <= CURDATE()
+                   OR (t.draft_open_mode = 'period_start'
+                       AND DATE_FORMAT(t.next_run_date, '%Y-%m-01') <= CURDATE())
+                )
               ORDER BY t.next_run_date ASC, t.id ASC"
         );
         $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
@@ -181,6 +191,69 @@ final class RecurringTemplateRepository
         return $out;
     }
 
+    /**
+     * Faktura vygenerovaná z této šablony pro dané období (klíč = issue_date,
+     * který se rovná plánovanému next_run_date období). Slouží k idempotenci
+     * openDraft() a k nalezení otevřeného konceptu v issuePeriod().
+     *
+     * @return array{id:int, status:string, varsymbol:?string}|null
+     */
+    public function findPeriodInvoice(int $templateId, string $issueDate): ?array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id, status, varsymbol
+               FROM invoices
+              WHERE recurring_template_id = ? AND issue_date = ?
+              ORDER BY id DESC
+              LIMIT 1'
+        );
+        $stmt->execute([$templateId, $issueDate]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) return null;
+        return [
+            'id'        => (int) $row['id'],
+            'status'    => (string) $row['status'],
+            'varsymbol' => $row['varsymbol'] !== null ? (string) $row['varsymbol'] : null,
+        ];
+    }
+
+    /**
+     * Šablony s otevřeným konceptem, kterým se blíží vystavení (period_start),
+     * a kterým ještě nebyl pro toto období odeslán reminder.
+     *
+     * Okno: 1 ≤ (next_run_date − dnes) ≤ reminder_days_before, reminder_days_before > 0.
+     */
+    public function findReminderDue(): array
+    {
+        $stmt = $this->db->pdo()->query(
+            "SELECT t.id
+               FROM recurring_invoice_templates t
+               JOIN supplier s ON s.id = t.supplier_id
+              WHERE t.status = 'active'
+                AND t.draft_open_mode = 'period_start'
+                AND t.reminder_days_before > 0
+                AND s.auto_generate_recurring = 1
+                AND DATEDIFF(t.next_run_date, CURDATE()) BETWEEN 1 AND t.reminder_days_before
+                AND (t.last_reminder_date IS NULL OR t.last_reminder_date <> t.next_run_date)
+              ORDER BY t.next_run_date ASC, t.id ASC"
+        );
+        $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        $out = [];
+        foreach ($ids as $id) {
+            $tpl = $this->find($id);
+            if ($tpl !== null) $out[] = $tpl;
+        }
+        return $out;
+    }
+
+    /** Označí, že reminder pro období (= next_run_date) byl odeslán. */
+    public function markReminderSent(int $id, string $periodDate): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE recurring_invoice_templates SET last_reminder_date = ? WHERE id = ?'
+        )->execute([$periodDate, $id]);
+    }
+
     public function create(array $data, int $userId): int
     {
         $pdo = $this->db->pdo();
@@ -189,9 +262,10 @@ final class RecurringTemplateRepository
             (supplier_id, client_id, project_id, name,
              frequency, day_of_month, end_of_month, anchor_date, end_date, next_run_date,
              invoice_type, currency_id, language, payment_method, reverse_charge,
-             payment_due_days, tax_date_mode, note_above_items, note_below_items,
+             payment_due_days, tax_date_mode, draft_open_mode, reminder_days_before,
+             note_above_items, note_below_items,
              increment_month_in_descriptions, auto_issue, auto_send_email, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -212,6 +286,8 @@ final class RecurringTemplateRepository
             !empty($data['reverse_charge']) ? 1 : 0,
             (int) ($data['payment_due_days'] ?? 14),
             self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
+            self::normalizeDraftOpenMode($data['draft_open_mode'] ?? null),
+            self::normalizeReminderDays($data['reminder_days_before'] ?? null),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             !empty($data['increment_month_in_descriptions']) ? 1 : 0,
@@ -225,17 +301,40 @@ final class RecurringTemplateRepository
 
     public function update(int $id, array $data): void
     {
-        // Pokud šablona ještě nikdy negenerovala (last_run_date IS NULL),
-        // přepiš next_run_date dle nového anchor_date — uživatel mohl změnit
-        // den/end_of_month/anchor a očekává, že se první generování posune.
-        // U už běžících šablon (last_run_date != NULL) necháme cyklus naplánovaný.
+        $endOfMonth = !empty($data['end_of_month']);
+        $dayOfMonth = $endOfMonth ? null : (isset($data['day_of_month']) && $data['day_of_month'] !== null ? (int) $data['day_of_month'] : null);
+
+        // Přepočet next_run_date:
+        //  - šablona ještě neběžela (last_run_date IS NULL) → next = anchor_date
+        //    (uživatel mění harmonogram před prvním generováním).
+        //  - už běží → přemapuj DEN nejbližšího naplánovaného next_run_date dle
+        //    nového pravidla (end_of_month / day_of_month) v rámci JEHO měsíce —
+        //    bez posunu cyklu. Tím se např. změna „20. v měsíci" → „konec měsíce"
+        //    projeví hned na nejbližším vystavení (20.6. → 30.6.), ne až o cyklus dál.
+        $cur = $this->db->pdo()->prepare(
+            'SELECT last_run_date, next_run_date FROM recurring_invoice_templates WHERE id = ?'
+        );
+        $cur->execute([$id]);
+        $existing = $cur->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($existing['last_run_date'])) {
+            $nextRunDate = (string) $data['anchor_date'];
+        } else {
+            $nextRunDate = PeriodicityCalculator::snapToDayRule(
+                (string) $existing['next_run_date'],
+                $endOfMonth,
+                $dayOfMonth,
+            );
+        }
+
         $sql = 'UPDATE recurring_invoice_templates SET
                 client_id = ?, project_id = ?, name = ?,
                 frequency = ?, day_of_month = ?, end_of_month = ?,
                 anchor_date = ?, end_date = ?,
-                next_run_date = CASE WHEN last_run_date IS NULL THEN ? ELSE next_run_date END,
+                next_run_date = ?,
                 invoice_type = ?, currency_id = ?, language = ?, payment_method = ?,
                 reverse_charge = ?, payment_due_days = ?, tax_date_mode = ?,
+                draft_open_mode = ?, reminder_days_before = ?,
                 note_above_items = ?, note_below_items = ?,
                 increment_month_in_descriptions = ?, auto_issue = ?, auto_send_email = ?
               WHERE id = ?';
@@ -244,11 +343,11 @@ final class RecurringTemplateRepository
             !empty($data['project_id']) ? (int) $data['project_id'] : null,
             (string) $data['name'],
             (string) $data['frequency'],
-            !empty($data['end_of_month']) ? null : (isset($data['day_of_month']) && $data['day_of_month'] !== null ? (int) $data['day_of_month'] : null),
-            !empty($data['end_of_month']) ? 1 : 0,
+            $dayOfMonth,
+            $endOfMonth ? 1 : 0,
             (string) $data['anchor_date'],
             !empty($data['end_date']) ? (string) $data['end_date'] : null,
-            (string) $data['anchor_date'],
+            $nextRunDate,
             (string) ($data['invoice_type'] ?? 'invoice'),
             (int) $data['currency_id'],
             (string) ($data['language'] ?? 'cs'),
@@ -256,6 +355,8 @@ final class RecurringTemplateRepository
             !empty($data['reverse_charge']) ? 1 : 0,
             (int) ($data['payment_due_days'] ?? 14),
             self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
+            self::normalizeDraftOpenMode($data['draft_open_mode'] ?? null),
+            self::normalizeReminderDays($data['reminder_days_before'] ?? null),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             !empty($data['increment_month_in_descriptions']) ? 1 : 0,
@@ -269,6 +370,19 @@ final class RecurringTemplateRepository
     {
         $v = is_string($value) ? $value : '';
         return $v === 'previous_month_last_day' ? 'previous_month_last_day' : 'same_as_issue';
+    }
+
+    private static function normalizeDraftOpenMode(mixed $value): string
+    {
+        $v = is_string($value) ? $value : '';
+        return $v === 'period_start' ? 'period_start' : 'at_issue';
+    }
+
+    /** 0 = bez reminderu, jinak 1–14 dní předem. */
+    private static function normalizeReminderDays(mixed $value): int
+    {
+        $n = is_numeric($value) ? (int) $value : 1;
+        return max(0, min(14, $n));
     }
 
     public function replaceItems(int $templateId, array $items): void
@@ -336,6 +450,9 @@ final class RecurringTemplateRepository
         }
         if (array_key_exists('payment_due_days', $row)) {
             $row['payment_due_days'] = (int) $row['payment_due_days'];
+        }
+        if (array_key_exists('reminder_days_before', $row)) {
+            $row['reminder_days_before'] = (int) $row['reminder_days_before'];
         }
         if (array_key_exists('invoices_generated_count', $row)) {
             $row['invoices_generated_count'] = (int) $row['invoices_generated_count'];

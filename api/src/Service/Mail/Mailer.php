@@ -453,6 +453,7 @@ final class Mailer
                 'invoice_send'      => 'Faktura — MyInvoice.cz',
                 'invoice_reminder'  => 'Upomínka — MyInvoice.cz',
                 'proforma_reminder' => 'Připomínka zálohy — MyInvoice.cz',
+                'recurring_draft_reminder' => 'Koncept pravidelné faktury se brzy vystaví — MyInvoice.cz',
             ],
             'en' => [
                 'password_reset'    => 'Password reset — MyInvoice.cz',
@@ -460,6 +461,7 @@ final class Mailer
                 'invoice_send'      => 'Invoice — MyInvoice.cz',
                 'invoice_reminder'  => 'Reminder — MyInvoice.cz',
                 'proforma_reminder' => 'Advance payment reminder — MyInvoice.cz',
+                'recurring_draft_reminder' => 'Recurring invoice draft will be issued soon — MyInvoice.cz',
             ],
         ];
         return $subjects[$locale][$code] ?? ($subjects['cs'][$code] ?? 'MyInvoice.cz');
