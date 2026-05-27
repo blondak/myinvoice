@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.2] — 2026-05-27
+
+Řazení seznamu pravidelných faktur, číslo účtu v názvu staženého PDF výpisu a aktualizace OpenAPI specifikace.
+
+### Added
+
+- **Řazení seznamu pravidelných faktur** — vpravo za součtem částek nový přepínač: dle **data vystavení** (výchozí), dle **zákazníka (A–Z)** nebo dle **částky přepočtené na CZK (sestupně)**. Řazení i přepočet na CZK (dnešní kurz ČNB) probíhá server-side, takže funguje napříč stránkováním a **nemixuje měny** (1000 EUR > 20 000 CZK).
+- **Číslo účtu v názvu staženého PDF bankovního výpisu** — pokud název nahraného PDF číslo účtu neobsahuje, předřadí se (např. `2026-02.pdf` → `1000000005-2026-02.pdf`), ať se výpisy z více účtů nepletou.
+
+### Changed
+
+- **Seznam pravidelných faktur** defaultně filtruje stav **„Aktivní"** (dřív „Vše").
+- **OpenAPI specifikace** (`/api/openapi.yaml`) — opraveny názvy polí výkazu víceprací (`work_date`, `total_amount` místo neexistujících `performed_on`/`amount`), doplněno `discount_percent` u faktur i pravidelných fakturací, a chybějící pole pravidelných fakturací (`draft_open_mode`, `tax_date_mode`, `reminder_days_before`, `last_error`). Doplněna i poznámka, že výkaz víceprací je samostatný od položek faktury.
+
 ## [4.3.1] — 2026-05-27
 
 Branding barva napříč PDF i e-maily, proklikávací výkaz víceprací v PDF a opravy QR v e-mailech a importu slev z iDokladu.
