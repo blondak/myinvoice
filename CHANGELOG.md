@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.1] — 2026-05-27
+
+Branding barva napříč PDF i e-maily, proklikávací výkaz víceprací v PDF a opravy QR v e-mailech a importu slev z iDokladu.
+
+### Added
+
+- **Proklikávací výkaz víceprací v PDF** — má-li faktura výkaz víceprací, položka „Výkaz víceprací" v tabulce položek je **podtržený odkaz**, který v PDF přeskočí přímo na stránku s výkazem (interní link). Ostatní položky i slevové řádky zůstávají běžným textem.
+
+### Fixed
+
+- **QR kód se nezobrazoval v odeslaných e-mailech** ([#51](https://github.com/radekhulan/myinvoice/issues/51)) — QR se vkládal jako `data:` URI v `<img>`, což Gmail, Outlook a další klienti z bezpečnostních důvodů blokují (na faktuře v PDF fungoval). Nově se vkládá jako **inline CID příloha** (stejně jako logo dodavatele), takže se zobrazí napříč klienty. Týká se odeslání faktury, testovacího e-mailu i upomínek.
+- **Import slevy z iDokladu přes PDF s embedded ISDOC** ([#48](https://github.com/radekhulan/myinvoice/issues/48)) — oprava ve 4.3.0 řešila jen import přes iDoklad API; přes PDF s embedded ISDOC se sleva pořád ignorovala a faktura se naimportovala za plnou (předslevovou) cenu. ISDOC nemá na řádce dedikovaný discount element — sleva se promítá tím, že `LineExtensionAmount` (čistý součet řádku po slevě) je nižší než `UnitPrice × množství`. Parser teď čte efektivní cenu z `LineExtensionAmount`. Týká se vydaných i přijatých faktur.
+- **Branding barva dodavatele se nepromítala do PDF faktury** — `email_accent_color` se používala jen v e-mailech, PDF bylo vždy fialové (ani `regenerate` nepomohl, barva se do PDF vůbec nevkládala). Nově se akcent barva aplikuje na akcenty PDF (linka pod hlavičkou, hlavička tabulky položek, řádky „Celkem" / „K úhradě", labely, popisky QR/banky, nadpis a odkaz výkazu) — gated na zapnutý branding. Sémantické barvy (dobropis, storno, „po splatnosti") zůstávají.
+- **Branding barva se nepromítala do těla e-mailů** — velké částky, tlačítka a odkazy v těle byly natvrdo fialové. Nově používají akcent barvu dodavatele (gated na branding). Zelené tlačítko „Schválit vícepráce", „Uhrazeno" a oranžová „po splatnosti" zůstávají sémantické.
+
+### Changed
+
+- **Náhled e-mailu** v nastavení brandingu nově ukazuje akcent barvu i v těle (box „K úhradě" + tlačítko „Zobrazit fakturu"), ne jen v hlavičce a patičce — náhled tak věrněji odpovídá reálnému e-mailu.
+
 ## [4.3.0] — 2026-05-26
 
 Procentuální **sleva na celou fakturu** + oprava importu slev z iDokladu, rozšíření na **pravidelné fakturace** a robustnější generování konceptů.
