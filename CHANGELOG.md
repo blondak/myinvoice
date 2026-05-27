@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.5] — 2026-05-27
+
+Měsíční daňový export do jednoho ZIPu, oprava zařazení přijatých faktur do období DPH a doladění filtrů v seznamech.
+
+### Added
+
+- **Měsíční export** (*Daně → Měsíční export*) — stáhne jeden ZIP za zvolený měsíc s vystavenými i přijatými fakturami (PDF + ISDOC), bankovními výpisy (PDF + GPC) a Knihou DPH, roztříděné do pojmenovaných složek. U přijatých faktur bez originálního PDF se přiloží naše rekonstrukce. Vybíráte zaškrtnutím, u každé části vidíte počet dostupných dokladů. Běží jako **úloha na pozadí** (průběh, stažení výsledku, historie posledních exportů, automatický úklid po 7 dnech) — nespadne na timeout u velkého počtu faktur. (migrace `0059`)
+- **Filtr dodavatele** v seznamu přijatých faktur (za filtrem typu dokladu).
+
+### Changed
+
+- **Zařazení přijatých faktur do období DPH** (přiznání, kontrolní hlášení, kniha DPH) nově respektuje **pozdější z dat DUZP / vystavení** — nárok na odpočet nelze uplatnit dříve, než plátce drží daňový doklad (§ 73 ZDPH). Vystavené faktury se nadále řadí podle DUZP (daň na výstupu). Dříve se přijaté řadily jen podle DUZP, což u faktury se zpětným DUZP vystavené v pozdějším měsíci zařadilo odpočet do nesprávného (dřívějšího) období.
+
+### Fixed
+
+- Filtry „Všichni klienti" v seznamech **zakázek** a **faktur** nabízely i dodavatele bez vystavených faktur — nově nabízejí jen zákazníky.
+
 ## [4.3.4] — 2026-05-27
 
 Doladění brandingu faktur a e-mailů (issue #43): akcentová barva se propisuje konzistentně i do dosud napevno fialových prvků a přibyl přepínač pro zobrazení názvu firmy vedle loga v PDF.
