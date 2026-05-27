@@ -358,6 +358,12 @@
     "amount": "Částka",
     "amount_total": "Celkem",
     "amount_czk_hint": "Součet více měn přepočtený na CZK dnešním kurzem ČNB.",
+    "sort": {
+      "label": "Řadit",
+      "next_run": "dle data vystavení",
+      "client": "dle zákazníka (A–Z)",
+      "amount_czk": "dle částky (CZK, sestupně)"
+    },
     "actions_col": "Akce",
     "generated_count": "{n} faktur",
     "badge_from_template": "Pravidelná",

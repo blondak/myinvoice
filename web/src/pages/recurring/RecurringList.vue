@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { recurringApi, type RecurringTemplate, type RecurringStatus, type RecurringSummary } from '@/api/recurring'
+import { recurringApi, type RecurringTemplate, type RecurringStatus, type RecurringSort, type RecurringSummary } from '@/api/recurring'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 
@@ -14,7 +14,8 @@ const auth = useAuthStore()
 const templates = ref<RecurringTemplate[]>([])
 const loading = ref(false)
 const loadingMore = ref(false)
-const statusFilter = ref<RecurringStatus | ''>('')
+const statusFilter = ref<RecurringStatus | ''>('active')
+const sortBy = ref<RecurringSort>('next_run')
 const busy = ref<number | null>(null)
 
 const total = ref(0)
@@ -39,6 +40,7 @@ async function load(reset = true) {
   try {
     const r = await recurringApi.list({
       status: statusFilter.value || undefined,
+      sort: sortBy.value,
       page: page.value,
     })
     if (reset) {
@@ -57,7 +59,7 @@ async function load(reset = true) {
 }
 
 onMounted(() => load(true))
-watch(statusFilter, () => load(true))
+watch([statusFilter, sortBy], () => load(true))
 
 function statusBadgeClass(s: RecurringStatus) {
   return {
@@ -159,12 +161,20 @@ function gotoClient(clientId: number) {
           <option value="paused">{{ t('recurring.status.paused') }}</option>
           <option value="expired">{{ t('recurring.status.expired') }}</option>
         </select>
-        <div v-if="grandTotalLabel" class="ml-auto flex items-baseline gap-2">
-          <span class="text-sm text-neutral-500">{{ t('recurring.amount_total') }}</span>
-          <span class="font-mono text-base font-semibold text-neutral-900"
-            :title="grandTotalIsCzkConversion ? t('recurring.amount_czk_hint') : ''">
-            {{ grandTotalIsCzkConversion ? '≈ ' : '' }}{{ grandTotalLabel }}
-          </span>
+        <div class="ml-auto flex items-center gap-3">
+          <div v-if="grandTotalLabel" class="flex items-baseline gap-2">
+            <span class="text-sm text-neutral-500">{{ t('recurring.amount_total') }}</span>
+            <span class="font-mono text-base font-semibold text-neutral-900"
+              :title="grandTotalIsCzkConversion ? t('recurring.amount_czk_hint') : ''">
+              {{ grandTotalIsCzkConversion ? '≈ ' : '' }}{{ grandTotalLabel }}
+            </span>
+          </div>
+          <select v-model="sortBy" :title="t('recurring.sort.label')"
+            class="h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+            <option value="next_run">{{ t('recurring.sort.label') }}: {{ t('recurring.sort.next_run') }}</option>
+            <option value="client">{{ t('recurring.sort.label') }}: {{ t('recurring.sort.client') }}</option>
+            <option value="amount_czk">{{ t('recurring.sort.label') }}: {{ t('recurring.sort.amount_czk') }}</option>
+          </select>
         </div>
       </div>
     </div>

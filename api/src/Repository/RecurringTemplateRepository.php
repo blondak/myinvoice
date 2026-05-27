@@ -71,7 +71,13 @@ final class RecurringTemplateRepository
      * @param int $page  1-based, ignored when $perPage<=0
      * @param int $perPage  0 = bez paginace (returns vše, BC)
      */
-    public function list(array $filters = [], int $page = 1, int $perPage = 0): array
+    /**
+     * @param array<string,mixed> $filters
+     * @param string $sort  '' (default: aktivní první + nejbližší vystavení) | 'client' (zákazník A–Z)
+     *                       | 'next_run' (datum příštího vystavení) | 'amount_czk' (částka přepočtená na CZK, sestupně)
+     * @param array<string,float> $czkRates  kód měny → dnešní kurz na CZK (jen pro sort='amount_czk')
+     */
+    public function list(array $filters = [], int $page = 1, int $perPage = 0, string $sort = '', array $czkRates = []): array
     {
         $where = ['1=1'];
         $params = [];
@@ -135,7 +141,7 @@ final class RecurringTemplateRepository
              LEFT JOIN projects p ON p.id = t.project_id
                   JOIN currencies cur ON cur.id = t.currency_id
                  WHERE $whereSql
-                 ORDER BY t.status = 'active' DESC, t.next_run_date ASC{$limitSql}";
+                 ORDER BY {$this->orderBy($sort, $totalExpr, $czkRates)}{$limitSql}";
 
         $stmt = $this->db->pdo()->prepare($sql);
         $idx = 1;
@@ -180,6 +186,64 @@ final class RecurringTemplateRepository
                 'totals_by_currency' => $totalsByCurrency,
             ],
         ];
+    }
+
+    /**
+     * Sestaví ORDER BY pro list(). amount_czk přepočítá částku šablony na CZK přes
+     * předané kurzy (ať se nemixuje CZK a cizí měna), ostatní jsou prostá SQL pole.
+     *
+     * @param array<string,float> $czkRates
+     */
+    private function orderBy(string $sort, string $totalExpr, array $czkRates): string
+    {
+        return match ($sort) {
+            'client'     => 'c.company_name ASC, t.next_run_date ASC',
+            'next_run'   => 't.next_run_date ASC, t.id ASC',
+            'amount_czk' => '(' . $totalExpr . ' * ' . $this->czkRateCase($czkRates) . ') DESC, t.next_run_date ASC',
+            default      => "t.status = 'active' DESC, t.next_run_date ASC",
+        };
+    }
+
+    /**
+     * `CASE cur.code WHEN 'EUR' THEN 25.30 ... ELSE 1 END` — bezpečně sestaveno
+     * (kódy whitelist [A-Z]{3}, kurzy jako float literály). CZK i neznámé měny = 1.
+     *
+     * @param array<string,float> $czkRates
+     */
+    private function czkRateCase(array $czkRates): string
+    {
+        $czkRates['CZK'] = 1.0;
+        $parts = [];
+        foreach ($czkRates as $code => $rate) {
+            $code = strtoupper((string) $code);
+            if (!preg_match('/^[A-Z]{3}$/', $code)) continue;
+            $parts[] = "WHEN '{$code}' THEN " . sprintf('%.6f', (float) $rate);
+        }
+        return $parts === [] ? '1' : 'CASE cur.code ' . implode(' ', $parts) . ' ELSE 1 END';
+    }
+
+    /**
+     * Distinct kódy měn šablon pro daný filtr — Action z nich poskládá CZK kurzy
+     * pro sort='amount_czk'.
+     *
+     * @param array<string,mixed> $filters
+     * @return list<string>
+     */
+    public function distinctCurrencyCodes(array $filters = []): array
+    {
+        $where = ['1=1'];
+        $params = [];
+        if (!empty($filters['supplier_id'])) { $where[] = 't.supplier_id = ?'; $params[] = (int) $filters['supplier_id']; }
+        if (!empty($filters['client_id']))   { $where[] = 't.client_id = ?';   $params[] = (int) $filters['client_id']; }
+        if (!empty($filters['status']))      { $where[] = 't.status = ?';      $params[] = (string) $filters['status']; }
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT DISTINCT cur.code
+               FROM recurring_invoice_templates t
+               JOIN currencies cur ON cur.id = t.currency_id
+              WHERE ' . implode(' AND ', $where)
+        );
+        $stmt->execute($params);
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
     /**

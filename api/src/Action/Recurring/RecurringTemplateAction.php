@@ -57,7 +57,22 @@ final class RecurringTemplateAction
         $default = (int) $this->config->get('pagination.recurring_per_page', 50);
         $perPage = min(200, max(5, (int) ($q['per_page'] ?? $default)));
 
-        $result = $this->repo->list($filters, $page, $perPage);
+        // Řazení (server-side kvůli stránkování). Pro 'amount_czk' poskládáme dnešní
+        // ČNB kurzy měn ve filtrované množině, ať se ranking nemixuje napříč měnami.
+        $sort = in_array((string) ($q['sort'] ?? ''), ['client', 'next_run', 'amount_czk'], true)
+            ? (string) $q['sort'] : '';
+        $czkRates = [];
+        if ($sort === 'amount_czk') {
+            $today = new \DateTimeImmutable('today');
+            foreach ($this->repo->distinctCurrencyCodes($filters) as $code) {
+                $code = strtoupper($code);
+                if ($code === 'CZK') { $czkRates['CZK'] = 1.0; continue; }
+                $rate = $this->cnb->getRate($code, $today);
+                $czkRates[$code] = $rate !== null ? (float) $rate['rate'] : 1.0;
+            }
+        }
+
+        $result = $this->repo->list($filters, $page, $perPage, $sort, $czkRates);
         // Souhrn částek do hlavičky: per měna z repo + přepočet na CZK (dnešní ČNB kurz)
         // pokud je víc měn. Počítá se přes celou filtrovanou množinu (ne jen stránku).
         $result['meta']['summary'] = $this->buildSummary($result['meta']['totals_by_currency'] ?? []);

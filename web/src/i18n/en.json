@@ -358,6 +358,12 @@
     "amount": "Amount",
     "amount_total": "Total",
     "amount_czk_hint": "Multi-currency sum converted to CZK at today's CNB rate.",
+    "sort": {
+      "label": "Sort",
+      "next_run": "by issue date",
+      "client": "by customer (A–Z)",
+      "amount_czk": "by amount (CZK, desc)"
+    },
     "actions_col": "Actions",
     "generated_count": "{n} invoices",
     "badge_from_template": "Recurring",

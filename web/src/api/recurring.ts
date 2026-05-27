@@ -3,6 +3,7 @@ import type { PaymentMethod } from './invoices'
 
 export type Frequency = 'monthly' | 'quarterly' | 'semi_annually' | 'annually'
 export type RecurringStatus = 'active' | 'paused' | 'expired'
+export type RecurringSort = 'client' | 'next_run' | 'amount_czk'
 export type TaxDateMode = 'same_as_issue' | 'previous_month_last_day'
 export type DraftOpenMode = 'at_issue' | 'period_start'
 
@@ -153,12 +154,13 @@ export interface RecurringListResponse {
 }
 
 export const recurringApi = {
-  list: (filters: { client_id?: number; status?: RecurringStatus; page?: number; per_page?: number } = {}) => {
+  list: (filters: { client_id?: number; status?: RecurringStatus; page?: number; per_page?: number; sort?: RecurringSort } = {}) => {
     const params: Record<string, string | number> = {}
     if (filters.client_id) params.client_id = filters.client_id
     if (filters.status)    params.status = filters.status
     if (filters.page)      params.page = filters.page
     if (filters.per_page)  params.per_page = filters.per_page
+    if (filters.sort)      params.sort = filters.sort
     return api.get<RecurringListResponse>('/recurring', { params }).then(r => r.data)
   },
   get:    (id: number) => api.get<RecurringTemplate>(`/recurring/${id}`).then(r => r.data),
