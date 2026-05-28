@@ -32,7 +32,7 @@ const kpiGridCols = computed(() => {
   if (!summary.value) return 'lg:grid-cols-6'
   const showApprovals = isAdmin.value
     && (summary.value.pending_approvals?.requested ?? 0) > 0
-  const currencies = summary.value.kpi.per_currency?.length ?? 0
+  const currencies = summary.value.kpi?.per_currency?.length ?? 0
   // Revenue tile spans 2 cols (lg:col-span-2), standardní boxy 1 col.
   // Sloty = currencies*2 + 4 standard (Vystaveno/Po splatnosti/Před splatností/Ø) [+ 1 schvalování]
   const slots = currencies * 2 + 4 + (showApprovals ? 1 : 0)
@@ -56,10 +56,10 @@ const upcomingPerCurrency = computed(() => {
 })
 
 const hasAnyData = computed(() => {
-  if (!summary.value) return false
-  return summary.value.kpi.issued_count_ytd > 0
-      || summary.value.overdue.length > 0
-      || summary.value.unpaid_upcoming.length > 0
+  if (!summary.value || !summary.value.kpi) return false
+  return (summary.value.kpi.issued_count_ytd ?? 0) > 0
+      || (summary.value.overdue?.length ?? 0) > 0
+      || (summary.value.unpaid_upcoming?.length ?? 0) > 0
 })
 
 function openInvoice(id: number) {
@@ -123,7 +123,7 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
       </div>
     </div>
 
-    <div v-else-if="summary" class="space-y-6">
+    <div v-else-if="summary && summary.kpi" class="space-y-6">
       <!-- ═══ Sekce 1: VYSTAVENÉ FAKTURY ═══ -->
       <section class="space-y-3">
         <h2>

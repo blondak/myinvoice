@@ -49,7 +49,7 @@ const VAT_REG_NEAR = VAT_REG_THRESHOLD * 0.8
 
 /** Obrat za aktuální kalendářní rok (CZK) — základ pro test registrační povinnosti k DPH. */
 const obratCzkThisYear = computed<number | null>(() => {
-  const cz = summary.value?.kpi.per_currency.find(c => c.currency === 'CZK')
+  const cz = summary.value?.kpi?.per_currency?.find(c => c.currency === 'CZK')
   return cz ? cz.this_year : null
 })
 const vatRegPct = computed<number | null>(() =>
@@ -113,7 +113,7 @@ const primaryCurrency = computed(() => projectStats.value?.primary_currency ?? '
 
 /** Obrat tento rok per měna — pole pro KPI tile. */
 const revenueThisYear = computed(() =>
-  (summary.value?.kpi.per_currency ?? []).map(c => ({
+  (summary.value?.kpi?.per_currency ?? []).map(c => ({
     currency: c.currency,
     total: c.this_year,
     change_pct: c.change_pct,
@@ -123,7 +123,7 @@ const revenueThisYear = computed(() =>
   }))
 )
 const revenuePrevYear = computed(() =>
-  (summary.value?.kpi.per_currency ?? []).map(c => ({
+  (summary.value?.kpi?.per_currency ?? []).map(c => ({
     currency: c.currency,
     total: c.prev_year,
     invoice_count: c.prev_year_invoice_count,
@@ -195,7 +195,7 @@ const hasAnyData = computed(() =>
       <p class="text-neutral-500">{{ t('stats.no_data') }}</p>
     </div>
 
-    <div v-else-if="summary" class="space-y-6">
+    <div v-else-if="summary && summary.kpi" class="space-y-6">
       <!-- Plovoucí 12měsíční obrat — KPI tiles per měna -->
       <div v-if="summary.rolling_12m.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div v-for="r in summary.rolling_12m" :key="`r12-${r.currency}`"

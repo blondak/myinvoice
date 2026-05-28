@@ -165,9 +165,15 @@ final class SummaryAction
      */
     private function flatTaxThreshold(\PDO $pdo, int $year, int $sid): array
     {
-        $stmt = $pdo->prepare('SELECT flat_tax_band FROM supplier WHERE id = ?');
-        $stmt->execute([$sid]);
-        $band = (string) ($stmt->fetchColumn() ?: 'none');
+        // Defenzivně: sloupec flat_tax_band nemusí existovat, pokud ještě neproběhla
+        // migrace 0062 — v tom případě nesmí spadnout celý dashboard summary.
+        try {
+            $stmt = $pdo->prepare('SELECT flat_tax_band FROM supplier WHERE id = ?');
+            $stmt->execute([$sid]);
+            $band = (string) ($stmt->fetchColumn() ?: 'none');
+        } catch (\Throwable) {
+            $band = 'none';
+        }
 
         if (!isset(self::FLAT_TAX_BANDS[$band])) {
             return ['applicable' => false, 'band' => null, 'current_czk' => 0.0,
