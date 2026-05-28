@@ -249,7 +249,8 @@ async function loadJobs() {
       if (old && (old.status === 'queued' || old.status === 'running') && old.status !== j.status) {
         if (j.status === 'completed') {
           toast.success(t('documents.job_done'))
-          if (j.source === 'document_zip_import') loadListing()
+          // Po importu (ZIP/složka/velký soubor) obnov výpis + tagy; export jen ke stažení.
+          if (j.source !== 'document_zip_export') { loadListing(); loadTags() }
         } else if (j.status === 'failed') {
           toast.error(j.last_error || t('documents.upload_failed'))
         }
