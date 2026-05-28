@@ -75,6 +75,7 @@
       "total_without_vat": "Bez DPH",
       "total_vat": "DPH",
       "total_with_vat": "S DPH",
+      "gross_edit_hint": "Můžeš přepsat částkou s DPH — dopočítá se cena bez DPH za jednotku.",
       "remove": "Smazat řádek",
       "empty": "Žádné položky — přidej alespoň jednu pro výpočet souhrnu."
     },
@@ -837,7 +838,8 @@
       "vat": "DPH",
       "without_vat": "Bez DPH",
       "with_vat": "S DPH",
-      "total_incl_vat": "Celkem s DPH"
+      "total_incl_vat": "Celkem s DPH",
+      "gross_edit_hint": "Můžeš přepsat částkou s DPH — dopočítá se cena bez DPH za jednotku."
     },
     "add_item": "+ Přidat položku",
     "no_items": "Žádné položky.",

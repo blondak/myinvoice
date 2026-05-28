@@ -17,6 +17,7 @@ import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategor
 import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
 import { settingsApi } from '@/api/settings'
 import { formatMoney } from '@/composables/useFormat'
+import { evalMath } from '@/directives/vMath'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import VendorPicker from '@/components/purchase/VendorPicker.vue'
@@ -350,6 +351,17 @@ function itemTotal(it: PurchaseInvoiceItem) {
   return { base: round2(base), vat: round2(vat), with: round2(base + vat) }
 }
 function round2(n: number) { return Math.round(n * 100) / 100 }
+
+// Zadání částky s DPH → zpětný dopočet jednotkové ceny bez DPH (gross / (1+sazba) / množství).
+// Podporuje i výrazy (evalMath: "1210", "1000*1.21", desetinná čárka).
+function setItemGross(it: PurchaseInvoiceItem, raw: string): void {
+  const gross = evalMath(raw)
+  if (gross === null) return
+  const qty = Number(it.quantity) || 0
+  if (qty === 0) return
+  const rate = form.value.reverse_charge ? 0 : Number(vatRates.value.find(v => v.id === it.vat_rate_id)?.rate_percent || 0)
+  it.unit_price_without_vat = round2(gross / (1 + rate / 100) / qty)
+}
 
 // Popisek sazby — odliš dvě 0% sazby (osvobozeno vs. přenesená DPH), jako u vydané faktury.
 function vatRateLabel(r: VatRate): string {
@@ -795,7 +807,11 @@ function fieldErr(key: string): string | null {
                   <option v-for="v in vatRates" :key="v.id" :value="v.id">{{ vatRateLabel(v) }}</option>
                 </select>
               </td>
-              <td class="py-2 px-1 text-right font-mono">{{ formatMoney(itemTotal(it).with, currencyCode) }}</td>
+              <td class="py-2 px-1">
+                <input :value="itemTotal(it).with" @change="setItemGross(it, ($event.target as HTMLInputElement).value)"
+                  type="text" inputmode="decimal" :title="t('purchase_invoice.items.gross_edit_hint')"
+                  class="w-full h-9 px-2 border border-neutral-200 rounded text-sm text-right font-mono" />
+              </td>
               <td class="py-2 px-1 pr-3 text-center">
                 <button type="button" @click="removeItem(i)" class="cursor-pointer w-8 h-8 inline-flex items-center justify-center text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded" :title="t('purchase_invoice.items.remove')">✕</button>
               </td>
@@ -841,7 +857,9 @@ function fieldErr(key: string): string | null {
             </div>
             <div class="flex items-baseline justify-between pt-1 border-t border-neutral-100">
               <span class="text-xs font-medium text-neutral-500 uppercase tracking-wide">{{ t('purchase_invoice.items.total_with_vat') }}</span>
-              <span class="font-mono font-semibold">{{ formatMoney(itemTotal(it).with, currencyCode) }}</span>
+              <input :value="itemTotal(it).with" @change="setItemGross(it, ($event.target as HTMLInputElement).value)"
+                type="text" inputmode="decimal" :title="t('purchase_invoice.items.gross_edit_hint')"
+                class="w-32 h-9 px-2 border border-neutral-200 rounded text-sm text-right font-mono font-semibold" />
             </div>
           </div>
         </div>

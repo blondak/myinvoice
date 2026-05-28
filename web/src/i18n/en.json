@@ -75,6 +75,7 @@
       "total_without_vat": "Without VAT",
       "total_vat": "VAT",
       "total_with_vat": "With VAT",
+      "gross_edit_hint": "You can overwrite with the gross (incl. VAT) amount — the net unit price is back-calculated.",
       "remove": "Remove row",
       "empty": "No items — add at least one to calculate totals."
     },
@@ -837,7 +838,8 @@
       "vat": "VAT",
       "without_vat": "Without VAT",
       "with_vat": "With VAT",
-      "total_incl_vat": "Total incl. VAT"
+      "total_incl_vat": "Total incl. VAT",
+      "gross_edit_hint": "You can overwrite with the gross (incl. VAT) amount — the net unit price is back-calculated."
     },
     "add_item": "+ Add item",
     "no_items": "No items.",
