@@ -36,7 +36,7 @@ final class UpdateClientAction
         }
 
         try {
-            $this->repo->update($id, $body);
+            $backfilled = $this->repo->update($id, $body);
         } catch (\InvalidArgumentException $e) {
             return Json::error($response, 'integrity_violation', $e->getMessage(), 400);
         }
@@ -45,6 +45,10 @@ final class UpdateClientAction
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('client.updated', $user['id'] ?? null, 'client', $id, null, $ip, $request->getHeaderLine('User-Agent'));
 
-        return Json::ok($response, $this->repo->find($id));
+        // expense_category_backfilled = počet přijatých faktur, do kterých byla doplněna
+        // nově nastavená výchozí kategorie nákladu (frontend ukáže toast).
+        $client = $this->repo->find($id) ?? [];
+        $client['expense_category_backfilled'] = $backfilled;
+        return Json::ok($response, $client);
     }
 }

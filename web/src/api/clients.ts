@@ -23,6 +23,10 @@ export interface Client {
   payment_due_default?: number | null
   hourly_rate: number
   note?: string | null
+  default_expense_category_id?: number | null
+  // Vrací UpdateClientAction: počet přijatých faktur, do kterých byla doplněna
+  // nově nastavená výchozí kategorie nákladu (pro toast po uložení dodavatele).
+  expense_category_backfilled?: number
   invoice_number_format?: string | null
   proforma_number_format?: string | null
   credit_note_number_format?: string | null
@@ -114,6 +118,7 @@ export interface ClientPayload {
   payment_due_default?: number | null
   hourly_rate?: number
   note?: string | null
+  default_expense_category_id?: number | null
   invoice_number_format?: string | null
   proforma_number_format?: string | null
   credit_note_number_format?: string | null

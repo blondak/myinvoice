@@ -147,6 +147,10 @@ function onVendorSelected(v: any) {
     if (v.language && !form.value.language) {
       form.value.language = v.language
     }
+    // Pre-fill výchozí kategorie nákladu z dodavatele, pokud uživatel ještě nevybral jinou.
+    if (v.default_expense_category_id && form.value.expense_category_id === null) {
+      form.value.expense_category_id = v.default_expense_category_id
+    }
   }
 }
 
