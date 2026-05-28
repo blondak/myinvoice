@@ -90,18 +90,21 @@ final class PurchaseSummaryAction
     }
 
     /**
-     * SQL predikát: vyřaď zálohovou fakturu (advance) z NÁKLADŮ, pokud je už
-     * zaplacená NEBO spárovaná s finální fakturou (ta pak nese náklad) — proti
-     * dvojímu započtení (záloha + vyúčtovací faktura). Nezaplacená a nespárovaná
-     * záloha se do nákladů počítá dál (očekávaný budoucí náklad). Cashflow/závazky
-     * predikát NEPOUŽÍVAJÍ (nezaplacená záloha je reálný závazek).
+     * SQL predikát (cash sémantika, daňová evidence): zálohovou fakturu (advance)
+     * započti do NÁKLADŮ jen tehdy, když je ZAPLACENÁ a zároveň NENÍ spárovaná
+     * s vyúčtovací fakturou. Vyřaď ji, pokud:
+     *   • není zaplacená (received/booked) → cash ještě neodešel, výdaj nevznikl, NEBO
+     *   • je spárovaná s finální fakturou → tu nese plný náklad (advance_paid_amount
+     *     krátí jen amount_to_pay, ne total) → proti dvojímu započtení.
+     * Tj. zaplacená kartou + zatím bez faktury od dodavatele se počítá, dokud se
+     * nespáruje. Cashflow/závazky predikát NEPOUŽÍVAJÍ (nezaplacená záloha je závazek).
      */
     private function advanceCostExclude(string $alias = 'pi'): string
     {
         $p     = $alias === '' ? '' : $alias . '.';
         $idRef = $alias === '' ? 'purchase_invoices.id' : $alias . '.id';
         return " AND NOT (COALESCE({$p}document_kind, '') = 'advance'"
-             . " AND ({$p}status = 'paid'"
+             . " AND ({$p}status <> 'paid'"
              . " OR EXISTS (SELECT 1 FROM purchase_invoices adv_s"
              . " WHERE adv_s.advance_purchase_invoice_id = {$idRef})))";
     }
@@ -594,7 +597,9 @@ final class PurchaseSummaryAction
      * jen plátce DPH. Odpovídá Knize DPH / DPHDP3 ř. 40/41:
      *   • faktury bez nároku (`vat_deduction = 'none'`) se vyřazují,
      *   • poměrný odpočet (`proportional`, § 75) se krátí na `vat_deduction_percent`,
-     *   • reverse-charge řádky se vykazují odděleně.
+     *   • reverse-charge řádky se vykazují odděleně,
+     *   • zálohové faktury (advance) se vyřazují úplně — nejsou daňový doklad, nárok
+     *     na odpočet nese až vyúčtovací faktura (konzistence s VatLedgerService).
      * @return list<array{label: string, base: float, currency: string}>
      */
     private function vatInputBreakdown12m(\PDO $pdo, int $sid): array
@@ -607,7 +612,8 @@ final class PurchaseSummaryAction
                   JOIN purchase_invoices pi ON pi.id = pii.purchase_invoice_id
                   JOIN currencies cur ON cur.id = pi.currency_id
                  WHERE pi.supplier_id = ?
-                   AND pi.status IN " . self::COST_STATUSES . $this->advanceCostExclude() . "
+                   AND pi.status IN " . self::COST_STATUSES . "
+                   AND COALESCE(pi.document_kind, '') <> 'advance'
                    AND pi.vat_deduction <> 'none'
                    AND GREATEST(COALESCE(pi.tax_date, pi.issue_date), pi.issue_date) >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
                  GROUP BY cur.code, rate_label
