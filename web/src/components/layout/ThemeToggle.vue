@@ -27,7 +27,7 @@ const OPTIONS: { value: ThemePreference; key: string; icon: string }[] = [
 
 <template>
   <div
-    class="hidden sm:inline-flex items-center border border-neutral-200 rounded-md overflow-hidden"
+    class="inline-flex items-center border border-neutral-200 rounded-md overflow-hidden"
     role="group"
     :aria-label="t('theme.label')"
   >

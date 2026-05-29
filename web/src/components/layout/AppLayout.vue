@@ -298,8 +298,10 @@ onMounted(async () => {
             </button>
           </div>
 
-          <!-- Přepínač motivu (System / Light / Dark) -->
-          <ThemeToggle />
+          <!-- Přepínač motivu (System / Light / Dark) — na mobilu je v drawer patičce -->
+          <div class="hidden sm:inline-flex">
+            <ThemeToggle />
+          </div>
 
           <!-- Nápověda -->
           <a
@@ -459,6 +461,10 @@ onMounted(async () => {
                 <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS.help" />
               </svg>
             </a>
+          </div>
+          <!-- Přepínač motivu (System / Light / Dark) — mobilní varianta -->
+          <div class="flex">
+            <ThemeToggle />
           </div>
           <div class="flex items-center justify-between gap-3">
             <div class="inline-flex items-center border border-neutral-200 bg-surface rounded-md overflow-hidden">
