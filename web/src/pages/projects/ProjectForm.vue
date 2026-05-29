@@ -38,6 +38,7 @@ const form = ref<ProjectPayload>({
   client_id: 0,
   name: '',
   payment_due_days: 7,
+  payment_due_unit: null,
   project_number: null,
   contract_number: null,
   budget_total: null,
@@ -56,6 +57,32 @@ const billingEmailInput = ref<{ position: 1 | 2 | 3; email: string; label: strin
   { position: 2, email: '', label: '' },
   { position: 3, email: '', label: '' },
 ])
+
+// Splatnost zakázky — preset selector. Zakázka má vždy konkrétní hodnotu (žádné
+// „dědit"); 'month' = 1 kalendářní měsíc (days=1, unit='month'), 'custom' odhalí
+// číselný input ve dnech. NULL unit = dny (zpětná kompatibilita).
+type ProjectDuePreset = '7' | '14' | 'month' | 'custom'
+// 'custom' musí být „sticky" i když hodnota odpovídá presetu (7/14) — jinak by getter
+// spadl zpět na preset a číselný input by se nikdy neukázal.
+const dueCustom = ref(false)
+const projectDuePreset = computed<ProjectDuePreset>({
+  get() {
+    if (dueCustom.value) return 'custom'
+    const d = form.value.payment_due_days
+    const u = form.value.payment_due_unit
+    if (u === 'month' && d === 1) return 'month'
+    if ((u === 'days' || u == null) && d === 7) return '7'
+    if ((u === 'days' || u == null) && d === 14) return '14'
+    return 'custom'
+  },
+  set(v: ProjectDuePreset) {
+    dueCustom.value = (v === 'custom')
+    if (v === '7') { form.value.payment_due_days = 7; form.value.payment_due_unit = 'days' }
+    else if (v === '14') { form.value.payment_due_days = 14; form.value.payment_due_unit = 'days' }
+    else if (v === 'month') { form.value.payment_due_days = 1; form.value.payment_due_unit = 'month' }
+    else { if (form.value.payment_due_days == null || form.value.payment_due_unit === 'month') form.value.payment_due_days = 30; form.value.payment_due_unit = 'days' }
+  },
+})
 
 onMounted(async () => {
   currencies.value = await codebooksApi.currencies()
@@ -88,6 +115,7 @@ onMounted(async () => {
       form.value.client_id = cid
       form.value.currency_id = client.value.currency_default_id
       form.value.payment_due_days = client.value.payment_due_default ?? 7
+      form.value.payment_due_unit = client.value.payment_due_unit ?? null
       if (client.value.hourly_rate && client.value.hourly_rate > 0) {
         form.value.hourly_rate = client.value.hourly_rate
       }
@@ -102,6 +130,7 @@ function sanitize(p: Project): Partial<ProjectPayload> {
     client_id: p.client_id,
     name: p.name,
     payment_due_days: p.payment_due_days,
+    payment_due_unit: p.payment_due_unit ?? null,
     project_number: p.project_number ?? null,
     contract_number: p.contract_number ?? null,
     budget_total: p.budget_total ?? null,
@@ -171,11 +200,24 @@ async function submit() {
             class="w-full h-10 px-3 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.payment_due_days') }} *</label>
-            <input autocomplete="off" v-model.number="form.payment_due_days" type="number" min="1" max="365" required
-              class="w-full h-10 px-3 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.payment_due_label') }} *</label>
+            <div class="flex gap-2 items-center">
+              <select v-model="projectDuePreset"
+                class="flex-1 min-w-0 h-10 px-2 border border-neutral-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
+                <option value="7">{{ t('project.payment_due_preset_7') }}</option>
+                <option value="14">{{ t('project.payment_due_preset_14') }}</option>
+                <option value="month">{{ t('project.payment_due_preset_month') }}</option>
+                <option value="custom">{{ t('project.payment_due_preset_custom') }}</option>
+              </select>
+              <div v-if="projectDuePreset === 'custom'" class="flex items-center gap-1.5 shrink-0">
+                <input autocomplete="off" v-model.number="form.payment_due_days" type="number" min="1" max="365"
+                  class="w-20 h-10 px-2 border border-neutral-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+                <span class="text-xs text-neutral-500">{{ t('project.payment_due_custom_days_suffix') }}</span>
+              </div>
+            </div>
+            <p v-if="projectDuePreset === 'month'" class="text-xs text-neutral-500 mt-1">{{ t('project.payment_due_month_hint') }}</p>
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.hourly_rate') }}</label>

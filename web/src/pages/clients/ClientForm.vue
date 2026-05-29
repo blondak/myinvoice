@@ -37,8 +37,12 @@ const clientId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 // zapíšou do form pevnou dvojici (payment_due_default, payment_due_unit). 'custom'
 // odhalí číselný input pro libovolný počet dnů (zachová dosavadní hodnotu, nebo 30 default).
 type ClientDuePreset = 'inherit' | '7' | '14' | 'month' | 'custom'
+// 'custom' musí být „sticky" i když hodnota odpovídá presetu (7/14) — jinak by getter
+// spadl zpět na preset a číselný input by se nikdy neukázal.
+const dueCustom = ref(false)
 const clientDuePreset = computed<ClientDuePreset>({
   get() {
+    if (dueCustom.value) return 'custom'
     const d = form.value.payment_due_default
     const u = form.value.payment_due_unit
     if (d == null && u == null) return 'inherit'
@@ -48,6 +52,7 @@ const clientDuePreset = computed<ClientDuePreset>({
     return 'custom'
   },
   set(v: ClientDuePreset) {
+    dueCustom.value = (v === 'custom')
     if (v === 'inherit') {
       form.value.payment_due_default = null
       form.value.payment_due_unit = null
@@ -385,7 +390,7 @@ async function submit() {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('client.language') }}</label>
             <select v-model="form.language"
@@ -396,29 +401,22 @@ async function submit() {
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('client.payment_due_label') }}</label>
-            <div class="flex gap-2">
+            <div class="flex gap-2 items-center">
               <select v-model="clientDuePreset"
-                class="h-10 px-2 border border-neutral-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"
-                :class="clientDuePreset === 'custom' ? 'w-48' : 'w-full'">
+                class="flex-1 min-w-0 h-10 px-2 border border-neutral-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
                 <option value="inherit">{{ t('client.payment_due_inherit', { default: supplierDueLabel }) }}</option>
                 <option value="7">{{ t('client.payment_due_preset_7') }}</option>
                 <option value="14">{{ t('client.payment_due_preset_14') }}</option>
                 <option value="month">{{ t('client.payment_due_preset_month') }}</option>
                 <option value="custom">{{ t('client.payment_due_preset_custom') }}</option>
               </select>
-              <div v-if="clientDuePreset === 'custom'" class="flex items-center gap-2 flex-1">
+              <div v-if="clientDuePreset === 'custom'" class="flex items-center gap-1.5 shrink-0">
                 <input autocomplete="off" v-model.number="form.payment_due_default" type="number" min="1" max="365"
-                  class="w-24 h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
-                <span class="text-sm text-neutral-500">{{ t('client.payment_due_custom_days_suffix') }}</span>
+                  class="w-20 h-10 px-2 border border-neutral-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+                <span class="text-xs text-neutral-500">{{ t('client.payment_due_custom_days_suffix') }}</span>
               </div>
             </div>
             <p v-if="clientDuePreset === 'month'" class="text-xs text-neutral-500 mt-1">{{ t('client.payment_due_month_hint') }}</p>
-          </div>
-          <div class="flex items-end">
-            <label class="flex items-center gap-2 text-sm h-10">
-              <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-              <span>{{ t('client.reverse_charge') }}</span>
-            </label>
           </div>
         </div>
 
@@ -439,12 +437,18 @@ async function submit() {
           </div>
         </div>
 
-        <div>
+        <div class="space-y-2">
           <label class="flex items-center gap-2 text-sm">
-            <input v-model="form.auto_send_reminders" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-            <span>{{ t('client.auto_send_reminders') }}</span>
+            <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+            <span>{{ t('client.reverse_charge') }}</span>
           </label>
-          <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('client.auto_send_reminders_hint') }}</p>
+          <div>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="form.auto_send_reminders" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <span>{{ t('client.auto_send_reminders') }}</span>
+            </label>
+            <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('client.auto_send_reminders_hint') }}</p>
+          </div>
         </div>
 
         <!-- Role flagy: klient i dodavatel současně -->

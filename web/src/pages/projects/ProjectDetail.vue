@@ -29,6 +29,18 @@ const invoicesPages = ref(1)
 
 const canDelete = computed(() => (project.value?.invoices_count ?? 0) === 0)
 
+// Splatnost s jednotkou: měsíc → „Měsíc" / „N× měsíc", jinak „N dní".
+const dueLabel = computed(() => {
+  const p = project.value
+  if (!p) return ''
+  if (p.payment_due_unit === 'month') {
+    return p.payment_due_days === 1
+      ? t('project.payment_due_preset_month')
+      : `${p.payment_due_days}× ${t('project.payment_due_preset_month').toLowerCase()}`
+  }
+  return `${p.payment_due_days} ${t('common.days')}`
+})
+
 // Pro graf: primární měna = nejčastější v datech, fallback default zakázky
 const primaryCurrency = computed(() => {
   const tally: Record<string, number> = {}
@@ -160,7 +172,7 @@ async function deleteProject() {
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('project.rates_due_section') }}</h3>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between"><dt class="text-neutral-500">{{ t('project.hourly_rate') }}</dt><dd class="font-mono">{{ project.hourly_rate.toLocaleString('cs') }} {{ project.currency }}</dd></div>
-          <div class="flex justify-between"><dt class="text-neutral-500">{{ t('project.due_short') }}</dt><dd>{{ project.payment_due_days }} {{ t('common.days') }}</dd></div>
+          <div class="flex justify-between"><dt class="text-neutral-500">{{ t('project.due_short') }}</dt><dd>{{ dueLabel }}</dd></div>
           <div class="flex justify-between"><dt class="text-neutral-500">{{ t('common.currency') }}</dt><dd class="font-mono">{{ project.currency }}</dd></div>
         </dl>
       </div>

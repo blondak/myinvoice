@@ -35,7 +35,7 @@ final class ProjectRepository
     {
         $stmt = $this->db->pdo()->prepare(
             'SELECT p.id, p.name, p.status, p.currency_id, cur.code AS currency,
-                    p.hourly_rate, p.payment_due_days, p.project_number,
+                    p.hourly_rate, p.payment_due_days, p.payment_due_unit, p.project_number,
                     p.contract_number, p.budget_total, p.budget_yearly, p.budget_monthly, p.archived_at
                FROM projects p
                JOIN currencies cur ON cur.id = p.currency_id
@@ -136,15 +136,16 @@ final class ProjectRepository
         $pdo->beginTransaction();
         try {
             $sql = 'INSERT INTO projects
-                (client_id, name, payment_due_days, project_number, contract_number,
+                (client_id, name, payment_due_days, payment_due_unit, project_number, contract_number,
                  budget_total, budget_yearly, budget_monthly, hourly_rate, currency_id, status,
                  requires_work_report_approval, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 $clientId,
                 (string) $data['name'],
                 (int) ($data['payment_due_days'] ?? 7),
+                $this->nullablePaymentDueUnit($data, 'payment_due_unit'),
                 $this->nullable($data, 'project_number'),
                 $this->nullable($data, 'contract_number'),
                 $this->nullableNumber($data, 'budget_total'),
@@ -179,7 +180,7 @@ final class ProjectRepository
         $pdo->beginTransaction();
         try {
             $sql = 'UPDATE projects SET
-                    name = ?, payment_due_days = ?, project_number = ?, contract_number = ?,
+                    name = ?, payment_due_days = ?, payment_due_unit = ?, project_number = ?, contract_number = ?,
                     budget_total = ?, budget_yearly = ?, budget_monthly = ?, hourly_rate = ?,
                     currency_id = ?, status = ?, requires_work_report_approval = ?, note = ?
                     WHERE id = ?';
@@ -187,6 +188,7 @@ final class ProjectRepository
             $stmt->execute([
                 (string) $data['name'],
                 (int) ($data['payment_due_days'] ?? 7),
+                $this->nullablePaymentDueUnit($data, 'payment_due_unit'),
                 $this->nullable($data, 'project_number'),
                 $this->nullable($data, 'contract_number'),
                 $this->nullableNumber($data, 'budget_total'),
@@ -340,5 +342,16 @@ final class ProjectRepository
         $v = $data[$key] ?? null;
         if ($v === null || $v === '') return null;
         return (float) $v;
+    }
+
+    /** Splatnost zakázky unit. NULL = dny (BC). Validuje 'days'|'month'. */
+    private function nullablePaymentDueUnit(array $data, string $key): ?string
+    {
+        $v = $this->nullable($data, $key);
+        if ($v === null) return null;
+        if (!in_array($v, ['days', 'month'], true)) {
+            throw new \InvalidArgumentException("{$key} musí být 'days' nebo 'month'.");
+        }
+        return $v;
     }
 }

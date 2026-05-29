@@ -110,7 +110,7 @@ const form = ref<{
   project_id: null,
   issue_date: today(),
   tax_date: today(),
-  due_date: addDays(today(), 7),
+  due_date: supplierDueDate(today()),
   currency_id: 0,
   currency: 'CZK',
   reverse_charge: false,
@@ -155,6 +155,16 @@ type DueUnit = 'days' | 'month'
 
 function computeDueDate(issueDate: string, value: number, unit: DueUnit): string {
   return unit === 'month' ? addMonths(issueDate, value) : addDays(issueDate, value)
+}
+
+// Splatnost z výchozího nastavení dodavatele (hodnota + jednotka). Fallback 7 dnů,
+// dokud supplier store není načtený (např. hard-reload přímo na /invoices/new) —
+// onMounted ji pak přepočítá na skutečný supplier default.
+function supplierDueDate(issueDate: string): string {
+  const sup = supplierStore.currentSupplier
+  const value = sup?.default_payment_due_days ?? 7
+  const unit: DueUnit = (sup?.default_payment_due_unit ?? 'days') as DueUnit
+  return computeDueDate(issueDate, value, unit)
 }
 
 function defaultVatRateId(reverseCharge = false): number {
@@ -242,18 +252,22 @@ watch(() => [form.value.invoice_type, form.value.issue_date, form.value.client_i
 // supplier mají i `unit` ('days' nebo 'month').
 watch(() => form.value.issue_date, (newIssue) => {
   if (!loaded.value || editedStatus.value !== 'draft' || !newIssue) return
+  // Zakázka přebíjí vše — má vlastní hodnotu i jednotku (NULL unit = dny).
   if (form.value.project_id) {
     const p = projects.value.find(x => x.id === form.value.project_id)
     if (p && typeof p.payment_due_days === 'number') {
-      form.value.due_date = addDays(newIssue, p.payment_due_days)
+      form.value.due_date = computeDueDate(newIssue, p.payment_due_days, (p.payment_due_unit ?? 'days') as DueUnit)
       return
     }
   }
+  // Klient s vlastní hodnotou → jeho jednotka (bez vlastní = dny, ne supplier),
+  // jinak plně dědí supplier default (hodnotu i jednotku).
   const c = form.value.client_id ? clients.value.find(x => x.id === form.value.client_id) : null
-  const sup = supplierStore.currentSupplier
-  const value = c?.payment_due_default ?? sup?.default_payment_due_days
-  const unit: DueUnit = (c?.payment_due_unit ?? sup?.default_payment_due_unit ?? 'days') as DueUnit
-  if (typeof value === 'number') form.value.due_date = computeDueDate(newIssue, value, unit)
+  if (c && typeof c.payment_due_default === 'number') {
+    form.value.due_date = computeDueDate(newIssue, c.payment_due_default, (c.payment_due_unit ?? 'days') as DueUnit)
+  } else {
+    form.value.due_date = supplierDueDate(newIssue)
+  }
 })
 
 // Při přepnutí typu na credit_note převrať množství všech existujících položek na záporná.
@@ -352,6 +366,11 @@ onMounted(async () => {
     if (form.value.items.length === 0) {
       form.value.items = [blankItem()]
     }
+    // Bez klienta i zakázky: splatnost z výchozího nastavení dodavatele
+    // (supplier store je teď spolehlivě načtený, na rozdíl od init form refu).
+    if (!form.value.client_id && !form.value.project_id) {
+      form.value.due_date = supplierDueDate(form.value.issue_date)
+    }
     await loadVarsymbolPreview()
   }
 
@@ -408,12 +427,12 @@ async function applyClientDefaults(clientId: number) {
   const rcChanged = form.value.reverse_charge !== newRc
   form.value.reverse_charge = newRc
   if (rcChanged) syncItemsVatRateToReverseCharge()
-  // Hodnota i jednotka mohou pocházet z klienta (override) nebo padají na supplier default.
-  const sup = supplierStore.currentSupplier
-  const dueValue = c.payment_due_default ?? sup?.default_payment_due_days
-  const dueUnit: DueUnit = (c.payment_due_unit ?? sup?.default_payment_due_unit ?? 'days') as DueUnit
-  if (typeof dueValue === 'number') {
-    form.value.due_date = computeDueDate(form.value.issue_date, dueValue, dueUnit)
+  // Klient s vlastní hodnotou → jeho jednotka (bez vlastní = dny, ne supplier),
+  // jinak plně dědí supplier default (hodnotu i jednotku).
+  if (typeof c.payment_due_default === 'number') {
+    form.value.due_date = computeDueDate(form.value.issue_date, c.payment_due_default, (c.payment_due_unit ?? 'days') as DueUnit)
+  } else {
+    form.value.due_date = supplierDueDate(form.value.issue_date)
   }
   // Klientská sazba — fallback pro faktury bez zakázky (project rate přepíše později).
   // „Prázdná položka" = prázdný popis; rate mohl naplnit předchozí klient/projekt, přesto chceme refresh.
@@ -463,7 +482,7 @@ async function applyProjectDefaults(projectId: number) {
   if (!p) return
   form.value.currency_id = p.currency_id
   form.value.currency = p.currency
-  form.value.due_date = addDays(form.value.issue_date, p.payment_due_days)
+  form.value.due_date = computeDueDate(form.value.issue_date, p.payment_due_days, (p.payment_due_unit ?? 'days') as DueUnit)
   // Pokud má jen jednu prázdnou položku (bez popisu), refresh sazby z projektu.
   if (form.value.items.length === 1 && (form.value.items[0].description || '').trim() === '') {
     form.value.items[0].unit_price_without_vat = p.hourly_rate

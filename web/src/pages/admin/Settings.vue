@@ -31,9 +31,13 @@ function validateAndPreview(template: string | null) {
 // (default_payment_due_days, default_payment_due_unit). 'month' znamená přesně 1 kalendářní
 // měsíc (days=1, unit='month'); 'custom' nechá volný číselný input v dnech.
 type DuePreset = '7' | '14' | 'month' | 'custom'
+// 'custom' musí být „sticky" i když hodnota náhodou odpovídá presetu (7/14) — jinak
+// by getter spadl zpět na preset a číselný input by se nikdy neukázal.
+const dueCustom = ref(false)
 const dueSelectValue = computed<DuePreset>({
   get() {
     if (!supplier.value) return '7'
+    if (dueCustom.value) return 'custom'
     const d = supplier.value.default_payment_due_days
     const u = supplier.value.default_payment_due_unit
     if (u === 'month' && d === 1) return 'month'
@@ -43,6 +47,7 @@ const dueSelectValue = computed<DuePreset>({
   },
   set(v: DuePreset) {
     if (!supplier.value) return
+    dueCustom.value = (v === 'custom')
     if (v === '7') {
       supplier.value.default_payment_due_days = 7
       supplier.value.default_payment_due_unit = 'days'

@@ -12,6 +12,7 @@ export interface Project {
   client_id: number
   name: string
   payment_due_days: number
+  payment_due_unit?: 'days' | 'month' | null
   project_number?: string | null
   contract_number?: string | null
   budget_total?: number | null
@@ -44,6 +45,7 @@ export interface ProjectPayload {
   client_id: number
   name: string
   payment_due_days: number
+  payment_due_unit?: 'days' | 'month' | null
   project_number?: string | null
   contract_number?: string | null
   budget_total?: number | null
