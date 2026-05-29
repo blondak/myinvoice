@@ -60,6 +60,7 @@ async function linkAdvance(advanceId: number) {
     invoice.value = await purchaseInvoicesApi.linkAdvance(invoice.value.id, advanceId)
     advanceModalOpen.value = false
     toast.success(t('purchase_invoice.advance_link.linked'))
+    purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -74,6 +75,7 @@ async function unlinkAdvance() {
   try {
     invoice.value = await purchaseInvoicesApi.unlinkAdvance(invoice.value.id)
     toast.success(t('purchase_invoice.advance_link.unlinked'))
+    purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -104,6 +106,7 @@ const activity = ref<Array<{
   ip: string | null
   created_at: string
 }>>([])
+const activityOpen = ref(false)
 
 const id = computed(() => Number(route.params.id))
 
@@ -146,6 +149,7 @@ async function transition(target: PurchaseInvoiceStatus) {
   try {
     invoice.value = await purchaseInvoicesApi.transition(invoice.value.id, target)
     toast.success(t(`purchase_invoice.transition.success_${target}`))
+    purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -242,6 +246,13 @@ function actionBadgeClass(action: string): string {
   if (short.includes('deleted') || short.includes('cancelled')) return 'bg-danger-50 text-danger-500 border border-danger-500/40'
   if (short.includes('updated'))        return 'bg-warning-50 text-warning-600 border border-warning-500/40'
   return 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+}
+
+function payloadText(payload: Record<string, unknown> | null): string {
+  if (!payload) return ''
+  return Object.entries(payload)
+    .map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    .join(' · ')
 }
 
 /**
@@ -711,26 +722,44 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
 
     <!-- ═══ Activity log (paralel s /invoices) ═══ -->
     <div v-if="activity.length > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
-      <header class="px-5 py-3 border-b border-neutral-200">
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.activity') }}</h3>
-      </header>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <tbody class="divide-y divide-neutral-100">
-            <tr v-for="a in activity" :key="a.id" class="hover:bg-neutral-50 align-top">
-              <td class="px-5 py-2 whitespace-nowrap">
-                <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionBadgeClass(a.action)">{{ actionShortLabel(a.action) }}</span>
-              </td>
-              <td class="px-3 py-2 text-xs text-neutral-500 whitespace-nowrap">{{ a.user_name || a.user_email || '—' }}</td>
-              <td class="px-3 py-2 font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</td>
-              <td class="px-3 py-2 text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">
-                <template v-if="a.payload">
-                  {{ Object.entries(a.payload).map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(' · ') }}
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <button type="button" @click="activityOpen = !activityOpen"
+        class="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-neutral-50 cursor-pointer"
+        :class="activityOpen ? 'border-b border-neutral-200' : ''">
+        <span class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.activity') }}</h3>
+          <span class="text-xs text-neutral-400">{{ activity.length }}</span>
+        </span>
+        <svg class="w-4 h-4 text-neutral-400 transition-transform" :class="activityOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div v-show="activityOpen">
+        <!-- Desktop: tabulka -->
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="a in activity" :key="a.id" class="hover:bg-neutral-50 align-top">
+                <td class="px-5 py-2 whitespace-nowrap">
+                  <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionBadgeClass(a.action)">{{ actionShortLabel(a.action) }}</span>
+                </td>
+                <td class="px-3 py-2 text-xs text-neutral-500 whitespace-nowrap">{{ a.user_name || a.user_email || '—' }}</td>
+                <td class="px-3 py-2 font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</td>
+                <td class="px-3 py-2 text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Mobil: karty (payload na plnou šířku, jinak se zmáčkne do úzkého sloupce) -->
+        <ul class="md:hidden divide-y divide-neutral-100">
+          <li v-for="a in activity" :key="`m-${a.id}`" class="px-4 py-3 space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionBadgeClass(a.action)">{{ actionShortLabel(a.action) }}</span>
+              <span class="font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</span>
+            </div>
+            <div class="text-xs text-neutral-500">{{ a.user_name || a.user_email || '—' }}</div>
+            <div v-if="a.payload" class="text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</div>
+          </li>
+        </ul>
       </div>
     </div>
 

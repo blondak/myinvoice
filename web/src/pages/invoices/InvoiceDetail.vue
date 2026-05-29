@@ -53,7 +53,9 @@ const approvalStatusDraft = ref<ApprovalStatus>('none')
 const approvalRejectReason = ref('')
 
 const activity = ref<Array<{ id: number; user_email: string | null; user_name: string | null; action: string; payload: any; ip: string | null; created_at: string }>>([])
+const activityOpen = ref(false)
 const pdfHistory = ref<Array<{ id: number; filename: string; size_bytes: number; sha256: string; was_sent: boolean; sent_to: string[] | null; reason: string; archived_at: string }>>([])
+const pdfHistoryOpen = ref(false)
 const attachments = ref<InvoiceAttachment[]>([])
 const attachmentsBusy = ref(false)
 const attachmentsDragOver = ref(false)
@@ -186,6 +188,13 @@ function actionColor(a: string): string {
   if (a.includes('cancelled') || a.includes('force')) return 'bg-warning-50 text-warning-600'
   if (a.includes('credit_note') || a.includes('cloned')) return 'bg-primary-100 text-primary-700'
   return 'bg-neutral-100 text-neutral-600'
+}
+
+function payloadText(payload: any): string {
+  if (!payload) return ''
+  return Object.entries(payload)
+    .map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    .join(' · ')
 }
 
 async function deleteInvoice() {
@@ -408,6 +417,7 @@ async function sendTest() {
   try {
     const r = await invoicesApi.sendTest(invoice.value.id)
     toast.success( t('invoice.send_test_done', { recipients: r.sent_to.join(', ') }))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
   } catch (e: any) {
     toast.error( e?.response?.data?.error?.message || t('invoice.send_test_failed'))
   } finally {
@@ -421,6 +431,7 @@ async function sendTestReminder() {
   try {
     const r = await invoicesApi.sendTestReminder(invoice.value.id)
     toast.success( t('invoice.send_test_reminder_done', { recipients: r.sent_to.join(', '), days: r.days_overdue }))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
   } catch (e: any) {
     toast.error( e?.response?.data?.error?.message || t('invoice.send_test_reminder_failed'))
   } finally {
@@ -595,6 +606,7 @@ async function requestApprovalTest() {
   try {
     const r = await invoicesApi.requestApprovalTest(invoice.value.id)
     toast.success(t('invoice.approval.test_sent', { recipients: r.sent_to.join(', ') }))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('invoice.approval.test_failed'))
   } finally {
@@ -1349,57 +1361,92 @@ async function updateApprovalStatus() {
 
     <!-- Historie PDF -->
     <div v-if="pdfHistory.length > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
-      <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.pdf_history.title') }}</h3>
-        <span class="text-xs text-neutral-400">{{ pdfHistory.length }}</span>
-      </header>
-      <ul class="divide-y divide-neutral-100">
-        <li v-for="p in pdfHistory" :key="p.id" class="px-5 py-2.5 text-sm flex items-center gap-3">
-          <span v-if="p.was_sent" class="text-xs px-2 py-0.5 rounded font-medium bg-success-50 text-success-600 inline-flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
-            {{ t('invoice.pdf_history.sent') }}
-          </span>
-          <span v-else class="text-xs px-2 py-0.5 rounded font-medium bg-neutral-100 text-neutral-600">{{ pdfReasonLabel(p.reason) }}</span>
-          <span class="text-neutral-700 text-xs flex-1 truncate" :title="p.filename">{{ p.filename }}</span>
-          <span class="text-neutral-400 text-xs whitespace-nowrap">{{ formatBytes(p.size_bytes) }}</span>
-          <span class="text-neutral-400 text-xs whitespace-nowrap">{{ p.archived_at.replace('T', ' ').slice(0, 19) }}</span>
-          <span v-if="p.was_sent && p.sent_to && p.sent_to.length" class="text-neutral-500 text-xs truncate max-w-xs" :title="p.sent_to.join(', ')">→ {{ p.sent_to.join(', ') }}</span>
-          <a :href="invoicesApi.archivedPdfUrl(invoice!.id, p.id, false)" target="_blank"
-             class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-            {{ t('common.view') }}
-          </a>
-          <a :href="invoicesApi.archivedPdfUrl(invoice!.id, p.id, true)"
-             class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            {{ t('common.download') }}
-          </a>
+      <button type="button" @click="pdfHistoryOpen = !pdfHistoryOpen"
+        class="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-neutral-50 cursor-pointer"
+        :class="pdfHistoryOpen ? 'border-b border-neutral-200' : ''">
+        <span class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.pdf_history.title') }}</h3>
+          <span class="text-xs text-neutral-400">{{ pdfHistory.length }}</span>
+        </span>
+        <svg class="w-4 h-4 text-neutral-400 transition-transform" :class="pdfHistoryOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <ul v-show="pdfHistoryOpen" class="divide-y divide-neutral-100">
+        <li v-for="p in pdfHistory" :key="p.id"
+            class="px-4 sm:px-5 py-2.5 text-sm flex flex-col gap-1.5 md:flex-row md:items-center md:gap-3">
+          <!-- Badge + název souboru -->
+          <div class="flex items-center gap-2 min-w-0 md:flex-1">
+            <span v-if="p.was_sent" class="shrink-0 text-xs px-2 py-0.5 rounded font-medium bg-success-50 text-success-600 inline-flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
+              {{ t('invoice.pdf_history.sent') }}
+            </span>
+            <span v-else class="shrink-0 text-xs px-2 py-0.5 rounded font-medium bg-neutral-100 text-neutral-600">{{ pdfReasonLabel(p.reason) }}</span>
+            <span class="text-neutral-700 text-xs min-w-0 break-all md:truncate" :title="p.filename">{{ p.filename }}</span>
+          </div>
+          <!-- Meta: velikost · datum · příjemci -->
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-400 md:flex-nowrap md:whitespace-nowrap">
+            <span>{{ formatBytes(p.size_bytes) }}</span>
+            <span>{{ p.archived_at.replace('T', ' ').slice(0, 19) }}</span>
+            <span v-if="p.was_sent && p.sent_to && p.sent_to.length" class="text-neutral-500 break-all md:truncate md:max-w-xs" :title="p.sent_to.join(', ')">→ {{ p.sent_to.join(', ') }}</span>
+          </div>
+          <!-- Akce -->
+          <div class="flex items-center gap-4">
+            <a :href="invoicesApi.archivedPdfUrl(invoice!.id, p.id, false)" target="_blank"
+               class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              {{ t('common.view') }}
+            </a>
+            <a :href="invoicesApi.archivedPdfUrl(invoice!.id, p.id, true)"
+               class="text-xs text-primary-600 hover:text-primary-700 font-medium inline-flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              {{ t('common.download') }}
+            </a>
+          </div>
         </li>
       </ul>
     </div>
 
     <!-- Aktivita -->
     <div v-if="activity.length > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
-      <header class="px-5 py-3 border-b border-neutral-200">
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.activity') }}</h3>
-      </header>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <tbody class="divide-y divide-neutral-100">
-            <tr v-for="a in activity" :key="a.id" class="hover:bg-neutral-50 align-top">
-              <td class="px-5 py-2 whitespace-nowrap">
-                <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionColor(a.action)">{{ actionLabel(a.action) }}</span>
-              </td>
-              <td class="px-3 py-2 text-xs text-neutral-500 whitespace-nowrap">{{ a.user_name || a.user_email || '—' }}</td>
-              <td class="px-3 py-2 font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</td>
-              <td class="px-3 py-2 text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">
-                <template v-if="a.payload">
-                  {{ Object.entries(a.payload).map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(' · ') }}
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <button type="button" @click="activityOpen = !activityOpen"
+        class="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-neutral-50 cursor-pointer"
+        :class="activityOpen ? 'border-b border-neutral-200' : ''">
+        <span class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.activity') }}</h3>
+          <span class="text-xs text-neutral-400">{{ activity.length }}</span>
+        </span>
+        <svg class="w-4 h-4 text-neutral-400 transition-transform" :class="activityOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div v-show="activityOpen">
+        <!-- Desktop: tabulka -->
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="a in activity" :key="a.id" class="hover:bg-neutral-50 align-top">
+                <td class="px-5 py-2 whitespace-nowrap">
+                  <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionColor(a.action)">{{ actionLabel(a.action) }}</span>
+                </td>
+                <td class="px-3 py-2 text-xs text-neutral-500 whitespace-nowrap">{{ a.user_name || a.user_email || '—' }}</td>
+                <td class="px-3 py-2 font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</td>
+                <td class="px-3 py-2 text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Mobil: karty (payload na plnou šířku, jinak se zmáčkne do úzkého sloupce) -->
+        <ul class="md:hidden divide-y divide-neutral-100">
+          <li v-for="a in activity" :key="`m-${a.id}`" class="px-4 py-3 space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs px-2 py-0.5 rounded font-medium" :class="actionColor(a.action)">{{ actionLabel(a.action) }}</span>
+              <span class="font-mono text-xs text-neutral-400 whitespace-nowrap">{{ a.created_at.replace('T', ' ').slice(0, 19) }}</span>
+            </div>
+            <div class="text-xs text-neutral-500">{{ a.user_name || a.user_email || '—' }}</div>
+            <div v-if="a.payload" class="text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</div>
+          </li>
+        </ul>
       </div>
     </div>
 
