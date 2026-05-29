@@ -138,6 +138,10 @@ final class UpdateInvoiceAction
     {
         $vatRates = $this->repo->vatRateMap();
         $reverseCharge = !empty($body['reverse_charge']);
+        // Country-aware RC: tuzemský odběratel → §92a (ř.25), zahraniční EU → dodání do JČS (ř.20).
+        $customerEuForeign = $reverseCharge
+            && (int) ($body['client_id'] ?? 0) > 0
+            && $this->repo->clientIsEuForeign((int) $body['client_id']);
 
         if (!empty($body['items']) && is_array($body['items'])) {
             foreach ($body['items'] as &$item) {
@@ -145,7 +149,7 @@ final class UpdateInvoiceAction
                 $rateId = (int) ($item['vat_rate_id'] ?? 0);
                 $rate = (float) ($vatRates[$rateId] ?? 0);
                 $taxDate = $body['tax_date'] ?? $body['issue_date'] ?? null;
-                $item['vat_classification_code'] = $this->vatDefaulter->defaultForSale($rate, $reverseCharge, $taxDate, $supplierId);
+                $item['vat_classification_code'] = $this->vatDefaulter->defaultForSale($rate, $reverseCharge, $taxDate, $supplierId, $customerEuForeign);
             }
             unset($item);
         }
@@ -164,6 +168,7 @@ final class UpdateInvoiceAction
                 'sale',
                 $body['tax_date'] ?? $body['issue_date'] ?? null,
                 $supplierId,
+                $customerEuForeign,
             );
         }
     }

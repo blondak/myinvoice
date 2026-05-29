@@ -699,6 +699,23 @@ final class InvoiceRepository
         return $this->loadVatRates();
     }
 
+    /**
+     * Je odběratel zahraniční z EU? Pro country-aware klasifikaci RC:
+     * tuzemský odběratel + reverse_charge = §92a (ř.25), zahraniční EU = dodání do JČS (ř.20).
+     */
+    public function clientIsEuForeign(int $clientId): bool
+    {
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT COALESCE(co.is_eu, 0) AS is_eu, COALESCE(co.iso2, 'CZ') AS iso2
+               FROM clients c LEFT JOIN countries co ON co.id = c.country_id
+              WHERE c.id = ?"
+        );
+        $stmt->execute([$clientId]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($r === false) return false;
+        return ((int) $r['is_eu'] === 1) && ((string) $r['iso2'] !== 'CZ');
+    }
+
     private function castInvoice(array $row): array
     {
         $row['id']                  = (int) $row['id'];
