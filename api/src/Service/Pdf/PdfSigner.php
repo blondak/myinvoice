@@ -21,8 +21,13 @@ use MyInvoice\Service\Auth\SecretEncryption;
  */
 final class PdfSigner
 {
-    /** Vyhrazený hex prostor pro /Contents (DER PKCS#7 + případně TSA token). 2× = 16 KiB binárně. */
-    private const CONTENTS_HEX_LEN = 16384;
+    /**
+     * Vyhrazený hex prostor pro /Contents = 2× binární DER podpisu.
+     * 64 KiB hex = 32 KiB binárně — pokryje CMS + celý cert řetězec + RFC 3161
+     * TSA token (i kvalifikovaný, který bývá 6–8 KB). Bez TSA stačí ~14 KB hex,
+     * ale s chainem + timestamp narůstá přes 24 KB → rezerva nutná.
+     */
+    private const CONTENTS_HEX_LEN = 65536;
 
     /** Pevná šířka každého čísla v /ByteRange placeholderu (zarovnání mezerami). */
     private const BR_WIDTH = 10;
