@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dashboard** — homepage zobrazuje jen **aktivní měny** (neaktivní měny se v přehledu tržeb už neukazují). Při jediné aktivní měně je graf tržeb vyšší (vlevo) a KPI boxy jsou v matici 2×2 vpravo; při více měnách beze změny. V sekci nákladů je box „CRM" nahrazen **mini grafem nákladů** za posledních 12 měsíců.
+
 ## [4.4.0] — 2026-05-29
 
 Nová sekce **Dokumenty** (souborové úložiště), presety výchozí splatnosti a výchozí kategorie nákladu.

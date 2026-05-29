@@ -52,6 +52,7 @@ final class SummaryAction
             'top_clients_prev_year'  => $this->topClients($pdo, $prevYear, $sid, $isVatPayer),
             'top_clients_12m'        => $this->topClientsRolling12m($pdo, $sid, $isVatPayer),
             'revenue_by_month'       => $this->revenueByMonth($pdo, $sid, $isVatPayer),
+            'purchase_costs_by_month'=> $this->purchaseCostsByMonth($pdo, $sid),
             'revenue_by_year'        => $this->revenueByYear($pdo, $sid, $isVatPayer),
             'rolling_12m'            => $this->rolling12mRevenue($pdo, $sid, $isVatPayer),
             'cashflow_ytd'           => $this->cashflowYtd($pdo, $year, $prevYear, $sid),
@@ -280,6 +281,7 @@ final class SummaryAction
                    AND YEAR(COALESCE(i.tax_date, i.issue_date)) IN (?, ?)
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                    AND i.invoice_type IN ('invoice', 'credit_note')
+                   AND cur.is_active = 1
                  GROUP BY cur.code";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -423,6 +425,39 @@ final class SummaryAction
         ];
     }
 
+    /**
+     * Měsíční náklady (přijaté faktury) za posledních 12 měsíců v CZK — pro mini graf
+     * na dashboardu. Vždy 12 slotů vzestupně, chybějící měsíce = 0.
+     *
+     * @return list<array{ym:string, total:float}>
+     */
+    private function purchaseCostsByMonth(\PDO $pdo, int $sid): array
+    {
+        $sql = "SELECT DATE_FORMAT(pi.issue_date, '%Y-%m') AS ym,
+                       SUM(pi.total_with_vat * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)) AS total
+                  FROM purchase_invoices pi
+             LEFT JOIN currencies cur ON cur.id = pi.currency_id
+                 WHERE pi.supplier_id = ?
+                   AND pi.status NOT IN ('draft', 'cancelled')
+                   AND pi.issue_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
+                 GROUP BY ym";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$sid]);
+        $byYm = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $byYm[(string) $r['ym']] = round((float) $r['total'], 2);
+        }
+
+        $out = [];
+        $cursor = (new \DateTimeImmutable(date('Y-m-01')))->modify('-11 months');
+        for ($i = 0; $i < 12; $i++) {
+            $ym = $cursor->format('Y-m');
+            $out[] = ['ym' => $ym, 'total' => $byYm[$ym] ?? 0.0];
+            $cursor = $cursor->modify('+1 month');
+        }
+        return $out;
+    }
+
     private function overdue(\PDO $pdo, int $sid): array
     {
         $sql = "SELECT i.id, i.varsymbol, i.invoice_type, i.client_id, cur.code AS currency,
@@ -522,6 +557,7 @@ final class SummaryAction
                    AND COALESCE(i.tax_date, i.issue_date) >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 23 MONTH), '%Y-%m-01')
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                    AND i.invoice_type IN ('invoice', 'credit_note')
+                   AND cur.is_active = 1
                  GROUP BY cur.code, ym";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$sid]);

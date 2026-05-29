@@ -1541,6 +1541,8 @@
     "purchase_overdue_link": "Show →",
     "purchase_details": "Detailed analytics",
     "purchase_details_hint": "Aging, cash flow, top vendors",
+    "costs_trend_12m": "Costs (12 months)",
+    "costs_trend_hint": "Monthly costs in CZK · details in CRM",
     "avg_payment": "Avg. payment time",
     "days": "days",
     "this_year_paid": "this year paid",

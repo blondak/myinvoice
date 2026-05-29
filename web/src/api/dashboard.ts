@@ -155,6 +155,7 @@ export interface DashboardSummary {
   top_clients_prev_year: TopClient[]
   top_clients_12m: TopClient[]
   revenue_by_month: RevenueByMonth[]
+  purchase_costs_by_month: Array<{ ym: string; total: number }>
   revenue_by_year: RevenueByYear[]
   rolling_12m: Rolling12mRevenue[]
   cashflow_ytd: CashflowByCurrency[]

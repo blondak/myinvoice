@@ -1541,6 +1541,8 @@
     "purchase_overdue_link": "Zobrazit →",
     "purchase_details": "Detailní analytika",
     "purchase_details_hint": "Aging, cash flow, top dodavatelé",
+    "costs_trend_12m": "Náklady (12 měsíců)",
+    "costs_trend_hint": "Měsíční náklady v CZK · detail v CRM",
     "avg_payment": "Ø doba úhrady",
     "days": "dní",
     "this_year_paid": "letošní zaplacené",

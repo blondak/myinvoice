@@ -81,6 +81,19 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
     values: rev.months.map(m => m.total),
   }
 }
+
+// Jen jedna (aktivní) měna → graf vlevo přes 2 řádky a boxy 2×2 vpravo.
+const singleCurrency = computed(() => (summary.value?.kpi?.per_currency?.length ?? 0) === 1)
+
+// Mini graf nákladů (přijaté faktury, 12 měsíců, CZK) — místo boxu CRM.
+const costsSparkline = computed(() => {
+  const arr = summary.value?.purchase_costs_by_month ?? []
+  return {
+    labels: arr.map(m => { const [y, mo] = m.ym.split('-'); return `${mo}/${y}` }),
+    values: arr.map(m => m.total),
+  }
+})
+const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? []).some(m => m.total !== 0))
 </script>
 
 <template>
@@ -131,10 +144,11 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
             {{ t('dashboard.section_issued') }}
           </span>
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <!-- Revenue card (wide — 2 sloupce na lg+) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :class="singleCurrency ? 'lg:grid-cols-3' : 'lg:grid-cols-4'">
+          <!-- Revenue card: 1 měna → vysoký vlevo (2 řádky); více měn → široký (2 sloupce) -->
           <div v-for="c in summary.kpi.per_currency" :key="c.currency"
-            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm md:col-span-2">
+            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm"
+            :class="singleCurrency ? 'lg:row-span-2 flex flex-col' : 'md:col-span-2'">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.revenue', { year: summary.year, currency: c.currency }) }}</div>
             <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(c.this_year, c.currency) }}</div>
             <div v-if="c.change_pct !== null" class="text-xs mt-1" :class="c.change_pct >= 0 ? 'text-success-600' : 'text-danger-500'"
@@ -142,11 +156,14 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
               {{ c.change_pct >= 0 ? '▲' : '▼' }} {{ Math.abs(c.change_pct) }} % {{ t('dashboard.vs_prev_ytd', { year: summary.prev_year }) }}
             </div>
             <div v-else class="text-xs text-neutral-400 mt-1">{{ t('dashboard.no_prev_year', { year: summary.prev_year }) }}</div>
-            <div class="mt-3" v-if="sparklineFor(c.currency).values.some(v => v !== 0)">
+            <div v-if="sparklineFor(c.currency).values.some(v => v !== 0)"
+              :class="singleCurrency ? 'mt-3 flex-1 flex items-end' : 'mt-3'">
               <SparklineChart
+                class="w-full"
                 :labels="sparklineFor(c.currency).labels"
                 :values="sparklineFor(c.currency).values"
                 :format="(v: number) => formatMoney(v, c.currency)"
+                :height="singleCurrency ? 150 : 40"
               />
             </div>
           </div>
@@ -235,12 +252,17 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
             </div>
           </div>
 
-          <!-- 4. box: link do CRM dashboardu (akce + analytics) -->
+          <!-- 4. box: mini graf nákladů (12 měsíců, CZK) — odkaz do CRM analytics -->
           <RouterLink to="/crm"
-            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm hover:bg-neutral-50 hover:border-primary-300 transition">
-            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_details') }}</div>
-            <div class="text-2xl font-semibold text-primary-700">CRM →</div>
-            <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.purchase_details_hint') }}</div>
+            class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm hover:bg-neutral-50 hover:border-primary-300 transition flex flex-col">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.costs_trend_12m') }}</div>
+            <div v-if="hasCostsData" class="mt-1 flex-1 flex items-end">
+              <SparklineChart class="w-full"
+                :labels="costsSparkline.labels" :values="costsSparkline.values"
+                :format="(v: number) => formatMoney(v, 'CZK')" color="#D9822B" :height="48" />
+            </div>
+            <div v-else class="text-2xl font-semibold text-primary-700">CRM →</div>
+            <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.costs_trend_hint') }}</div>
           </RouterLink>
         </div>
       </section>
