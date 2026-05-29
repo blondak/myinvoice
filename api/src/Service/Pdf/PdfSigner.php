@@ -226,7 +226,7 @@ final class PdfSigner
         return [$pdf, $byteRange];
     }
 
-    /** Detached CMS/PKCS#7 (DER). TSA timestamp se doplní v Task 6. */
+    /** Detached CMS (RFC 5652) v DER. Volitelně PAdES-T timestamp. */
     private function pkcs7Sign(string $data, array $certs, SigningConfig $cfg): string
     {
         $in  = tempnam(sys_get_temp_dir(), 'sig-in-');
@@ -241,24 +241,24 @@ final class PdfSigner
             file_put_contents($chainFile, implode("\n", $certs['extracerts']));
         }
 
-        // BEZ NOATTR → openssl přidá signed attributes (contentType, signingTime,
-        // messageDigest) = validní adbe.pkcs7.detached podpis, který čtečky (Adobe,
-        // PDF-XChange) ověří. S NOATTR čtečka hlásí „nepodporovaný typ".
-        $flags = PKCS7_BINARY | PKCS7_DETACHED;
-        if ($chainFile !== null) {
-            $ok = openssl_pkcs7_sign($in, $out, $certs['cert'], $certs['pkey'], [], $flags, $chainFile);
-        } else {
-            $ok = openssl_pkcs7_sign($in, $out, $certs['cert'], $certs['pkey'], [], $flags);
-        }
+        // openssl_cms_sign + OPENSSL_ENCODING_DER → moderní CMS (RFC 5652) PŘÍMO v DER
+        // (žádné S/MIME parsování). To je struktura, kterou PDF čtečky (Adobe, PDF-XChange)
+        // očekávají pro /SubFilter adbe.pkcs7.detached. Legacy openssl_pkcs7_sign produkoval
+        // strukturu, kterou Adobe odmítal jako „SigDict /Contents illegal data".
+        // DETACHED + BINARY, signed attributes ponechány (bez NOATTR).
+        $flags = OPENSSL_CMS_DETACHED | OPENSSL_CMS_BINARY;
+        $ok = openssl_cms_sign(
+            $in, $out, $certs['cert'], $certs['pkey'], [], $flags,
+            OPENSSL_ENCODING_DER, $chainFile,
+        );
         @unlink($in);
         if ($chainFile !== null) { @unlink($chainFile); }
         if (!$ok) {
             @unlink($out);
-            throw new \RuntimeException('openssl_pkcs7_sign selhal: ' . openssl_error_string());
+            throw new \RuntimeException('openssl_cms_sign selhal: ' . openssl_error_string());
         }
-        $smime = (string) file_get_contents($out);
+        $der = (string) file_get_contents($out);   // přímo DER, bez S/MIME extrakce
         @unlink($out);
-        $der = $this->derFromSmime($smime);
 
         // PAdES-T: přidej RFC 3161 timestamp token jako unsigned attribute do SignerInfo.
         // Při jakékoli chybě TSA tiše degraduj na PAdES-B (timestamp je opt-in).
