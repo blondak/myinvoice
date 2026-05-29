@@ -80,6 +80,10 @@
  * Laděno k indigo brandu #3B2D83. Light mód zůstává beze změny.
  * How to apply: .dark třídu na <html> řídí composable useTheme. */
 .dark {
+  /* Nativní ovládací prvky (kalendář u input[type=date], scrollbary, checkboxy…)
+     vykreslit tmavě — jinak je kalendář černý na tmavém a špatně vidět. */
+  color-scheme: dark;
+
   /* Neutral — invertovaná, teplá indigo tmavá */
   --color-neutral-50:  #14121C;   /* page background */
   --color-neutral-100: #1C1A28;   /* subtle tint / hover */
