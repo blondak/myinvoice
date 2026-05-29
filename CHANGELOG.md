@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.3] — 2026-05-29
+
+Server-side našeptávač klienta/dodavatele, oprava přepnutí typu nevystavené faktury a čitelný kalendář v tmavém režimu.
+
+### Fixed
+
+- **Přepnutí typu nevystavené faktury** (faktura ↔ proforma ↔ dobropis) se v editaci neuložilo — update vždy zachoval původní typ a `updateDraft` sloupec `invoice_type` neměnil. Nově lze typ u draftu změnit; vystavená faktura zůstává neměnná (číslo + auditní stopa).
+- **Tmavý režim** — nativní kalendář u výběru data (a další nativní prvky) byl černý na tmavém pozadí; přidán `color-scheme: dark`.
+
 ### Changed
 
 - **Výběr klienta / dodavatele ve fakturách** — našeptávač nově hledá **server-side přímo v databázi** (název / IČO / DIČ) místo filtrování jen prvních 50 načtených. Týká se nové i editované vydané faktury, přijaté faktury (dodavatelé) a pravidelné fakturace. Řeší případ, kdy klient za první stránkou nešel ve faktuře vybrat, a škáluje nad 200 klientů.
