@@ -86,8 +86,11 @@ final class PdfSignerTest extends TestCase
         // x2 (start druhého úseku) + x3 (jeho délka) = délka celého souboru
         self::assertSame(strlen($signed), $x2 + $x3, 'ByteRange nepokrývá konec souboru');
         // mezi x1 a x2 je jen hex obsah Contents
+        // gap [x1,x2) je <hex> VČETNĚ závorek (standardní konvence) → hex je uvnitř
         $gap = substr($signed, $x1, $x2 - $x1);
-        self::assertMatchesRegularExpression('/^[0-9a-f]+$/', $gap, 'mezera ByteRange není čistý hex');
+        self::assertSame('<', $gap[0], 'gap nezačíná <');
+        self::assertSame('>', $gap[strlen($gap) - 1], 'gap nekončí >');
+        self::assertMatchesRegularExpression('/^<[0-9a-f]+>$/', $gap, 'mezera ByteRange není <hex>');
     }
 
     public function testPkcs7VerifiesAgainstSignedBytes(): void
@@ -100,7 +103,8 @@ final class PdfSignerTest extends TestCase
         // vytáhni hex Contents → DER. Délku NEČTI z paddingu (rtrim by sebral i platné
         // koncové \x00) — přečti ji z ASN.1 hlavičky: 0x30 0x82 hi lo => obsah, total = 4+len.
         // hex Contents leží na [x1, x2) (x1 = ByteRange[1] = první hex bajt po '<', x2 = '>')
-        $raw = hex2bin(substr($signed, $x1, $x2 - $x1));
+        // hex je MEZI závorkami: [x1+1, x2-1)
+        $raw = hex2bin(substr($signed, $x1 + 1, $x2 - $x1 - 2));
         self::assertSame("\x30\x82", substr($raw, 0, 2), 'DER nezačíná SEQUENCE (0x30 0x82)');
         $len = (ord($raw[2]) << 8) | ord($raw[3]);
         $der = substr($raw, 0, 4 + $len);

@@ -202,10 +202,13 @@ final class PdfSigner
         if ($lt === false) {
             throw new \RuntimeException('Placeholder /Contents nenalezen.');
         }
-        $contentStart = $lt + strlen('/Contents <');          // první hex bajt
-        $gt = strpos($pdf, '>', $contentStart);                // uzavírací >
-        $x1 = $contentStart;                                   // [0, x1) = vše po '<' včetně
-        $x2 = $gt;                                             // [x2, ..) = od '>' včetně
+        // STANDARDNÍ konvence (Adobe/pyHanko): ByteRange vynechává /Contents hex
+        // VČETNĚ obklopujících závorek < >. Tj. x1 = pozice '<', x2 = pozice za '>'.
+        // Podepsaná data = [0,x1) + [x2,konec) — bez závorek i hexu.
+        $ltBracket = $lt + strlen('/Contents ');               // pozice '<'
+        $gt = strpos($pdf, '>', $ltBracket + 1);               // uzavírací '>'
+        $x1 = $ltBracket;                                      // NA '<' (gap zahrne '<')
+        $x2 = $gt + 1;                                         // ZA '>' (gap zahrne '>')
         $x3 = strlen($pdf) - $x2;
         $byteRange = [0, $x1, $x2, $x3];
 
