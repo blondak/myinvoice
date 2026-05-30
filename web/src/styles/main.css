@@ -37,6 +37,11 @@
   --color-accent-100:  #D7E8F6;
   --color-accent-500:  #5BA8E0;
   --color-accent-600:  #3F89C5;
+  /* Teal (modrozelená) — stav „Odesláno": zelená rodina (ladí se zelenou ikonou
+     e-mailu), ale odlišitelná od zelené „Zaplaceno" a od modrého accentu. */
+  --color-teal-50:     #E2F3F4;
+  --color-teal-500:    #4AA9AE;
+  --color-teal-600:    #2D8A91;
 
   /* ─── Semantic (pastel) ─── */
   --color-success-50:  #ECF6F0;
@@ -112,6 +117,10 @@
   --color-warning-50: #2A2113;
   --color-danger-50:  #2C1717;
   --color-accent-50:  #122231;
+  /* accent-100 (soft pill bg — badge Proforma) — bez tohoto override by zůstal
+     světlý #D7E8F6 a v dark módu zářil. Laděno k ostatním -50 stavům. */
+  --color-accent-100: #16344C;
+  --color-teal-50:    #102A2D;   /* stav „Odesláno" — tmavý tint */
 }
 
 html, body {
