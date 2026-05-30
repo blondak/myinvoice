@@ -7,8 +7,8 @@ namespace MyInvoice\Action\Tax;
 use MyInvoice\Http\Json;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\SupplierScopeMiddleware;
+use MyInvoice\Repository\TaxConstantsRepository;
 use MyInvoice\Repository\TaxProfileRepository;
-use MyInvoice\Service\Tax\TaxConstants;
 use MyInvoice\Service\Tax\TaxOptimizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -25,6 +25,7 @@ final class TaxAction
         private readonly Connection $db,
         private readonly TaxProfileRepository $profiles,
         private readonly TaxOptimizer $optimizer,
+        private readonly TaxConstantsRepository $constants,
     ) {}
 
     /** GET /api/tax/analysis */
@@ -47,7 +48,7 @@ final class TaxAction
         $publicProfile = $this->publicProfile($profileRow, $flags);
         $engineProfile = $publicProfile + ['is_vat_payer' => $isVat];
 
-        $c = TaxConstants::forYear($year);
+        $c = $this->constants->forYear($year);
         $payload = [
             'year'            => $year,
             'profile'         => $publicProfile,

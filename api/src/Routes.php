@@ -200,6 +200,11 @@ final class Routes
         $app->put   ('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'update']);
         $app->delete('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'delete']);
 
+        // Roční daňové konstanty (globální číselník, override defaultů z TaxConstants; migrace 0079)
+        $app->get   ('/api/codebooks/tax-constants',                [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'list']);
+        $app->put   ('/api/codebooks/tax-constants/{year:[0-9]+}',  [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'update']);
+        $app->delete('/api/codebooks/tax-constants/{year:[0-9]+}',  [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'reset']);
+
         // VAT klasifikační kódy (pro DPHDP3 + KH)
         $app->get   ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'list']);
         $app->post  ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'create']);
