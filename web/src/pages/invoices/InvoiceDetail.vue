@@ -695,11 +695,10 @@ async function updateApprovalStatus() {
           <svg class="w-4 h-4 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           {{ t('common.edit') }}
         </RouterLink>
-        <!-- Výkaz: jen u draftu (kde se reálně edituje) — buď už výkaz existuje, nebo projekt
-             vyžaduje workflow a jde vytvořit nový. U vystavených/odeslaných dokladů se výkaz
-             needituje (backend SaveWorkReportAction vrátí 409 pro status != draft), proto se
-             tlačítko vůbec nezobrazuje. -->
-        <button v-if="isDraft && (workReport || invoice.project_requires_approval) && auth.canWrite"
+        <!-- Výkaz: jen u draftu (kde se reálně edituje) a s právem editace. U vystavených/odeslaných
+             dokladů se výkaz needituje (backend SaveWorkReportAction vrátí 409 pro status != draft),
+             proto se tlačítko vůbec nezobrazuje. -->
+        <button v-if="isDraft && auth.canWrite"
           @click="wrModalOpen = true"
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md inline-flex items-center gap-1.5"
           :title="t('invoice.wr_btn')">
