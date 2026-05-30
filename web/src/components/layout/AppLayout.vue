@@ -85,6 +85,7 @@ const ICONS = {
   tax_income: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   tax_archive: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
   tax_book:   'M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25',
+  tax_optimizer: 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',
 }
 
 const navSections = computed<NavSection[]>(() => {
@@ -139,6 +140,7 @@ const navSections = computed<NavSection[]>(() => {
       title: t('nav.section_taxes'),
       accent: 'danger',
       items: [
+        { to: '/tax',                 label: t('nav.tax_optimizer'),       icon: ICONS.tax_optimizer },
         { to: '/reports/dph',         label: t('nav.reports_dph'),         icon: ICONS.tax_dph },
         { to: '/reports/kh',          label: t('nav.reports_kh'),          icon: ICONS.tax_kh },
         { to: '/reports/dph-book',    label: t('nav.reports_dph_book'),    icon: ICONS.tax_book },

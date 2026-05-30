@@ -448,6 +448,10 @@ final class Routes
         $app->put    ('/api/settings/units/{id:[0-9]+}',              [SettingsAction::class, 'updateUnit']);
         $app->delete ('/api/settings/units/{id:[0-9]+}',              [SettingsAction::class, 'deleteUnit']);
 
+        // Tax optimizer — daňový optimalizátor (srovnání režimů + predikce limitů)
+        $app->get ('/api/tax/analysis',  [\MyInvoice\Action\Tax\TaxAction::class, 'analysis']);
+        $app->put ('/api/tax/profile',   [\MyInvoice\Action\Tax\TaxAction::class, 'updateProfile']);
+
         // Bank statements (M5b)
         $app->post ('/api/bank-statements/upload',           [BankStatementAction::class, 'upload']);
         $app->post ('/api/bank-statements/scan',             [BankStatementAction::class, 'scan']);
