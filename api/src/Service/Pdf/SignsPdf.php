@@ -38,8 +38,10 @@ trait SignsPdf
         try {
             $signed = $signer->signFile($tmpPath, $cfg);
             @unlink($tmpPath);
+            // Skutečně dosažená úroveň: PAdES-T jen když TSA razítko reálně prošlo
+            // (při výpadku TSA signer tiše degraduje na PAdES-B — viz PdfSigner::sign()).
             $activity->log('signing.pdf_signed', null, $docType, $docId, [
-                'level'   => $cfg->tsaUrl !== null ? 'PAdES-T' : 'PAdES-B',
+                'level'   => $signer->lastTimestamped() ? 'PAdES-T' : 'PAdES-B',
                 'tsa_url' => $cfg->tsaUrl,
                 'status'  => 'signed',
             ], null, null, $supplierId);

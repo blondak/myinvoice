@@ -437,7 +437,8 @@ final class SettingsAction
         $row['pdf_signing_enabled']      = (bool) ($row['pdf_signing_enabled'] ?? false);
         $row['signing_tsa_url']          = $row['signing_tsa_url'] ?? null;
         $row['signing_reason']           = (string) ($row['signing_reason'] ?? '');
-        $row['has_signing_cert']         = !empty($row['signing_cert_path']) && is_file((string) $row['signing_cert_path']);
+        $signingRel                      = (string) ($row['signing_cert_path'] ?? '');
+        $row['has_signing_cert']         = $signingRel !== '' && is_file(\MyInvoice\Service\Pdf\SigningConfig::absCertPath($signingRel));
         $row['signing_tsa_username']     = $row['signing_tsa_username'] ?? null;
         $row['has_tsa_password']         = !empty($row['signing_tsa_password_enc']);
         unset($row['signing_cert_password_enc'], $row['signing_cert_path'], $row['signing_tsa_password_enc']);

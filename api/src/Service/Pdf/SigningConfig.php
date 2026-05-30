@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Pdf;
 
+use MyInvoice\Infrastructure\Config\RuntimePaths;
+
 /**
  * Konfigurace podpisu PDF pro jednoho dodavatele (read-only value object).
  *
@@ -34,7 +36,10 @@ final class SigningConfig
         if ((int) ($row['pdf_signing_enabled'] ?? 0) !== 1) {
             return null;
         }
-        $certPath = (string) ($row['signing_cert_path'] ?? '');
+        // V DB je cesta uložená RELATIVNĚ ke storage (data-dir nezávislá); na absolutní
+        // se resolvuje až tady přes RuntimePaths (respektuje MYINVOICE_DATA_DIR), takže
+        // přesun data-dir / Docker volume podpis nerozbije.
+        $certPath = self::absCertPath((string) ($row['signing_cert_path'] ?? ''));
         if ($certPath === '') {
             return null;
         }
@@ -48,5 +53,32 @@ final class SigningConfig
             tsaUsername:  ($tsaUser !== null && $tsaUser !== '') ? (string) $tsaUser : null,
             tsaPasswordEnc: (string) ($row['signing_tsa_password_enc'] ?? ''),
         );
+    }
+
+    /**
+     * Relativní (data-dir nezávislá) cesta P12 ukládaná do `supplier.signing_cert_path`.
+     * Absolutní cestu z ní složí {@see absCertPath} až za běhu.
+     */
+    public static function relCertPath(int $supplierId): string
+    {
+        return "certs/supplier-{$supplierId}.p12";
+    }
+
+    /**
+     * Resolvne uloženou cestu na absolutní přes {@see RuntimePaths} (respektuje
+     * MYINVOICE_DATA_DIR). Prázdný vstup → ''. Snese i starší absolutní hodnotu
+     * (passthrough), aby přechod ze staré varianty neztratil cert.
+     */
+    public static function absCertPath(string $stored): string
+    {
+        $stored = trim($stored);
+        if ($stored === '') {
+            return '';
+        }
+        // Už absolutní (POSIX /… nebo Windows C:\…) → ponech beze změny.
+        if (preg_match('#^(/|[A-Za-z]:[\\\\/])#', $stored) === 1) {
+            return $stored;
+        }
+        return RuntimePaths::storage(ltrim($stored, '/\\'));
     }
 }

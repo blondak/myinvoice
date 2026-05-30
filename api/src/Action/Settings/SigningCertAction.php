@@ -12,6 +12,7 @@ use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Pdf\SigningConfig;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\UploadedFileInterface;
@@ -82,9 +83,11 @@ final class SigningCertAction
         }
         @chmod($path, 0600);
 
+        // Do DB ukládáme RELATIVNÍ cestu (data-dir nezávislá) — absolutní se resolvuje
+        // za běhu přes RuntimePaths, viz SigningConfig::absCertPath().
         $this->db->pdo()->prepare(
             'UPDATE supplier SET signing_cert_path = ?, signing_cert_password_enc = ? WHERE id = ?'
-        )->execute([$path, $this->secrets->encrypt($password), $sid]);
+        )->execute([SigningConfig::relCertPath($sid), $this->secrets->encrypt($password), $sid]);
 
         $this->auditCert($request, 'signing.cert_uploaded', $sid, [
             'cn'          => $info['subject']['CN'] ?? '',
@@ -107,8 +110,9 @@ final class SigningCertAction
             return Json::error($response, 'no_supplier', 'Žádný supplier scope.', 400);
         }
         $row = $this->certRow($sid);
-        if ($row && $row['signing_cert_path'] && is_file($row['signing_cert_path'])) {
-            @unlink($row['signing_cert_path']);
+        $abs = $row ? SigningConfig::absCertPath((string) $row['signing_cert_path']) : '';
+        if ($abs !== '' && is_file($abs)) {
+            @unlink($abs);
         }
         $this->db->pdo()->prepare(
             'UPDATE supplier SET signing_cert_path = NULL, signing_cert_password_enc = NULL,
@@ -121,14 +125,18 @@ final class SigningCertAction
     /** GET /api/settings/signing-cert */
     public function metadata(Request $request, Response $response): Response
     {
+        if (!$this->isAdmin($request)) {
+            return Json::error($response, 'forbidden', 'Pouze admin smí číst podpisový certifikát.', 403);
+        }
         $sid = (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0);
         $row = $sid > 0 ? $this->certRow($sid) : null;
-        if (!$row || !$row['signing_cert_path'] || !is_file($row['signing_cert_path'])) {
+        $abs = $row ? SigningConfig::absCertPath((string) $row['signing_cert_path']) : '';
+        if ($abs === '' || !is_file($abs)) {
             return Json::ok($response, ['has_cert' => false]);
         }
         $certs = [];
         @openssl_pkcs12_read(
-            (string) file_get_contents($row['signing_cert_path']),
+            (string) file_get_contents($abs),
             $certs,
             $this->secrets->decrypt((string) $row['signing_cert_password_enc'])
         );

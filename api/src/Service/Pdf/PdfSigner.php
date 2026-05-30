@@ -32,7 +32,16 @@ final class PdfSigner
     /** Pevná šířka každého čísla v /ByteRange placeholderu (zarovnání mezerami). */
     private const BR_WIDTH = 10;
 
+    /** Byl na poslední podpis skutečně aplikován TSA timestamp (PAdES-T)? Jinak PAdES-B. */
+    private bool $lastTimestamped = false;
+
     public function __construct(private readonly SecretEncryption $secrets) {}
+
+    /** True, pokud poslední {@see sign()} reálně doplnil RFC 3161 timestamp (PAdES-T). */
+    public function lastTimestamped(): bool
+    {
+        return $this->lastTimestamped;
+    }
 
     /** Podepíše PDF soubor; výsledek zapíše do `<path>.signed` a vrátí jeho cestu. */
     public function signFile(string $pdfPath, SigningConfig $cfg): string
@@ -54,6 +63,7 @@ final class PdfSigner
      */
     public function sign(string $pdf, SigningConfig $cfg): string
     {
+        $this->lastTimestamped = false;
         $this->assertClassicXref($pdf);
 
         // 1) Načti cert + privátní klíč z P12 (heslo dešifruj až tady).
@@ -273,6 +283,7 @@ final class PdfSigner
         if ($cfg->tsaUrl !== null && $cfg->tsaUrl !== '') {
             try {
                 $der = $this->addTimestamp($der, $cfg);
+                $this->lastTimestamped = true;
             } catch (\Throwable) {
                 // ponech $der (PAdES-B) — výpadek TSA nesmí shodit podpis (timestamp je opt-in)
             }
@@ -403,36 +414,6 @@ final class PdfSigner
             throw new \RuntimeException('CMS: nenalezen SignerInfo.');
         }
         return $sd['children'][$siSetIdx]['children'][0];
-    }
-
-    /**
-     * Vytáhne binární DER PKCS#7 z S/MIME výstupu openssl_pkcs7_sign.
-     *
-     * Výstup je multipart/signed; podpis je v poslední části
-     * `application/x-pkcs7-signature` (base64) mezi jejími hlavičkami a MIME boundary.
-     */
-    private function derFromSmime(string $smime): string
-    {
-        // POSLEDNÍ výskyt — první je v hlavičce protocol="application/x-pkcs7-signature",
-        // ten pravý (sekce s base64 podpisem) je až dole.
-        $sigPos = strrpos($smime, 'application/x-pkcs7-signature');
-        if ($sigPos === false) {
-            throw new \RuntimeException('S/MIME neobsahuje x-pkcs7-signature sekci.');
-        }
-        // konec hlaviček té sekce = první prázdný řádek za sigPos
-        if (!preg_match('/\r?\n\r?\n/', $smime, $m, PREG_OFFSET_CAPTURE, $sigPos)) {
-            throw new \RuntimeException('S/MIME: chybí tělo signature sekce.');
-        }
-        $bodyStart = $m[0][1] + strlen($m[0][0]);
-        // base64 tělo až po boundary (řádek začínající "------")
-        $rest = substr($smime, $bodyStart);
-        $end = preg_match('/\r?\n------/', $rest, $mm, PREG_OFFSET_CAPTURE) ? $mm[0][1] : strlen($rest);
-        $b64 = preg_replace('/\s+/', '', substr($rest, 0, $end));
-        $der = base64_decode((string) $b64, true);
-        if ($der === false || $der === '') {
-            throw new \RuntimeException('Nelze extrahovat PKCS#7 DER z S/MIME.');
-        }
-        return $der;
     }
 
     // ---- PDF parsing helpery ----
