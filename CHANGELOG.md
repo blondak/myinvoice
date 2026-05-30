@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.3] — 2026-05-30
+
+Automatické načítání bankovního účtu a zápisu v obchodním rejstříku z veřejných registrů + drobná vylepšení a opravy.
+
+### Added
+
+- **Bankovní účet z DIČ (registr plátců DPH / CRPDPH)** — kdekoli zadáváš dodavatele lze účet načíst z oficiálního registru plátců DPH (MFČR) podle DIČ: v **setup wizardu**, v **Nastavení** (editor měny/účtu) i v **Číselníky → Nový dodavatel** tlačítkem „Načíst účet z registru DPH". Vrací zveřejněné účty (vč. IBAN) a zároveň hlídá příznak **nespolehlivého plátce**. Funguje jen pro zveřejněné účty plátců DPH (orientační předvyplnění). Výsledky se cachují 24 h.
+- **Spisová značka (zápis v OR) z ARES** — u právnických osob se při načtení z ARES (podle IČ) automaticky doplní pole „Zápis v obchodním rejstříku" (např. „Spisová značka C 45039 vedená u Krajského soudu v Plzni") — v setup wizardu, Nastavení i u nového dodavatele. Tiskne se v patičce faktury.
+- **Detaily plátce DPH u klienta/dodavatele** — v detailu klienta (pokud má DIČ) tlačítko „Detaily plátce DPH" na vyžádání zobrazí spolehlivost plátce a jeho zveřejněné bankovní účty (užitečné při ověření protistrany před platbou — ručení za DPH). Pouze informativní, nic se neukládá.
+- **Přidání nového roku v Daňových konstantách** — *Číselníky → Daňové konstanty* mají tlačítko „Přidat rok": předvyplní hodnotami nejnovějšího roku, po úpravě a uložení vznikne override.
+
+### Fixed
+
+- **Dark theme — neviditelný text v přepínači roku** v Daňových konstantách (select neměl tmavé pozadí jako ostatní; doplněno `bg-surface`).
+- **Docker — varování při startu** `docker-compose.production.yml` hlásil „variable is not set" pro `MYINVOICE_SMTP_*`; doplněny prázdné defaulty (`${VAR:-}`), chování beze změny.
+
+### Docs
+
+- Manuál — přečíslování kapitol: *Daňový optimalizátor* 25a → **26**, *Dokumenty* 26 → **27**.
+
 ## [4.6.2] — 2026-05-30
 
 Daňový optimalizátor pro OSVČ (#68) a oprava ukládání nastavení podpisu PDF.
