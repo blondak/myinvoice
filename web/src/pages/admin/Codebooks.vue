@@ -6,6 +6,8 @@ import { suppliersApi, type SupplierListItem, type SupplierCreatePayload } from 
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
 import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
 import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
+import { taxConstantsApi, type TaxConstantsYear } from '@/api/taxConstants'
+import type { TaxConstantsData } from '@/api/tax'
 import { clientsApi } from '@/api/clients'
 import { useSupplierStore } from '@/stores/supplier'
 import { useAuthStore } from '@/stores/auth'
@@ -17,7 +19,7 @@ const toast = useToast()
 const supplierStore = useSupplierStore()
 const auth = useAuthStore()
 
-type Tab = 'suppliers' | 'currencies' | 'vat' | 'countries' | 'units' | 'expense_categories' | 'revenue_categories' | 'vat_classifications'
+type Tab = 'suppliers' | 'currencies' | 'vat' | 'countries' | 'units' | 'expense_categories' | 'revenue_categories' | 'vat_classifications' | 'tax_constants'
 const tab = ref<Tab>('suppliers')
 
 const currencies = ref<CurrencyAccount[]>([])
@@ -526,11 +528,61 @@ async function removeVatCls(c: VatClassification) {
   }
 }
 
-// Načti při přepnutí na tab=expense_categories / revenue_categories / vat_classifications
+// ─── Daňové konstanty (číselník — override defaultů z backendu) ──────────
+const taxYears = ref<TaxConstantsYear[]>([])
+const taxYear = ref<number>(0)
+const taxModel = ref<TaxConstantsData | null>(null)
+const taxIsOverride = ref(false)
+const taxSaving = ref(false)
+const taxRates = [30, 40, 60, 80] as const
+const taxBands = ['band1', 'band2', 'band3'] as const
+
+async function loadTaxConstants() {
+  taxYears.value = await taxConstantsApi.list()
+  if (taxYears.value.length && !taxYears.value.find(y => y.year === taxYear.value)) {
+    selectTaxYear(taxYears.value[0].year)
+  }
+}
+function selectTaxYear(year: number) {
+  const row = taxYears.value.find(y => y.year === year)
+  if (!row) return
+  taxYear.value = year
+  taxIsOverride.value = row.is_override
+  taxModel.value = JSON.parse(JSON.stringify(row.data)) // hluboká kopie pro editaci
+}
+async function saveTaxConstants() {
+  if (!taxModel.value) return
+  taxSaving.value = true
+  try {
+    const updated = await taxConstantsApi.save(taxYear.value, taxModel.value)
+    const i = taxYears.value.findIndex(y => y.year === taxYear.value)
+    if (i >= 0) taxYears.value[i] = updated
+    taxIsOverride.value = updated.is_override
+    toast.success(t('codebooks.tax_saved'))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  } finally { taxSaving.value = false }
+}
+async function resetTaxConstants() {
+  if (!confirm(t('codebooks.tax_reset_confirm'))) return
+  try {
+    const updated = await taxConstantsApi.reset(taxYear.value)
+    const i = taxYears.value.findIndex(y => y.year === taxYear.value)
+    if (i >= 0) taxYears.value[i] = updated
+    taxIsOverride.value = false
+    taxModel.value = JSON.parse(JSON.stringify(updated.data))
+    toast.success(t('codebooks.tax_reset_done'))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  }
+}
+
+// Načti při přepnutí na tab=expense_categories / revenue_categories / vat_classifications / tax_constants
 watch(tab, (newTab) => {
   if (newTab === 'expense_categories') loadExpenseCategories()
   if (newTab === 'revenue_categories') loadRevenueCategories()
   if (newTab === 'vat_classifications') loadVatClassifications()
+  if (newTab === 'tax_constants') loadTaxConstants()
 })
 </script>
 
@@ -543,7 +595,7 @@ watch(tab, (newTab) => {
 
     <!-- Tabs — Dodavatelé jako první volba (multi-tenant firmy embed do Codebooks) -->
     <div class="border-b border-neutral-200 mb-4 flex gap-1 overflow-x-auto">
-      <button v-for="tt in (['suppliers', 'currencies', 'vat', 'vat_classifications', 'expense_categories', 'revenue_categories', 'countries', 'units'] as const)" :key="tt"
+      <button v-for="tt in (['suppliers', 'currencies', 'vat', 'vat_classifications', 'expense_categories', 'revenue_categories', 'countries', 'units', 'tax_constants'] as const)" :key="tt"
         @click="tab = tt"
         class="cursor-pointer px-4 py-2 text-sm border-b-2 transition whitespace-nowrap"
         :class="tab === tt
@@ -556,7 +608,8 @@ watch(tab, (newTab) => {
           : tt === 'expense_categories' ? t('codebooks.tab_expense_categories')
           : tt === 'revenue_categories' ? t('codebooks.tab_revenue_categories')
           : tt === 'countries' ? t('codebooks.tab_countries')
-          : t('codebooks.tab_units') }}
+          : tt === 'units' ? t('codebooks.tab_units')
+          : t('codebooks.tab_tax_constants') }}
       </button>
     </div>
 
@@ -1119,6 +1172,131 @@ watch(tab, (newTab) => {
             </tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- ====== TAX CONSTANTS (roční daňové konstanty) ====== -->
+    <section v-else-if="tab === 'tax_constants'">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <label class="text-sm text-neutral-600">{{ t('codebooks.tax_year') }}:</label>
+        <select v-model.number="taxYear" @change="selectTaxYear(taxYear)"
+          class="h-9 px-3 border border-neutral-300 rounded-md text-sm">
+          <option v-for="y in taxYears" :key="y.year" :value="y.year">{{ y.year }}</option>
+        </select>
+        <span v-if="taxIsOverride" class="text-xs px-2 py-0.5 rounded bg-warning-50 text-warning-600 font-medium">{{ t('codebooks.tax_overridden') }}</span>
+        <span v-else class="text-xs px-2 py-0.5 rounded bg-neutral-100 text-neutral-500">{{ t('codebooks.tax_default') }}</span>
+        <div class="ml-auto flex items-center gap-2" v-if="auth.user?.role === 'admin'">
+          <button v-if="taxIsOverride" @click="resetTaxConstants" type="button"
+            class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('codebooks.tax_reset') }}</button>
+          <button @click="saveTaxConstants" :disabled="taxSaving" type="button"
+            class="cursor-pointer h-9 px-4 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md disabled:opacity-50">{{ t('common.save') }}</button>
+        </div>
+      </div>
+      <p class="text-xs text-neutral-500 mb-4 max-w-3xl">{{ t('codebooks.tax_hint') }}</p>
+
+      <div v-if="taxModel" class="grid lg:grid-cols-2 gap-4">
+        <!-- Paušální daň -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_pausal') }}</h3>
+          <div class="grid grid-cols-3 gap-3">
+            <label v-for="(b, i) in taxBands" :key="b" class="block">
+              <span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_band', { n: i + 1 }) }}</span>
+              <input v-model.number="taxModel.pausal_annual[b]" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Daň z příjmu -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_income') }}</h3>
+          <div class="grid grid-cols-3 gap-3">
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_rate_low') }}</span>
+              <input v-model.number="taxModel.tax_rate_low" type="number" step="0.001" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_rate_high') }}</span>
+              <input v-model.number="taxModel.tax_rate_high" type="number" step="0.001" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_threshold') }}</span>
+              <input v-model.number="taxModel.tax_high_threshold" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
+        <!-- Pojistné -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_insurance') }}</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_rate') }}</span>
+              <input v-model.number="taxModel.social_rate" type="number" step="0.001" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_health_rate') }}</span>
+              <input v-model.number="taxModel.health_rate" type="number" step="0.001" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_pct') }}</span>
+              <input v-model.number="taxModel.social_assessment_pct" type="number" step="0.01" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_health_pct') }}</span>
+              <input v-model.number="taxModel.health_assessment_pct" type="number" step="0.01" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_min_main') }}</span>
+              <input v-model.number="taxModel.social_min_base_main" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_min_sec') }}</span>
+              <input v-model.number="taxModel.social_min_base_secondary" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_health_min') }}</span>
+              <input v-model.number="taxModel.health_min_base" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
+        <!-- Slevy a zvýhodnění -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_credits') }}</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_credit_taxpayer') }}</span>
+              <input v-model.number="taxModel.credit_taxpayer" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_credit_spouse') }}</span>
+              <input v-model.number="taxModel.credit_spouse" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label v-for="i in 3" :key="i" class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_child', { n: i }) }}</span>
+              <input v-model.number="taxModel.child_credits[i - 1]" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
+        <!-- Výdajové paušály -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_expense_caps') }}</h3>
+          <div class="grid grid-cols-4 gap-3">
+            <label v-for="r in taxRates" :key="r" class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_cap', { rate: r }) }}</span>
+              <input v-model.number="taxModel.expense_caps[r]" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
+        <!-- Odpočty + DPH -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_deductions_vat') }}</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_mortgage_cap') }}</span>
+              <input v-model.number="taxModel.mortgage_cap" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_pension_cap') }}</span>
+              <input v-model.number="taxModel.pension_cap" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_low') }}</span>
+              <input v-model.number="taxModel.vat_limit_low" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_high') }}</span>
+              <input v-model.number="taxModel.vat_limit_high" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
+        <!-- Stropy pásem paušální daně (rate × band) -->
+        <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm lg:col-span-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_ceilings') }}</h3>
+          <table class="text-sm">
+            <thead>
+              <tr class="text-xs text-neutral-500">
+                <th class="text-left font-medium pr-3 pb-1">{{ t('codebooks.tax_f_rate') }}</th>
+                <th v-for="(b, i) in taxBands" :key="b" class="text-left font-medium px-2 pb-1">{{ t('codebooks.tax_f_band', { n: i + 1 }) }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in taxRates" :key="r">
+                <td class="pr-3 py-1 text-neutral-600 font-mono">{{ r }} %</td>
+                <td v-for="b in taxBands" :key="b" class="px-2 py-1">
+                  <input v-model.number="taxModel.band_ceilings[r][b]" type="number" class="h-8 w-32 px-2 border border-neutral-300 rounded text-sm font-mono" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 

@@ -33,10 +33,11 @@ XML kostra obsahuje:
 ## Použití
 
 1. **Cesta:** `Daně → Daň z příjmů`
-2. **Toggle DPFO / DPPO** v topbar
+2. **Typ poplatníka** (DPFO / DPPO) se **odvozuje z dodavatele** (Nastavení → Typ poplatníka): OSVČ → DPFO, s.r.o. → DPPO. Nepřepíná se ručně.
 3. **Year picker** — default předchozí rok (daně se podávají za uplynulý)
 4. **4 karty:** Tržby orientačně / Náklady / Hospodářský výsledek / Termín podání
-5. **Stáhnout XML kostru** — generuje DPFDP5 / DPPDP9 verze 05.01 / 09.01
+5. **Export CSV** — orientační podklady (příjmy, výdaje, zisk, termín) pro DP1 / účetní
+6. **Stáhnout XML kostru** — generuje DPFDP5 / DPPDP9 verze 05.01 / 09.01
 
 ## Termíny podání
 

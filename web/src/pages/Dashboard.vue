@@ -9,6 +9,7 @@ import { dashboardApi, type DashboardSummary } from '@/api/dashboard'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import SparklineChart from '@/components/charts/SparklineChart.vue'
 import TopClientsPieChart from '@/components/charts/TopClientsPieChart.vue'
+import TaxNetWidget from '@/components/dashboard/TaxNetWidget.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -137,6 +138,9 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
     </div>
 
     <div v-else-if="summary && summary.kpi" class="space-y-6">
+      <!-- Daňový widget „co mi zbyde" — jen pro OSVČ (komponenta se sama skryje jinak) -->
+      <TaxNetWidget />
+
       <!-- ═══ Sekce 1: VYSTAVENÉ FAKTURY ═══ -->
       <section class="space-y-3">
         <h2>

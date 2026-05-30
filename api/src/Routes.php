@@ -201,6 +201,11 @@ final class Routes
         $app->put   ('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'update']);
         $app->delete('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'delete']);
 
+        // Roční daňové konstanty (globální číselník, override defaultů z TaxConstants; migrace 0079)
+        $app->get   ('/api/codebooks/tax-constants',                [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'list']);
+        $app->put   ('/api/codebooks/tax-constants/{year:[0-9]+}',  [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'update']);
+        $app->delete('/api/codebooks/tax-constants/{year:[0-9]+}',  [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'reset']);
+
         // VAT klasifikační kódy (pro DPHDP3 + KH)
         $app->get   ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'list']);
         $app->post  ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'create']);
@@ -452,6 +457,10 @@ final class Routes
         $app->post   ('/api/settings/units',                          [SettingsAction::class, 'createUnit']);
         $app->put    ('/api/settings/units/{id:[0-9]+}',              [SettingsAction::class, 'updateUnit']);
         $app->delete ('/api/settings/units/{id:[0-9]+}',              [SettingsAction::class, 'deleteUnit']);
+
+        // Tax optimizer — daňový optimalizátor (srovnání režimů + predikce limitů)
+        $app->get ('/api/tax/analysis',  [\MyInvoice\Action\Tax\TaxAction::class, 'analysis']);
+        $app->put ('/api/tax/profile',   [\MyInvoice\Action\Tax\TaxAction::class, 'updateProfile']);
 
         // Bank statements (M5b)
         $app->post ('/api/bank-statements/upload',           [BankStatementAction::class, 'upload']);
