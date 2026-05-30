@@ -35,6 +35,7 @@ const supplier = ref({
   phone: '',
   web: '',
   commercial_register: '',
+  taxpayer_type: '' as '' | 'fo' | 'po',
   is_vat_payer: true,
   default_currency: 'CZK',
   default_payment_due_days: 7,
@@ -127,6 +128,7 @@ async function lookupAres() {
     supplier.value.dic          = d.dic          || supplier.value.dic
     supplier.value.is_vat_payer = d.is_vat_payer
     supplier.value.commercial_register = d.commercial_register || supplier.value.commercial_register
+    if (d.taxpayer_type === 'fo' || d.taxpayer_type === 'po') supplier.value.taxpayer_type = d.taxpayer_type
     aresMessage.value = { type: 'success', text: t('supplier.ares_loaded', { name: d.company_name }) }
   } catch (e: any) {
     aresMessage.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.ares_failed') }
@@ -191,6 +193,7 @@ async function submit() {
         web: supplier.value.web || undefined,
         is_vat_payer: supplier.value.is_vat_payer,
         commercial_register: supplier.value.commercial_register || undefined,
+        taxpayer_type: supplier.value.taxpayer_type || undefined,
         default_currency: supplier.value.default_currency,
         default_payment_due_days: supplier.value.default_payment_due_days,
         default_hourly_rate: supplier.value.default_hourly_rate,

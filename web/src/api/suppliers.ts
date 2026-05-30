@@ -53,6 +53,7 @@ export interface SupplierCreatePayload {
   web?: string
   tagline?: string
   commercial_register?: string
+  taxpayer_type?: 'fo' | 'po'
   default_payment_due_days?: number
   default_payment_due_unit?: 'days' | 'month'
   default_hourly_rate?: number

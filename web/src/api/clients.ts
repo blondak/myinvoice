@@ -85,6 +85,8 @@ export interface AresLookupResult {
     legal_form?: string
     /** Zápis v OR pro PO (např. „Spisová značka C 45039 vedená u Krajského soudu v Plzni"). Prázdné u OSVČ. */
     commercial_register?: string
+    /** Typ poplatníka odvozený z právní formy: 'fo' = OSVČ (DPFO), 'po' = firma (DPPO), '' = neurčeno. */
+    taxpayer_type?: 'fo' | 'po' | ''
   }
 }
 

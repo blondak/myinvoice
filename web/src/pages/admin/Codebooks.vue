@@ -103,7 +103,7 @@ function newSupplier() {
   Object.assign(supplierDraft, {
     company_name: '', street: '', city: '', zip: '', email: '',
     country_iso2: 'CZ', ic: '', dic: '', is_vat_payer: true,
-    commercial_register: '',
+    commercial_register: '', taxpayer_type: undefined,
     default_payment_due_days: 14, default_hourly_rate: 1500,
   })
   Object.assign(supplierBank, { currency: 'CZK', account_number: '', bank_code: '', bank_name: '', iban: '', bic: '' })
@@ -137,6 +137,7 @@ async function supplierLookupAres() {
     supplierDraft.dic          = d.dic          || supplierDraft.dic
     supplierDraft.is_vat_payer = d.is_vat_payer
     supplierDraft.commercial_register = d.commercial_register || supplierDraft.commercial_register
+    if (d.taxpayer_type === 'fo' || d.taxpayer_type === 'po') supplierDraft.taxpayer_type = d.taxpayer_type
     supplierAresMessage.value = { type: 'success', text: t('supplier.ares_loaded', { name: d.company_name }) }
   } catch (e: any) {
     supplierAresMessage.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.ares_failed') }

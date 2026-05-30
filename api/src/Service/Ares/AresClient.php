@@ -117,10 +117,26 @@ final class AresClient
             'is_vat_payer' => ($regs['stavZdrojeDph'] ?? '') === 'AKTIVNI',
             'date_active'  => (string) ($raw['datumVzniku'] ?? ''),
             'legal_form'   => (string) ($raw['pravniForma'] ?? ''),
+            // Typ poplatníka odvozený z právní formy: OSVČ → 'fo' (DPFO), firma → 'po' (DPPO).
+            'taxpayer_type' => self::taxpayerTypeFromLegalForm((string) ($raw['pravniForma'] ?? '')),
             // Zápis v OR pro PO (např. „Spisová značka C 45039 vedená u Krajského
             // soudu v Plzni"). U OSVČ / subjektů mimo OR zůstává prázdné.
             'commercial_register' => $this->extractCommercialRegister($raw),
         ];
+    }
+
+    /**
+     * Typ poplatníka z kódu právní formy (ARES `pravniForma`):
+     *  - kódy 100–109 = fyzické osoby podnikající (OSVČ) → 'fo' (DPFO),
+     *  - jakýkoli jiný neprázdný kód = právnická osoba → 'po' (DPPO),
+     *  - prázdné = '' (nedeterminujeme, necháme uživateli).
+     */
+    private static function taxpayerTypeFromLegalForm(string $pf): string
+    {
+        if ($pf === '') {
+            return '';
+        }
+        return preg_match('/^10\d$/', $pf) === 1 ? 'fo' : 'po';
     }
 
     /**

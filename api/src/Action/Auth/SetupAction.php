@@ -171,9 +171,9 @@ final class SetupAction
         $stmt = $pdo->prepare(
             'INSERT INTO supplier
             (company_name, display_name, street, city, zip, country_id, ic, dic, is_vat_payer,
-             email, phone, web, commercial_register, default_currency_id, default_vat_rate_id,
+             email, phone, web, commercial_register, taxpayer_type, default_currency_id, default_vat_rate_id,
              default_payment_due_days, default_payment_due_unit, default_hourly_rate)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)'
         );
         $stmt->execute([
             (string) ($supplier['company_name'] ?? ''),
@@ -189,6 +189,7 @@ final class SetupAction
             (string) ($supplier['phone'] ?? '') ?: null,
             (string) ($supplier['web'] ?? '') ?: null,
             (string) ($supplier['commercial_register'] ?? '') ?: null,
+            in_array($supplier['taxpayer_type'] ?? null, ['fo', 'po'], true) ? (string) $supplier['taxpayer_type'] : null,
             $vatRateId,
             (int) ($supplier['default_payment_due_days'] ?? 7),
             in_array($supplier['default_payment_due_unit'] ?? null, ['days', 'month'], true)

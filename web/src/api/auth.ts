@@ -66,6 +66,7 @@ export interface SetupPayload {
     phone?: string
     web?: string
     commercial_register?: string
+    taxpayer_type?: 'fo' | 'po'
     default_currency?: string
     default_payment_due_days?: number
     default_hourly_rate?: number
