@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **ISDOC export — odběratel bez IČO.** Když klient nemá vyplněné IČO (typicky B2C / fyzická osoba), posílal se fiktivní `<ID>0</ID>`. Nově se vyzařuje prázdný `<ID></ID>` (XSD validní), takže účetní software nedostává neexistující identifikátor.
+
 ## [4.9.2] — 2026-05-31
 
 Rekapitulace DPH se nově automaticky seedne z importovaného dokladu napříč všemi zdroji a oprava ISDOC exportu/importu dle oficiálního standardu 6.0.2 (typy dokladů a nedaňové doklady).

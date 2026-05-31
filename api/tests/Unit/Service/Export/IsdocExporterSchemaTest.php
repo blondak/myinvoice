@@ -101,6 +101,26 @@ final class IsdocExporterSchemaTest extends TestCase
         self::assertSame(2, $this->xpathCount($xml, '//i:InvoiceLine/i:ClassifiedTaxCategory[i:VATApplicable="false"]'));
     }
 
+    public function testMissingCustomerIcEmitsEmptyIdNotZero(): void
+    {
+        // Odběratel bez IČO (B2C / fyzická osoba) → <ID> prázdné, ne fiktivní "0".
+        // XSD to dovolí (IDType = neomezený xs:string) a doklad zůstává validní.
+        $xml = $this->exporter->buildXml($this->invoice([
+            'client_snapshot' => [
+                'company_name' => 'Jan Novák',
+                'street'       => 'Nádražní 7',
+                'city'         => 'Ostrava',
+                'zip'          => '70030',
+                'country_iso2' => 'CZ',
+            ],
+        ]));
+
+        $this->assertValidIsdoc($xml);
+        self::assertSame('', $this->xpathOne($xml, '//i:AccountingCustomerParty/i:Party/i:PartyIdentification/i:ID'));
+        // Dodavatel (tenant) IČO má → není prázdné.
+        self::assertSame('01698401', $this->xpathOne($xml, '//i:AccountingSupplierParty/i:Party/i:PartyIdentification/i:ID'));
+    }
+
     public function testTaxInvoiceLinesOmitVatApplicable(): void
     {
         // Obrácené pravidlo neplatí: na daňovém dokladu řádky VATApplicable mít nemusejí

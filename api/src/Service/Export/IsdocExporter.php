@@ -414,7 +414,10 @@ final class IsdocExporter
         $partyEl = $dom->createElementNS(self::NS, 'Party');
 
         $idEl = $dom->createElementNS(self::NS, 'PartyIdentification');
-        $this->el($dom, $idEl, 'ID', (string) ($party['ic'] ?? '0'));
+        // PartyIdentification i jeho <ID> (IČ) jsou v XSD povinné, ale IDType je
+        // neomezený xs:string → prázdný <ID></ID> je validní. Když subjekt IČO nemá
+        // (typicky B2C odběratel — fyzická osoba), posíláme prázdno, NE fiktivní "0".
+        $this->el($dom, $idEl, 'ID', trim((string) ($party['ic'] ?? '')));
         $partyEl->appendChild($idEl);
 
         $nameEl = $dom->createElementNS(self::NS, 'PartyName');
