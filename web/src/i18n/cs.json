@@ -694,6 +694,7 @@
     "days_ago": "před {n} dny"
   },
   "common": {
+    "view_all": "Zobrazit vše",
     "year": "Rok", "month": "Měsíc",
     "loading": "Načítám…", "save": "Uložit", "cancel": "Zrušit", "add": "Přidat",
     "delete": "Smazat", "edit": "Upravit", "back": "← Zpět", "yes": "Ano", "no": "Ne",

@@ -421,7 +421,8 @@ onMounted(loadAll)
         <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-600 mb-2">{{ t('crm.kpi_section') }}</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <!-- Revenue -->
-        <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
+        <div @click="$router.push('/stats')"
+          class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5 cursor-pointer hover:border-primary-300 transition">
           <div class="flex items-center justify-between mb-1">
             <span class="text-xs uppercase tracking-wide text-neutral-500 font-medium">{{ t('crm.kpi.revenue') }}</span>
             <svg class="w-5 h-5 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -446,7 +447,8 @@ onMounted(loadAll)
         </div>
 
         <!-- Costs -->
-        <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
+        <div @click="$router.push('/purchase-stats')"
+          class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5 cursor-pointer hover:border-primary-300 transition">
           <div class="flex items-center justify-between mb-1">
             <span class="text-xs uppercase tracking-wide text-neutral-500 font-medium">{{ t('crm.kpi.costs') }}</span>
             <svg class="w-5 h-5 text-danger-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -626,9 +628,15 @@ onMounted(loadAll)
             <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               {{ t('crm.aging.receivables_title') }} <span class="normal-case font-normal text-[10px] text-neutral-400">({{ t('crm.snapshot_now') }})</span>
             </h3>
-            <span class="text-sm font-mono text-neutral-700">
-              {{ formatMoney(agingTotal, displayCurrency) }}
-            </span>
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-mono text-neutral-700">
+                {{ formatMoney(agingTotal, displayCurrency) }}
+              </span>
+              <RouterLink :to="{ path: '/invoices', query: { year: 'all', overdue: '1' } }"
+                class="text-xs text-primary-600 hover:text-primary-700 hover:underline whitespace-nowrap">
+                {{ t('common.view_all') }}
+              </RouterLink>
+            </div>
           </header>
           <div v-if="agingForCurrency.length === 0" class="p-6 text-center text-neutral-500 text-sm">
             {{ t('crm.aging.no_open') }}
@@ -654,9 +662,15 @@ onMounted(loadAll)
             <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               {{ t('crm.aging.payables_title') }} <span class="normal-case font-normal text-[10px] text-neutral-400">({{ t('crm.snapshot_now') }})</span>
             </h3>
-            <span class="text-sm font-mono text-neutral-700">
-              {{ formatMoney(agingPayTotal, displayCurrency) }}
-            </span>
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-mono text-neutral-700">
+                {{ formatMoney(agingPayTotal, displayCurrency) }}
+              </span>
+              <RouterLink :to="{ path: '/purchase-invoices', query: { overdue: '1' } }"
+                class="text-xs text-primary-600 hover:text-primary-700 hover:underline whitespace-nowrap">
+                {{ t('common.view_all') }}
+              </RouterLink>
+            </div>
           </header>
           <div v-if="agingPayForCurrency.length === 0" class="p-6 text-center text-neutral-500 text-sm">
             {{ t('crm.aging.no_pay') }}

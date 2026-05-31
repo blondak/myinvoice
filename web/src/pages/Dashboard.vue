@@ -151,7 +151,8 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :class="singleCurrency ? 'lg:grid-cols-3' : 'lg:grid-cols-4'">
           <!-- Revenue card: 1 měna → vysoký vlevo (2 řádky); více měn → široký (2 sloupce) -->
           <div v-for="c in summary.kpi.per_currency" :key="c.currency"
-            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm"
+            @click="router.push({ path: '/invoices', query: { year: String(summary.year), currency: c.currency } })"
+            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition"
             :class="singleCurrency ? 'lg:row-span-2 flex flex-col' : 'md:col-span-2'">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.revenue', { year: summary.year, currency: c.currency }) }}</div>
             <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(c.this_year, c.currency) }}</div>
@@ -173,13 +174,15 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
           </div>
 
           <!-- 4 single-column boxes: issued count, overdue, upcoming, avg payment -->
-          <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div @click="router.push({ path: '/invoices', query: { year: String(summary.year) } })"
+            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.issued_count', { year: summary.year }) }}</div>
             <div class="text-2xl font-semibold text-neutral-900">{{ summary.kpi.issued_count_ytd }}</div>
             <div class="text-xs text-neutral-400 mt-1">{{ t('dashboard.invoices_unit') }}</div>
           </div>
 
-          <div class="bg-surface border rounded-lg p-5 shadow-sm" :class="summary.kpi.overdue_count > 0 ? 'border-danger-500/40' : 'border-neutral-200'">
+          <div @click="router.push({ path: '/invoices', query: { year: 'all', overdue: '1' } })"
+            class="bg-surface border rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition" :class="summary.kpi.overdue_count > 0 ? 'border-danger-500/40' : 'border-neutral-200'">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.overdue') }}</div>
             <div class="text-2xl font-semibold" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-900'">
               {{ summary.kpi.overdue_count }}
@@ -190,7 +193,8 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
             </div>
           </div>
 
-          <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div @click="router.push({ path: '/invoices', query: { year: 'all', unpaid: '1' } })"
+            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.upcoming') }}</div>
             <div class="text-2xl font-semibold text-neutral-900">{{ summary.unpaid_upcoming.length }}</div>
             <div class="text-xs mt-1 text-neutral-400 flex flex-wrap gap-x-3">
@@ -199,7 +203,8 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
             </div>
           </div>
 
-          <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div @click="router.push('/stats')"
+            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.avg_payment') }}</div>
             <div class="text-2xl font-semibold text-neutral-900">
               {{ summary.kpi.avg_payment_days !== null ? summary.kpi.avg_payment_days + ' ' + t('dashboard.days') : '—' }}
@@ -218,14 +223,16 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <!-- Costs YTD -->
-          <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div @click="router.push({ path: '/purchase-invoices', query: { year: String(summary.year) } })"
+            class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_costs_ytd', { year: summary.year }) }}</div>
             <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(summary.kpi.purchase_costs_ytd, 'CZK') }}</div>
             <div class="text-xs text-neutral-400 mt-1">{{ summary.kpi.purchase_count_ytd }} {{ t('dashboard.invoices_unit') }}</div>
           </div>
 
           <!-- Unpaid -->
-          <div class="bg-surface border rounded-lg p-5 shadow-sm"
+          <div @click="router.push({ path: '/purchase-invoices', query: { unpaid: '1' } })"
+            class="bg-surface border rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition"
             :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'border-warning-500/40' : 'border-neutral-200'">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_unpaid') }}</div>
             <div class="text-2xl font-semibold"
@@ -239,7 +246,8 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
           </div>
 
           <!-- Overdue (vždy zobrazené pro grid alignment, červené pokud > 0) -->
-          <div class="bg-surface border rounded-lg p-5 shadow-sm"
+          <div @click="router.push({ path: '/purchase-invoices', query: { overdue: '1' } })"
+            class="bg-surface border rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition"
             :class="(summary.kpi.purchase_overdue_count ?? 0) > 0 ? 'border-danger-500/40' : 'border-neutral-200'">
             <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_overdue') }}</div>
             <div class="text-2xl font-semibold"
@@ -248,10 +256,9 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
             </div>
             <div class="text-xs mt-1"
               :class="(summary.kpi.purchase_overdue_count ?? 0) > 0 ? 'text-danger-500' : 'text-neutral-400'">
-              <RouterLink v-if="(summary.kpi.purchase_overdue_count ?? 0) > 0"
-                to="/purchase-invoices?overdue=1" class="hover:underline">
+              <span v-if="(summary.kpi.purchase_overdue_count ?? 0) > 0" class="hover:underline">
                 {{ t('dashboard.purchase_overdue_link') }}
-              </RouterLink>
+              </span>
               <span v-else>{{ t('dashboard.all_ok') }}</span>
             </div>
           </div>
@@ -303,7 +310,8 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
         </h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div v-for="b in summary.due_buckets" :key="`db-today-${b.currency}`"
-          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm"
+          @click="router.push({ path: '/invoices', query: { year: 'all', unpaid: '1' } })"
+          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition"
           :class="{ 'border-warning-500/40 bg-warning-50/20': b.today_count > 0 }">
           <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.due_today') }}</div>
           <div class="text-2xl font-semibold" :class="b.today_count > 0 ? 'text-warning-600' : 'text-neutral-300'">
@@ -314,13 +322,15 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
           </div>
         </div>
         <div v-for="b in summary.due_buckets" :key="`db-week-${b.currency}`"
-          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          @click="router.push({ path: '/invoices', query: { year: 'all', unpaid: '1' } })"
+          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
           <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.due_this_week') }}</div>
           <div class="text-2xl font-semibold text-neutral-900">{{ b.week_count }}</div>
           <div class="text-xs mt-1 font-mono text-neutral-500">{{ formatMoney(b.week_total, b.currency) }}</div>
         </div>
         <div v-for="b in summary.due_buckets" :key="`db-month-${b.currency}`"
-          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          @click="router.push({ path: '/invoices', query: { year: 'all', unpaid: '1' } })"
+          class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm cursor-pointer hover:border-primary-300 transition">
           <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.due_this_month') }}</div>
           <div class="text-2xl font-semibold text-neutral-900">{{ b.month_count }}</div>
           <div class="text-xs mt-1 font-mono text-neutral-500">{{ formatMoney(b.month_total, b.currency) }}</div>
@@ -357,9 +367,15 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
         <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
           <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
             <h3 class="font-semibold">{{ t('dashboard.overdue_table') }}</h3>
-            <span v-if="summary.overdue.length" class="text-xs px-2 py-0.5 rounded bg-danger-50 text-danger-500">
-              {{ summary.overdue.length }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span v-if="summary.overdue.length" class="text-xs px-2 py-0.5 rounded bg-danger-50 text-danger-500">
+                {{ summary.overdue.length }}
+              </span>
+              <RouterLink :to="{ path: '/invoices', query: { year: 'all', overdue: '1' } }"
+                class="text-xs text-primary-600 hover:text-primary-700 hover:underline">
+                {{ t('common.view_all') }}
+              </RouterLink>
+            </div>
           </header>
           <div v-if="!summary.overdue.length" class="p-6 text-center text-sm text-neutral-500">
             {{ t('dashboard.overdue_none') }}
@@ -416,9 +432,15 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
         <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
           <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
             <h3 class="font-semibold">{{ t('dashboard.unpaid_upcoming') }}</h3>
-            <span v-if="summary.unpaid_upcoming.length" class="text-xs px-2 py-0.5 rounded bg-primary-100 text-primary-700">
-              {{ summary.unpaid_upcoming.length }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span v-if="summary.unpaid_upcoming.length" class="text-xs px-2 py-0.5 rounded bg-primary-100 text-primary-700">
+                {{ summary.unpaid_upcoming.length }}
+              </span>
+              <RouterLink :to="{ path: '/invoices', query: { year: 'all', unpaid: '1' } }"
+                class="text-xs text-primary-600 hover:text-primary-700 hover:underline">
+                {{ t('common.view_all') }}
+              </RouterLink>
+            </div>
           </header>
           <div v-if="!summary.unpaid_upcoming.length" class="p-6 text-center text-sm text-neutral-500">
             {{ t('dashboard.unpaid_none') }}

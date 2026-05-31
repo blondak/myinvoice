@@ -694,6 +694,7 @@
     "days_ago": "{n} days ago"
   },
   "common": {
+    "view_all": "View all",
     "year": "Year", "month": "Month",
     "loading": "Loading…", "save": "Save", "cancel": "Cancel", "add": "Add",
     "delete": "Delete", "edit": "Edit", "back": "← Back", "yes": "Yes", "no": "No",
