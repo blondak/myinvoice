@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.4] — 2026-05-31
+
+Sjednocení akčních tlačítek v detailech a čitelnější výkaz práce.
+
+### Changed
+
+- **Jednotná akční lišta v detailech** (vydané i přijaté faktury, klient, zakázka, pravidelná fakturace) — tlačítko **„Upravit"** je vždy **první** a jednotně **zeleně (outline)**; hlavní akce (Vystavit, Vystavit konečnou, Odeslat, Označit jako přijaté/zaúčtováno/zaplaceno, Nová faktura) jsou plné fialové (primary). Méně významné akce (Klonovat, PDF, Exporty, Výkaz) následují až za hlavními, Smazat zůstává poslední. Zelená je v tmavém režimu doladěná pro čitelnost.
+- **Výkaz práce (PDF)** — sloupce **Hodiny / Sazba / Celkem** skryjí nadbytečná desetinná „,00", ale jen pokud jsou **všechny hodnoty v daném sloupci celé** (jediný necelý řádek ponechá u celého sloupce 2 desetinná místa). Platí pro samostatný výkaz i výkaz vložený ve faktuře.
+
 ## [4.7.3] — 2026-05-31
 
 Daňový audit režimu cen „s DPH": opraveny případy, kdy kopírované doklady nedědily režim a totály se nafoukly o DPH.
