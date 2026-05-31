@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 // RouterLink se používá i v Add Currency modalu — import už pokrývá
 import { useI18n } from 'vue-i18n'
@@ -122,6 +122,24 @@ const existingPdf = ref<{ path: string; hash: string; size: number; name: string
 const pdfPreviewOpen = ref(false) // default collapsed — user explicitně otevře
 const pdfUploading = ref(false)
 const dropzoneVisible = ref(true)
+
+// Náhled PDF/obrázku připraveného k nahrání u NOVÉ faktury (ještě není na serveru).
+// Soubor držíme jen v paměti prohlížeče (File), náhled tvoříme přes blob: URL —
+// žádný server round-trip není potřeba. URL musíme po výměně/zrušení uvolnit (revoke),
+// jinak by blob zůstal viset v paměti.
+const pendingPdfUrl = ref<string | null>(null)
+const pendingPdfPreviewOpen = ref(false)
+function setPendingPdfUrl(file: File | null) {
+  if (pendingPdfUrl.value) {
+    URL.revokeObjectURL(pendingPdfUrl.value)
+    pendingPdfUrl.value = null
+  }
+  pendingPdfPreviewOpen.value = false
+  if (file) pendingPdfUrl.value = URL.createObjectURL(file)
+}
+// Pro náhled obrázku (JPG/PNG/…) použijeme <img>, pro PDF <iframe> s PDF viewerem.
+const pendingPdfIsImage = computed(() => !!pendingPdfFile.value?.type.startsWith('image/'))
+onBeforeUnmount(() => setPendingPdfUrl(null))
 
 // Diagnostické varování z AI extrakce (např. mezisoučty čteny jako items).
 // Backend sets via PurchaseInvoiceRepository::setExtractionWarning po sanity-check.
@@ -534,6 +552,7 @@ async function onPdfDropped(file: File) {
     await uploadPdfToInvoice(invoiceId.value, file)
   } else {
     pendingPdfFile.value = file
+    setPendingPdfUrl(file)
     dropzoneVisible.value = false
     toast.success(t('purchase_invoice.pdf.pending_upload', { name: file.name }))
   }
@@ -542,6 +561,7 @@ async function onPdfDropped(file: File) {
 // Odebrání souboru připraveného k nahrání (u nové faktury, před uložením).
 function clearPendingPdf() {
   pendingPdfFile.value = null
+  setPendingPdfUrl(null)
   dropzoneVisible.value = true
 }
 
@@ -593,6 +613,7 @@ async function onReplacePdf() {
   }
   existingPdf.value = null
   pendingPdfFile.value = null
+  setPendingPdfUrl(null)
   dropzoneVisible.value = true
 }
 
@@ -657,6 +678,7 @@ async function submit() {
     if (pendingPdfFile.value) {
       await uploadPdfToInvoice(inv.id, pendingPdfFile.value)
       pendingPdfFile.value = null
+      setPendingPdfUrl(null)
     }
     toast.success(isEdit.value ? t('common.saved') : t('common.created'))
     // Non-blocking varování ze serveru (např. dobropis s kladným součtem — issue #35).
@@ -749,14 +771,57 @@ function fieldErr(key: string): string | null {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            @click="clearPendingPdf"
-            class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md inline-flex items-center gap-1.5 shrink-0"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            {{ t('common.remove') }}
-          </button>
+          <div class="flex items-center gap-2 flex-wrap shrink-0">
+            <button
+              v-if="pendingPdfUrl"
+              type="button"
+              @click="pendingPdfPreviewOpen = !pendingPdfPreviewOpen"
+              class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              {{ pendingPdfPreviewOpen ? t('purchase_invoice.pdf.hide') : t('purchase_invoice.pdf.show') }}
+            </button>
+            <a
+              v-if="pendingPdfUrl"
+              :href="pendingPdfUrl"
+              target="_blank"
+              rel="noopener"
+              class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              {{ t('purchase_invoice.pdf.open') }}
+            </a>
+            <button
+              type="button"
+              @click="clearPendingPdf"
+              class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              {{ t('common.remove') }}
+            </button>
+          </div>
+        </div>
+        <!-- Inline náhled ze souboru v paměti (blob: URL) — faktura ještě není na serveru.
+             Obrázek přes <img>, PDF přes <embed> (NE <iframe> ani #view= fragment — Chrome
+             odmítá blob PDF v iframu / s fragmentem jako „local resource"). Když ani <embed>
+             nevykreslí, je tu tlačítko „Otevřít" pro zobrazení v nové záložce. -->
+        <div v-if="pendingPdfPreviewOpen && pendingPdfUrl" class="bg-neutral-100 border-t border-success-500/30">
+          <img
+            v-if="pendingPdfIsImage"
+            :src="pendingPdfUrl"
+            :alt="pendingPdfFile?.name || 'preview'"
+            class="w-full max-h-[80vh] object-contain mx-auto"
+          />
+          <embed
+            v-else
+            :src="pendingPdfUrl"
+            type="application/pdf"
+            class="w-full h-[80vh] border-0"
+            :title="pendingPdfFile?.name || 'PDF'"
+          />
         </div>
       </div>
 
