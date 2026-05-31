@@ -87,6 +87,9 @@ use MyInvoice\Action\PurchaseInvoice\UpdatePurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\UploadPurchaseInvoicePdfAction;
 use MyInvoice\Action\Recurring\RecurringTemplateAction;
 use MyInvoice\Action\Invoice\IssueFinalFromProformaAction;
+use MyInvoice\Action\Invoice\AdvanceCandidatesAction as InvoiceAdvanceCandidatesAction;
+use MyInvoice\Action\Invoice\LinkAdvanceAction as LinkInvoiceAdvanceAction;
+use MyInvoice\Action\Invoice\UnlinkAdvanceAction as UnlinkInvoiceAdvanceAction;
 use MyInvoice\Action\Invoice\PdfAction;
 use MyInvoice\Action\Invoice\ListPdfsAction;
 use MyInvoice\Action\Invoice\DownloadArchivedPdfAction;
@@ -262,6 +265,10 @@ final class Routes
         $app->post   ('/api/invoices/{id:[0-9]+}/reminder',  SendReminderAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/reminder-test', SendTestReminderAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/issue-final', IssueFinalFromProformaAction::class);
+        // Zpětné propojení daňového dokladu se zálohovou fakturou (proforma)
+        $app->get    ('/api/invoices/{id:[0-9]+}/advance-candidates', InvoiceAdvanceCandidatesAction::class);
+        $app->post   ('/api/invoices/{id:[0-9]+}/link-advance',       LinkInvoiceAdvanceAction::class);
+        $app->delete ('/api/invoices/{id:[0-9]+}/link-advance',       UnlinkInvoiceAdvanceAction::class);
         $app->post   ('/api/invoices/bulk-reissue',          BulkReissueAction::class);
         $app->post   ('/api/invoices/bulk-reminder',         BulkSendRemindersAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/clone',     CloneInvoiceAction::class);

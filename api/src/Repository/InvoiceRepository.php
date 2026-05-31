@@ -130,6 +130,25 @@ final class InvoiceRepository
             ];
         }
 
+        // Existují u tohoto odběratele nespárované zálohy (proforma) k propojení?
+        // Počítáme jen pro daňové doklady bez vazby — jinak nemá nabídka „spárovat" smysl.
+        // UI tlačítko se schová, když je false (stejná podmínka jako advanceCandidates()).
+        $row['has_advance_candidates'] = false;
+        if (($row['invoice_type'] ?? '') === 'invoice' && empty($row['parent_invoice_id'])) {
+            $cand = $pdo->prepare(
+                "SELECT EXISTS (
+                          SELECT 1 FROM invoices i
+                           WHERE i.supplier_id = ? AND i.client_id = ?
+                             AND i.invoice_type = 'proforma' AND i.status != 'cancelled'
+                             AND i.id <> ?
+                             AND NOT EXISTS (SELECT 1 FROM invoices ch
+                                              WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice')
+                        )"
+            );
+            $cand->execute([(int) $row['supplier_id'], (int) $row['client_id'], $id]);
+            $row['has_advance_candidates'] = (bool) $cand->fetchColumn();
+        }
+
         return $row;
     }
 
@@ -144,6 +163,120 @@ final class InvoiceRepository
         $this->db->pdo()->prepare(
             'UPDATE invoices SET exchange_rate = ?, exchange_rate_date = ? WHERE id = ?'
         )->execute([$rate, $rateDate, $invoiceId]);
+    }
+
+    // ── Propojení zálohové faktury (proforma) s vyúčtovacím daňovým dokladem ──
+    // Symetrické s PurchaseInvoiceRepository::linkAdvance — u vydaných je „záloha"
+    // = invoice_type='proforma', vazba se ukládá NA finální fakturu (parent_invoice_id),
+    // shodně s flow „vystavit daňový doklad ze zálohy". Zaplacení (status) se nemění.
+
+    /**
+     * Kandidáti k propojení: nespárované zálohové faktury (invoice_type='proforma')
+     * stejného odběratele a dodavatele jako finální faktura $finalId, které ještě
+     * nejsou navázané na žádný daňový doklad. Řazení: stejná měna → nejbližší hrubá
+     * částka → nejnovější.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function advanceCandidates(int $finalId, int $supplierId): array
+    {
+        $final = $this->find($finalId);
+        if ($final === null || (int) ($final['supplier_id'] ?? 0) !== $supplierId) {
+            return [];
+        }
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT i.id, i.varsymbol, i.invoice_type, i.status, i.issue_date,
+                    i.total_with_vat, cur.code AS currency
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.client_id = ?
+                AND i.invoice_type = 'proforma'
+                AND i.status != 'cancelled'
+                AND i.id <> ?
+                AND NOT EXISTS (SELECT 1 FROM invoices ch
+                                 WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice')
+              ORDER BY (i.currency_id = ?) DESC,
+                       ABS(i.total_with_vat - ?) ASC,
+                       i.issue_date DESC, i.id DESC
+              LIMIT 50"
+        );
+        $stmt->execute([
+            $supplierId, (int) $final['client_id'], $finalId,
+            (int) $final['currency_id'], (float) $final['total_with_vat'],
+        ]);
+        return array_map(fn (array $r) => [
+            'id'             => (int) $r['id'],
+            'varsymbol'      => $r['varsymbol'] !== null ? (string) $r['varsymbol'] : null,
+            'invoice_type'   => (string) $r['invoice_type'],
+            'status'         => (string) $r['status'],
+            'issue_date'     => $r['issue_date'] !== null ? (string) $r['issue_date'] : null,
+            'total_with_vat' => (float) $r['total_with_vat'],
+            'currency'       => (string) $r['currency'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
+    /**
+     * Propojí daňový doklad ($finalId) se zálohovou fakturou ($advanceId) — uloží
+     * parent_invoice_id na finální fakturu. Pokud finální nemá vyplněnou zálohu
+     * (advance_paid_amount = 0), doplní ji = total_with_vat proformy, aby amount_to_pay
+     * ukázal zbývající úhradu (amount_to_pay je generated column). Status NEMĚNÍ.
+     *
+     * Validace: oba doklady patří dodavateli, oba mají stejného odběratele,
+     * $advanceId je proforma, $finalId je běžný daňový doklad (invoice) bez rodiče.
+     *
+     * @throws \RuntimeException při porušení validace
+     */
+    public function linkAdvance(int $finalId, int $advanceId, int $supplierId): void
+    {
+        if ($finalId === $advanceId) {
+            throw new \RuntimeException('Nelze propojit doklad sám se sebou.');
+        }
+        $final   = $this->find($finalId);
+        $advance = $this->find($advanceId);
+        if ($final === null || $advance === null
+            || (int) ($final['supplier_id'] ?? 0) !== $supplierId
+            || (int) ($advance['supplier_id'] ?? 0) !== $supplierId) {
+            throw new \RuntimeException('Doklad nenalezen.');
+        }
+        if (($advance['invoice_type'] ?? '') !== 'proforma') {
+            throw new \RuntimeException('Propojit lze jen se zálohovou fakturou (proforma).');
+        }
+        if (($final['invoice_type'] ?? '') !== 'invoice') {
+            throw new \RuntimeException('Zálohu lze vyúčtovat jen běžným daňovým dokladem.');
+        }
+        if (!empty($final['parent_invoice_id'])) {
+            throw new \RuntimeException('Faktura už je propojena s jiným dokladem.');
+        }
+        if ((int) $final['client_id'] !== (int) $advance['client_id']) {
+            throw new \RuntimeException('Záloha i finální faktura musí mít stejného odběratele.');
+        }
+
+        $advanceTotal   = (float) $advance['total_with_vat'];
+        $setAdvancePaid = ((float) ($final['advance_paid_amount'] ?? 0)) == 0.0;
+
+        $sql = 'UPDATE invoices SET parent_invoice_id = ?'
+             . ($setAdvancePaid ? ', advance_paid_amount = ?' : '')
+             . ' WHERE id = ? AND supplier_id = ? AND parent_invoice_id IS NULL';
+        $params = $setAdvancePaid
+            ? [$advanceId, $advanceTotal, $finalId, $supplierId]
+            : [$advanceId, $finalId, $supplierId];
+        $this->db->pdo()->prepare($sql)->execute($params);
+    }
+
+    /**
+     * Zruší propojení daňového dokladu se zálohovou fakturou (parent_invoice_id = NULL).
+     * advance_paid_amount ponecháme (ruční korekce). Odpojí jen vazbu na proformu —
+     * původní fakturu storna/dobropisu (non-proforma parent) se nedotkne.
+     */
+    public function unlinkAdvance(int $finalId, int $supplierId): void
+    {
+        $this->db->pdo()->prepare(
+            "UPDATE invoices f
+                JOIN invoices p ON p.id = f.parent_invoice_id
+                SET f.parent_invoice_id = NULL
+              WHERE f.id = ? AND f.supplier_id = ? AND p.invoice_type = 'proforma'"
+        )->execute([$finalId, $supplierId]);
     }
 
     public function itemsFor(int $invoiceId): array

@@ -934,6 +934,16 @@
       "proforma": "Advance (proforma) invoice",
       "parent": "Original invoice"
     },
+    "advance_link": {
+      "none": "Not linked to any advance invoice.",
+      "pair": "Link an advance",
+      "unlink": "Unlink",
+      "unlink_confirm": "Unlink from the advance invoice?",
+      "linked": "Advance linked.",
+      "unlinked": "Link removed.",
+      "modal_title": "Select an advance invoice to link",
+      "no_candidates": "No unlinked advance invoices for this customer."
+    },
     "pdf_history": {
       "title": "PDF history",
       "sent": "Sent to client",

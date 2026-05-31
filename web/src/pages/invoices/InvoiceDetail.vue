@@ -3,7 +3,7 @@ import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vu
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment } from '@/api/invoices'
+import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment, type AdvanceCandidate } from '@/api/invoices'
 import { apiErrorMessage } from '@/api/errors'
 import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass } from '@/composables/useFormat'
 import { useAuthStore } from '@/stores/auth'
@@ -402,6 +402,66 @@ async function issueFinalFromProforma() {
     toast.error(e?.response?.data?.error?.message || t('invoice.issue_final_failed'))
   } finally {
     busy.value = null
+  }
+}
+
+// ── Zpětné propojení se zálohovou fakturou (proforma) — jako u přijatých faktur ──
+const advanceModalOpen = ref(false)
+const advanceCandidates = ref<AdvanceCandidate[]>([])
+const loadingCandidates = ref(false)
+const linkingAdvance = ref(false)
+
+// Daňový doklad bez rodiče → lze zpětně spárovat se zálohou.
+const canPairAdvance = computed(() =>
+  !!invoice.value
+  && invoice.value.invoice_type === 'invoice'
+  && !invoice.value.parent_invoice
+  && invoice.value.has_advance_candidates === true
+  && auth.canWrite)
+// Propojeno se zálohou (proforma) → lze odpojit. Rodič storna/dobropisu (non-proforma) ne.
+const linkedProforma = computed(() =>
+  invoice.value?.parent_invoice?.invoice_type === 'proforma' ? invoice.value.parent_invoice : null)
+
+async function openAdvanceModal() {
+  if (!invoice.value) return
+  advanceModalOpen.value = true
+  loadingCandidates.value = true
+  try {
+    advanceCandidates.value = await invoicesApi.advanceCandidates(invoice.value.id)
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    loadingCandidates.value = false
+  }
+}
+
+async function linkAdvance(advanceId: number) {
+  if (!invoice.value || linkingAdvance.value) return
+  linkingAdvance.value = true
+  try {
+    invoice.value = await invoicesApi.linkAdvance(invoice.value.id, advanceId)
+    advanceModalOpen.value = false
+    toast.success(t('invoice.advance_link.linked'))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    linkingAdvance.value = false
+  }
+}
+
+async function unlinkAdvance() {
+  if (!invoice.value || linkingAdvance.value) return
+  if (!confirm(t('invoice.advance_link.unlink_confirm'))) return
+  linkingAdvance.value = true
+  try {
+    invoice.value = await invoicesApi.unlinkAdvance(invoice.value.id)
+    toast.success(t('invoice.advance_link.unlinked'))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    linkingAdvance.value = false
   }
 }
 
@@ -944,12 +1004,59 @@ async function updateApprovalStatus() {
       <span class="text-primary-700">{{ t('invoice.linked.final_invoice') }}</span>
       <span class="font-medium text-primary-700 font-mono">{{ invoice.final_invoice.varsymbol || `#${invoice.final_invoice.id}` }} →</span>
     </RouterLink>
-    <RouterLink v-if="invoice.parent_invoice"
+    <!-- Rodič storna/dobropisu (původní faktura) → prostý odkaz -->
+    <RouterLink v-if="invoice.parent_invoice && !linkedProforma"
       :to="`/invoices/${invoice.parent_invoice.id}`"
       class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm hover:bg-primary-100 transition mb-4">
-      <span class="text-primary-700">{{ invoice.parent_invoice.invoice_type === 'proforma' ? t('invoice.linked.proforma') : t('invoice.linked.parent') }}</span>
+      <span class="text-primary-700">{{ t('invoice.linked.parent') }}</span>
       <span class="font-medium text-primary-700 font-mono">{{ invoice.parent_invoice.varsymbol || `#${invoice.parent_invoice.id}` }} →</span>
     </RouterLink>
+    <!-- Propojeno se zálohou (proforma) → odkaz + zrušení propojení -->
+    <div v-else-if="linkedProforma"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm mb-4">
+      <span class="text-primary-700 min-w-0">
+        {{ t('invoice.linked.proforma') }}
+        <RouterLink :to="`/invoices/${linkedProforma.id}`" class="font-mono font-medium hover:underline">
+          {{ linkedProforma.varsymbol || `#${linkedProforma.id}` }}
+        </RouterLink>
+      </span>
+      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance" :disabled="linkingAdvance"
+        class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0 bg-surface">
+        {{ t('invoice.advance_link.unlink') }}
+      </button>
+    </div>
+    <!-- Daňový doklad bez vazby → nabídka spárovat se zálohou -->
+    <div v-else-if="canPairAdvance"
+      class="flex items-center justify-between gap-3 bg-neutral-50 border border-neutral-200 rounded-lg px-4 py-2.5 text-sm mb-4">
+      <span class="text-neutral-500">{{ t('invoice.advance_link.none') }}</span>
+      <button type="button" @click="openAdvanceModal"
+        class="cursor-pointer text-xs px-3 py-1.5 border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md shrink-0 bg-surface">
+        {{ t('invoice.advance_link.pair') }}
+      </button>
+    </div>
+
+    <!-- Modal výběru zálohové faktury k propojení -->
+    <div v-if="advanceModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="advanceModalOpen = false">
+      <div class="bg-surface rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
+          <h3 class="font-medium">{{ t('invoice.advance_link.modal_title') }}</h3>
+          <button type="button" @click="advanceModalOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-600">✕</button>
+        </div>
+        <div class="p-4 overflow-y-auto">
+          <div v-if="loadingCandidates" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
+          <div v-else-if="advanceCandidates.length === 0" class="text-sm text-neutral-500">{{ t('invoice.advance_link.no_candidates') }}</div>
+          <ul v-else class="space-y-2">
+            <li v-for="cand in advanceCandidates" :key="cand.id">
+              <button type="button" @click="linkAdvance(cand.id)" :disabled="linkingAdvance"
+                class="cursor-pointer w-full text-left px-3 py-2 border border-neutral-200 rounded-md hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50 flex justify-between items-center gap-3">
+                <span class="font-mono text-sm">{{ cand.varsymbol || ('#' + cand.id) }}</span>
+                <span class="text-sm text-neutral-500">{{ cand.issue_date ? formatDate(cand.issue_date) : '' }} · {{ formatMoney(cand.total_with_vat, cand.currency) }}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">

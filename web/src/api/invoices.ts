@@ -4,6 +4,17 @@ export type InvoiceType = 'invoice' | 'proforma' | 'credit_note' | 'cancellation
 export type InvoiceStatus = 'draft' | 'issued' | 'sent' | 'reminded' | 'paid' | 'cancelled'
 export type ApprovalStatus = 'none' | 'requested' | 'approved' | 'rejected'
 
+/** Nespárovaná zálohová faktura (proforma) nabídnutá k propojení s daňovým dokladem. */
+export interface AdvanceCandidate {
+  id: number
+  varsymbol: string | null
+  invoice_type: InvoiceType
+  status: InvoiceStatus
+  issue_date: string | null
+  total_with_vat: number
+  currency: string
+}
+
 export interface InvoiceItem {
   id?: number
   invoice_id?: number
@@ -70,6 +81,8 @@ export interface Invoice {
   // u dokladu s parent_invoice_id → rodič (proforma / původní faktura).
   final_invoice?: { id: number; varsymbol: string | null; status: InvoiceStatus } | null
   parent_invoice?: { id: number; varsymbol: string | null; status: InvoiceStatus; invoice_type: InvoiceType } | null
+  // U daňového dokladu bez vazby: existují u odběratele nespárované zálohy k propojení?
+  has_advance_candidates?: boolean
   recurring_template_id: number | null
   advance_paid_amount: number
   discount_percent: number
@@ -332,6 +345,13 @@ export const invoicesApi = {
       `/invoices/${proformaId}/issue-final`,
       opts || {},
     ).then(r => r.data),
+  // Zpětné propojení daňového dokladu se zálohovou fakturou (proforma)
+  advanceCandidates: (id: number) =>
+    api.get<{ candidates: AdvanceCandidate[] }>(`/invoices/${id}/advance-candidates`).then(r => r.data.candidates),
+  linkAdvance: (id: number, advanceId: number) =>
+    api.post<Invoice>(`/invoices/${id}/link-advance`, { advance_id: advanceId }).then(r => r.data),
+  unlinkAdvance: (id: number) =>
+    api.delete<Invoice>(`/invoices/${id}/link-advance`).then(r => r.data),
   clone: (id: number, opts?: { increment_month_in_descriptions?: boolean; issue_date?: string }) =>
     api.post<{ draft_id: number }>(`/invoices/${id}/clone`, opts || {}).then(r => r.data),
   bulkReissue: (invoiceIds: number[], opts?: { increment_month_in_descriptions?: boolean; issue_date?: string }) =>

@@ -934,6 +934,16 @@
       "proforma": "Zálohová faktura",
       "parent": "Původní faktura"
     },
+    "advance_link": {
+      "none": "Není propojeno se zálohovou fakturou.",
+      "pair": "Spárovat se zálohou",
+      "unlink": "Zrušit propojení",
+      "unlink_confirm": "Zrušit propojení se zálohovou fakturou?",
+      "linked": "Záloha propojena.",
+      "unlinked": "Propojení zrušeno.",
+      "modal_title": "Vyber zálohovou fakturu k propojení",
+      "no_candidates": "Žádné nespárované zálohové faktury tohoto odběratele."
+    },
     "pdf_history": {
       "title": "Historie PDF",
       "sent": "Odesláno klientovi",
