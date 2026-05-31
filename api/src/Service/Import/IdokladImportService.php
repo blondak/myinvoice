@@ -210,7 +210,7 @@ final class IdokladImportService
 
     /**
      * Import IssuedInvoices → invoices. MVP mapping: header + items, status='draft'.
-     * Dobropisy (IssuedInvoiceCorrections) jsou separátní endpoint a dělají se ve fázi 3.
+     * Dobropisy (CreditNotes) jsou separátní endpoint a dělají se ve fázi 3.
      *
      * Note: faktury z iDoklad nemají project_id (oni nemají koncept projektů jako my)
      * — project_id = NULL. Uživatel může později ručně přiřadit.
@@ -624,8 +624,8 @@ final class IdokladImportService
     }
 
     /**
-     * Import IssuedInvoiceCorrections (dobropisy k vystaveným fakturám).
-     * Mají ParentDocumentId odkazující na původní fakturu (idoklad_id),
+     * Import CreditNotes (dobropisy k vystaveným fakturám).
+     * Mají CreditedInvoiceId odkazující na původní fakturu (idoklad_id),
      * což mapujeme na invoices.parent_invoice_id (po lookup do clients/invoices
      * podle naší db-side idoklad_id).
      */
@@ -637,7 +637,7 @@ final class IdokladImportService
         $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
         $created = 0; $skipped = 0; $failed = 0;
 
-        foreach ($this->idoklad->getAll($supplierId, 'IssuedInvoiceCorrections', $query) as $i) {
+        foreach ($this->idoklad->getAll($supplierId, 'CreditNotes', $query) as $i) {
             $idokladId = (int) ($i['Id'] ?? 0);
             if ($idokladId === 0) continue;
 
@@ -651,8 +651,8 @@ final class IdokladImportService
             if ($dryRun) { $created++; continue; }
 
             try {
-                // Resolve parent invoice
-                $parentIdokladId = (int) ($i['ParentDocumentId'] ?? 0);
+                // Resolve parent invoice (iDoklad CreditNotes nese odkaz v CreditedInvoiceId)
+                $parentIdokladId = (int) ($i['CreditedInvoiceId'] ?? 0);
                 $parentInvoiceId = null;
                 if ($parentIdokladId > 0) {
                     $s = $this->db->pdo()->prepare(
