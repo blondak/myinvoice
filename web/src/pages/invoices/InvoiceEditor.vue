@@ -1540,7 +1540,7 @@ async function deleteDraft() {
                 <th class="px-2 py-2 w-10"></th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-neutral-100">
+            <tbody class="divide-y divide-neutral-200">
               <tr v-for="(it, i) in wrItems" :key="i">
                 <td class="px-2 py-2 text-center text-xs text-neutral-400">
                   <button type="button" @click="moveWrItem(i, -1)" :disabled="i === 0"
