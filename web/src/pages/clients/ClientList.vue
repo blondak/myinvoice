@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { clientsApi, type Client } from '@/api/clients'
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
 import { formatMoney, formatDate } from '@/composables/useFormat'
+import { useRowLink } from '@/composables/useRowLink'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
@@ -14,7 +15,6 @@ type RoleFilter = 'all' | 'customers' | 'vendors'
 const { t } = useI18n()
 const auth = useAuthStore()
 
-const router = useRouter()
 const items = ref<Client[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -96,8 +96,9 @@ watch(search, () => {
   searchTimeout = setTimeout(() => load(true), 300)
 })
 
-function openClient(c: Client) {
-  router.push(`/clients/${c.id}`)
+const navigateRow = useRowLink()
+function openClient(c: Client, e?: MouseEvent) {
+  navigateRow(`/clients/${c.id}`, e)
 }
 </script>
 
@@ -186,7 +187,8 @@ function openClient(c: Client) {
           <tr
             v-for="c in filteredItems"
             :key="c.id"
-            @click="openClient(c)"
+            @click="openClient(c, $event)"
+            @auxclick.prevent="openClient(c, $event)"
             class="cursor-pointer hover:bg-neutral-50"
           >
             <td class="px-4 py-3">
@@ -250,7 +252,8 @@ function openClient(c: Client) {
         <div
           v-for="c in filteredItems"
           :key="`m-${c.id}`"
-          @click="openClient(c)"
+          @click="openClient(c, $event)"
+          @auxclick.prevent="openClient(c, $event)"
           class="cursor-pointer hover:bg-neutral-50 transition px-4 py-3"
         >
           <div class="flex items-baseline justify-between gap-2">

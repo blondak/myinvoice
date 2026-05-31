@@ -12,6 +12,7 @@ import {
 } from '@/api/purchaseInvoices'
 import { formatMoney, formatDate, formatMonth } from '@/composables/useFormat'
 import { useHotkey } from '@/composables/useHotkey'
+import { useRowLink } from '@/composables/useRowLink'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import { useYearOptions } from '@/composables/useYearOptions'
@@ -209,8 +210,9 @@ async function load(reset = true) {
   }
 }
 
-function openInvoice(inv: PurchaseInvoiceListItem) {
-  router.push(`/purchase-invoices/${inv.id}`)
+const navigateRow = useRowLink()
+function openInvoice(inv: PurchaseInvoiceListItem, e?: MouseEvent) {
+  navigateRow(`/purchase-invoices/${inv.id}`, e)
 }
 
 // Year picker — distinct roky z `purchase_invoices` (issue #33).
@@ -508,7 +510,8 @@ async function bulkDelete() {
                 <tr
                   v-for="inv in g.invoices"
                   :key="inv.id"
-                  @click="openInvoice(inv)"
+                  @click="openInvoice(inv, $event)"
+                  @auxclick.prevent="openInvoice(inv, $event)"
                   class="cursor-pointer hover:bg-neutral-50 transition"
                   :class="rowClass(inv)"
                 >
@@ -570,7 +573,8 @@ async function bulkDelete() {
           <div
             v-for="inv in g.invoices"
             :key="`m-${inv.id}`"
-            @click="openInvoice(inv)"
+            @click="openInvoice(inv, $event)"
+            @auxclick.prevent="openInvoice(inv, $event)"
             class="cursor-pointer hover:bg-neutral-50 transition px-3 py-3"
             :class="rowClass(inv)"
           >

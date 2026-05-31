@@ -4,6 +4,7 @@ import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { invoicesApi, type MonthGroup, type InvoiceListItem } from '@/api/invoices'
 import { formatMoney, formatDate, formatMonth, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
 import { useHotkey } from '@/composables/useHotkey'
+import { useRowLink } from '@/composables/useRowLink'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -437,8 +438,9 @@ watch(() => route.query, (newQ) => {
 
 const loadedCount = computed(() => groups.value.reduce((s, g) => s + g.count, 0))
 
-function openInvoice(inv: InvoiceListItem) {
-  router.push(`/invoices/${inv.id}`)
+const navigateRow = useRowLink()
+function openInvoice(inv: InvoiceListItem, e?: MouseEvent) {
+  navigateRow(`/invoices/${inv.id}`, e)
 }
 
 // Work Report modal: otevíráno z buttonu "Výkaz" v sloupci Stav.
@@ -629,7 +631,8 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
               <tr
                 v-for="inv in g.invoices"
                 :key="inv.id"
-                @click="openInvoice(inv)"
+                @click="openInvoice(inv, $event)"
+                @auxclick.prevent="openInvoice(inv, $event)"
                 class="cursor-pointer hover:bg-neutral-50 transition"
                 :class="invoiceRowClass(inv.due_date, inv.status)"
               >
@@ -689,7 +692,8 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
           <div
             v-for="inv in g.invoices"
             :key="`m-${inv.id}`"
-            @click="openInvoice(inv)"
+            @click="openInvoice(inv, $event)"
+            @auxclick.prevent="openInvoice(inv, $event)"
             class="cursor-pointer hover:bg-neutral-50 transition px-3 py-3"
             :class="invoiceRowClass(inv.due_date, inv.status)"
           >
