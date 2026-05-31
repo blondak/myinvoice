@@ -936,13 +936,17 @@
     },
     "advance_link": {
       "none": "Není propojeno se zálohovou fakturou.",
+      "none_final": "Není propojeno s daňovým dokladem.",
       "pair": "Spárovat se zálohou",
+      "pair_final": "Spárovat s daňovým dokladem",
       "unlink": "Zrušit propojení",
       "unlink_confirm": "Zrušit propojení se zálohovou fakturou?",
       "linked": "Záloha propojena.",
       "unlinked": "Propojení zrušeno.",
       "modal_title": "Vyber zálohovou fakturu k propojení",
-      "no_candidates": "Žádné nespárované zálohové faktury tohoto odběratele."
+      "modal_title_final": "Vyber daňový doklad k propojení",
+      "no_candidates": "Žádné nespárované zálohové faktury tohoto odběratele.",
+      "no_candidates_final": "Žádné nepropojené daňové doklady tohoto odběratele."
     },
     "pdf_history": {
       "title": "Historie PDF",

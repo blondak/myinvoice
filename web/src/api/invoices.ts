@@ -83,6 +83,8 @@ export interface Invoice {
   parent_invoice?: { id: number; varsymbol: string | null; status: InvoiceStatus; invoice_type: InvoiceType } | null
   // U daňového dokladu bez vazby: existují u odběratele nespárované zálohy k propojení?
   has_advance_candidates?: boolean
+  // U nepropojené proformy: existují u odběratele nepropojené daňové doklady k propojení?
+  has_final_candidates?: boolean
   recurring_template_id: number | null
   advance_paid_amount: number
   discount_percent: number
@@ -348,6 +350,9 @@ export const invoicesApi = {
   // Zpětné propojení daňového dokladu se zálohovou fakturou (proforma)
   advanceCandidates: (id: number) =>
     api.get<{ candidates: AdvanceCandidate[] }>(`/invoices/${id}/advance-candidates`).then(r => r.data.candidates),
+  // Opačný směr — z detailu zálohy nabídni nepropojené daňové doklady téhož odběratele
+  finalCandidates: (id: number) =>
+    api.get<{ candidates: AdvanceCandidate[] }>(`/invoices/${id}/final-candidates`).then(r => r.data.candidates),
   linkAdvance: (id: number, advanceId: number) =>
     api.post<Invoice>(`/invoices/${id}/link-advance`, { advance_id: advanceId }).then(r => r.data),
   unlinkAdvance: (id: number) =>

@@ -936,13 +936,17 @@
     },
     "advance_link": {
       "none": "Not linked to any advance invoice.",
+      "none_final": "Not linked to any tax document.",
       "pair": "Link an advance",
+      "pair_final": "Link a tax document",
       "unlink": "Unlink",
       "unlink_confirm": "Unlink from the advance invoice?",
       "linked": "Advance linked.",
       "unlinked": "Link removed.",
       "modal_title": "Select an advance invoice to link",
-      "no_candidates": "No unlinked advance invoices for this customer."
+      "modal_title_final": "Select a tax document to link",
+      "no_candidates": "No unlinked advance invoices for this customer.",
+      "no_candidates_final": "No unlinked tax documents for this customer."
     },
     "pdf_history": {
       "title": "PDF history",

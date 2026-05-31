@@ -149,6 +149,22 @@ final class InvoiceRepository
             $row['has_advance_candidates'] = (bool) $cand->fetchColumn();
         }
 
+        // Opačný směr: u nepropojené proformy — existují nepropojené daňové doklady
+        // téhož odběratele, se kterými ji lze spárovat? (řídí tlačítko v detailu zálohy)
+        $row['has_final_candidates'] = false;
+        if (($row['invoice_type'] ?? '') === 'proforma' && empty($row['final_invoice'])) {
+            $fcand = $pdo->prepare(
+                "SELECT EXISTS (
+                          SELECT 1 FROM invoices i
+                           WHERE i.supplier_id = ? AND i.client_id = ?
+                             AND i.invoice_type = 'invoice' AND i.status != 'cancelled'
+                             AND i.parent_invoice_id IS NULL AND i.id <> ?
+                        )"
+            );
+            $fcand->execute([(int) $row['supplier_id'], (int) $row['client_id'], $id]);
+            $row['has_final_candidates'] = (bool) $fcand->fetchColumn();
+        }
+
         return $row;
     }
 
@@ -252,7 +268,11 @@ final class InvoiceRepository
             throw new \RuntimeException('Záloha i finální faktura musí mít stejného odběratele.');
         }
 
-        $advanceTotal   = (float) $advance['total_with_vat'];
+        // advance_paid_amount nesmí překročit částku dokladu — jinak by amount_to_pay
+        // (generated = total_with_vat − advance_paid_amount) spadl do mínusu. Když je
+        // záloha větší než faktura, odečteme jen do výše faktury (zbytek = 0 k úhradě).
+        $finalTotal     = (float) $final['total_with_vat'];
+        $advanceTotal   = min((float) $advance['total_with_vat'], $finalTotal);
         $setAdvancePaid = ((float) ($final['advance_paid_amount'] ?? 0)) == 0.0;
 
         $sql = 'UPDATE invoices SET parent_invoice_id = ?'
@@ -277,6 +297,51 @@ final class InvoiceRepository
                 SET f.parent_invoice_id = NULL
               WHERE f.id = ? AND f.supplier_id = ? AND p.invoice_type = 'proforma'"
         )->execute([$finalId, $supplierId]);
+    }
+
+    /**
+     * Opačný směr párování — z detailu zálohové faktury ($proformaId) nabídneme
+     * nepropojené daňové doklady (invoice_type='invoice', bez parent_invoice_id)
+     * stejného odběratele a dodavatele. Vlastní propojení pak proběhne přes
+     * linkAdvance($finalId, $proformaId). Řazení: stejná měna → nejbližší částka → nejnovější.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function finalCandidates(int $proformaId, int $supplierId): array
+    {
+        $proforma = $this->find($proformaId);
+        if ($proforma === null || (int) ($proforma['supplier_id'] ?? 0) !== $supplierId) {
+            return [];
+        }
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT i.id, i.varsymbol, i.invoice_type, i.status, i.issue_date,
+                    i.total_with_vat, cur.code AS currency
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.client_id = ?
+                AND i.invoice_type = 'invoice'
+                AND i.status != 'cancelled'
+                AND i.parent_invoice_id IS NULL
+                AND i.id <> ?
+              ORDER BY (i.currency_id = ?) DESC,
+                       ABS(i.total_with_vat - ?) ASC,
+                       i.issue_date DESC, i.id DESC
+              LIMIT 50"
+        );
+        $stmt->execute([
+            $supplierId, (int) $proforma['client_id'], $proformaId,
+            (int) $proforma['currency_id'], (float) $proforma['total_with_vat'],
+        ]);
+        return array_map(fn (array $r) => [
+            'id'             => (int) $r['id'],
+            'varsymbol'      => $r['varsymbol'] !== null ? (string) $r['varsymbol'] : null,
+            'invoice_type'   => (string) $r['invoice_type'],
+            'status'         => (string) $r['status'],
+            'issue_date'     => $r['issue_date'] !== null ? (string) $r['issue_date'] : null,
+            'total_with_vat' => (float) $r['total_with_vat'],
+            'currency'       => (string) $r['currency'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
     }
 
     public function itemsFor(int $invoiceId): array
