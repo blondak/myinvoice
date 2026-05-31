@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.0] — 2026-05-31
+
+Přijaté faktury: nahrání originálního dokladu už při zakládání i z detailu, ruční rekapitulace DPH přesně dle dokladu dodavatele (§ 73 ZDPH) a sjednocené, matematicky správné zaokrouhlení DPH. Řeší [#82](https://github.com/radekhulan/myinvoice/issues/82).
+
+### Added
+
+- **Nahrání dokladu dodavatele už u nové faktury i z detailu.** Drag&drop zóna pro PDF/fotku se nově ukáže hned při zakládání nové přijaté faktury (soubor se nahraje po prvním uložení) a také v detailu faktury, která zatím doklad nemá — dosud šlo přiložit jen v editaci. Po přetažení se u nové faktury zobrazí zelená kartička „soubor připraven, nahraje se po uložení" s možností odebrání.
+- **Ruční rekapitulace DPH dle dokladu (§ 73 ZDPH).** U přijaté faktury lze v boxu **Rekapitulace DPH** přepsat základ i daň **per sazba** přesně tak, jak je uvedeno na dokladu dodavatele (nárok na odpočet je svázaný s částkou daně na dokladu — § 73 odst. 6). Override se zapeče do uložených řádkových součtů, takže se konzistentně promítne do DPH přiznání, kontrolního hlášení, knihy DPH i do daně z příjmů a daňového optimalizátoru. Reverse-charge a režim „ceny s DPH" zůstávají beze změny.
+- **AI import předvyplní rekapitulaci DPH dle dokladu.** Při AI extrakci se nově čte i rekapitulace DPH po sazbách; pokud sedí v toleranci na vypočtené hodnoty, předvyplní se override tak, aby základ a daň seděly přesně na doklad — pro jednu i více sazeb.
+
+### Fixed
+
+- **Nekonzistentní zaokrouhlení DPH (#82).** Editor u přijaté faktury ukazoval jinou cenu s DPH, než nakonec uložil backend (151,50 × 21 % → 31,82 vs 31,81). Příčinou bylo pořadí operací u koeficientu sazby; sjednoceno **všude** (frontend i backend, vydané i přijaté faktury) na matematicky správné zaokrouhlení (`základ × sazba / 100`). Uložená historická data se nemění.
+- **Neviditelná chyba při uložení faktury.** Když validace selhala (např. prázdný popis položky) a uživatel byl odscrollovaný dole u tlačítka Uložit, nezobrazilo se žádné upozornění (jen tiché 422). Nově se ukáže **toast** a stránka odscrolluje k chybové hlášce — ve všech editorech (vydané, přijaté i pravidelné faktury); u přijatých faktur navíc inline chyba u popisu položky.
+
 ## [4.8.0] — 2026-05-31
 
 Zpětné a **obousměrné** párování záloh u vydaných i přijatých faktur, otevírání řádků seznamů v novém panelu a čitelnější ohraničení v tmavém režimu.

@@ -41,6 +41,8 @@ Nad formulářem je **drag & drop zóna**. Pokud máš PDF od dodavatele:
   - **Pokud ne** (běžné PDF bez přílohy) → ve fázi 1 musíš vyplnit ručně. Ve fázi 2c (plánováno) doplníme AI extrakci přes Anthropic Claude — viz `source/09-fork-integration-plan.md`.
 - Originál PDF se po prvním uložení faktury automaticky **archivuje** mimo webroot a v detailu si ho můžeš kdykoli stáhnout zpět.
 
+> 💡 *Od v4.9.0:* doklad jde nahrát **už při zakládání nové faktury** (po přetažení se ukáže kartička „soubor připraven, nahraje se po uložení") i **z detailu** faktury, která zatím doklad nemá — dřív to šlo jen v editaci. Kromě PDF lze přetáhnout i **fotku** (JPG/PNG/WEBP/HEIC), systém ji převede na PDF.
+
 Limity:
 - Max 20 MiB per soubor
 - Akceptujeme pouze application/pdf (magic bytes `%PDF-` se ověřují server-side)
@@ -100,6 +102,17 @@ V boxu **Klasifikace** jsou dva nezávislé příznaky řídící, jak faktura v
 - **Daňově uznatelný náklad** — řídí pouze daň z příjmů: když je vypnuto, náklad se nezahrne do orientačního hospodářského výsledku (DPFO/DPPO). S DPH to nesouvisí (faktura může mít odpočitatelné DPH a být daňově neuznatelná, i naopak).
 
 Oba příznaky jsou vidět i v **detailu** přijaté faktury (box Měna/DPH).
+
+#### Rekapitulace DPH dle dokladu (§ 73 ZDPH)
+
+> Přidáno ve v4.9.0.
+
+Pod položkami je box **Rekapitulace DPH** se základem a daní **za každou sazbu**. Hodnoty se dopočítají ze řádků, ale pokud doklad dodavatele uvádí kvůli zaokrouhlení jiný **základ** nebo **DPH**, můžeš je **přepsat** přesně podle dokladu. Důvod je daňový: nárok na odpočet je svázaný s **částkou daně uvedenou na dokladu** (§ 73 odst. 6 ZDPH), proto je primární shoda s dokladem, ne náš přepočet.
+
+- Přepsat lze základ i DPH, samostatně pro každou sazbu. Ručně upravené pole je zvýrazněné; odkaz **Spočítat automaticky** vrátí vypočtenou hodnotu.
+- Override se uloží do faktury a promítne se konzistentně do **DPH přiznání, kontrolního hlášení, knihy DPH** i do **daně z příjmů** a daňového optimalizátoru.
+- Při **AI importu** se rekapitulace předvyplní automaticky dle dokladu (pro jednu i více sazeb), pokud sedí v toleranci.
+- Box se nezobrazuje u **reverse-charge** (na dokladu zahraničního dodavatele není česká DPH).
 
 #### Dodavatel neplátce DPH → bez nároku na odpočet
 
