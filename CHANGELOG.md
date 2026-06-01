@@ -5,6 +5,14 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.11.1] — 2026-06-01
+
+Oprava: pravidelná fakturace u **neplátce DPH** nově nevyplňuje DPH — chová se stejně jako jednorázové vystavení faktury.
+
+### Fixed
+
+- **Pravidelná fakturace u neplátce DPH nevyplňuje DPH ([#95](https://github.com/radekhulan/myinvoice/issues/95)).** Šablona pravidelné fakturace dříve vždy nasazovala výchozí (nenulovou) sazbu DPH, takže neplátci generovala faktury s DPH — na rozdíl od jednorázového editoru, který pro neplátce volí 0 % „Osvobozeno". Nově se formulář šablony řídí příznakem plátce u dodavatele stejně jako editor faktury (skrytý výběr DPH i přepínač „ceny s DPH", nulová sazba). Navíc to **autoritativně hlídá i generátor**: při vystavení faktury ze šablony u neplátce sjednotí sazby položek na 0 % — takže se opraví i šablony uložené dříve s nominální sazbou (vč. cron generování, otevřených konceptů i REST API). DPH na faktuře vždy určuje výhradně dodavatel, ne plátcovství odběratele.
+
 ## [4.11.0] — 2026-06-01
 
 Přehled odeslaných e-mailů ([#88](https://github.com/radekhulan/myinvoice/issues/88)) nově ukazuje i **neúspěšná odeslání** — hned je vidět, co se nepodařilo doručit. Upomínky jsou konfigurovatelné ([#91](https://github.com/radekhulan/myinvoice/issues/91)): vypnutí u konkrétní faktury a nastavitelný práh „po kolika dnech po splatnosti". Plus drobná vylepšení použitelnosti a opravy pohledávkových přehledů.
