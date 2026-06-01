@@ -1281,13 +1281,6 @@ async function deleteDraft() {
                 />
               </div>
             </div>
-            <div v-if="form.invoice_type !== 'credit_note'">
-              <label class="flex items-center gap-2 text-sm text-neutral-700">
-                <input v-model="form.auto_send_reminders" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-                <span>{{ t('invoice.auto_send_reminders') }}</span>
-              </label>
-              <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.auto_send_reminders_hint') }}</p>
-            </div>
           </div>
         </div>
 
@@ -1328,6 +1321,13 @@ async function deleteDraft() {
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.due_date') }} *</label>
               <input v-model="form.due_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
+            </div>
+            <div v-if="form.invoice_type !== 'credit_note'">
+              <label class="flex items-center gap-2 text-sm text-neutral-700">
+                <input v-model="form.auto_send_reminders" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <span>{{ t('invoice.auto_send_reminders') }}</span>
+              </label>
+              <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.auto_send_reminders_hint') }}</p>
             </div>
             <div v-if="form.currency !== 'CZK' && form.exchange_rate !== null && form.exchange_rate > 0">
               <label class="block text-sm font-medium text-neutral-700 mb-1">
