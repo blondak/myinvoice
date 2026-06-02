@@ -1738,6 +1738,7 @@
     "account_deleted": "Bank account deleted.",
     "delete_account_confirm": "Delete account {label}?",
     "default_account_label": "{code} - bank account",
+    "bank_lookup_pick": "Pick another account from the register:",
     "edit_account_title": "Edit {label}",
     "currency": "Currency",
     "account_label": "Account name",

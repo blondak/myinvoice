@@ -1738,6 +1738,7 @@
     "account_deleted": "Bankovní účet smazán.",
     "delete_account_confirm": "Smazat účet {label}?",
     "default_account_label": "{code} - bankovní účet",
+    "bank_lookup_pick": "Vybrat jiný účet z registru:",
     "edit_account_title": "Upravit {label}",
     "currency": "Měna",
     "account_label": "Název účtu",

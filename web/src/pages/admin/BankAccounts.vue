@@ -10,7 +10,7 @@ import {
   type CurrencyAccount,
   type Supplier,
 } from '@/api/settings'
-import { clientsApi } from '@/api/clients'
+import { clientsApi, type CrpDphAccount } from '@/api/clients'
 import { apiErrorMessage } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 
@@ -46,6 +46,7 @@ const folderOptions = ref<string[]>([])
 // CRPDPH (registr plátců DPH) → bankovní účet do editované měny
 const bankDraftLoading = ref(false)
 const bankDraftMsg = ref<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+const bankDraftAccounts = ref<CrpDphAccount[]>([])
 
 const currencyDraft = reactive<Partial<CurrencyAccount>>({})
 const imapDraft = reactive<Partial<BankEmailImapSettings> & { password?: string }>(defaultImapDraft())
@@ -175,6 +176,7 @@ function startEditCurrency(c: CurrencyAccount) {
   editingCurrency.value = c.id
   editingCurrencyLabel.value = c.label
   bankDraftMsg.value = null
+  bankDraftAccounts.value = []
   currencyFormOpen.value = true
   Object.assign(currencyDraft, { ...c })
 }
@@ -204,6 +206,7 @@ async function saveCurrency() {
 function startNewCurrencyAccount(code = 'CZK') {
   const isFirstForCode = !currencies.value.some(c => c.code === code)
   bankDraftMsg.value = null
+  bankDraftAccounts.value = []
   Object.assign(currencyDraft, {
     code,
     label: autoLabel(code),
@@ -237,7 +240,17 @@ function closeCurrencyForm() {
   editingCurrencyLabel.value = ''
   currencyFormOpen.value = false
   bankDraftMsg.value = null
+  bankDraftAccounts.value = []
   Object.keys(currencyDraft).forEach(key => delete currencyDraft[key as keyof CurrencyAccount])
+}
+
+function applyBankAccount(acc: CrpDphAccount) {
+  if (acc.iban) {
+    currencyDraft.iban = acc.iban
+  } else {
+    currencyDraft.account_number = acc.prefix ? `${acc.prefix}-${acc.number}` : acc.number
+    currencyDraft.bank_code = acc.bank_code
+  }
 }
 
 async function loadBankToDraft() {
@@ -248,20 +261,17 @@ async function loadBankToDraft() {
   }
   bankDraftLoading.value = true
   bankDraftMsg.value = null
+  bankDraftAccounts.value = []
   try {
     const r = await clientsApi.lookupBank(dic)
     if (r.accounts.length === 0) {
       bankDraftMsg.value = { type: 'error', text: t('supplier.bank_lookup_none') }
     } else {
+      bankDraftAccounts.value = r.accounts
       // Preferuj účet odpovídající editované měně: CZK → standardní účet, jinak IBAN.
       const isCzk = (currencyDraft.code || '').toUpperCase() === 'CZK'
       const acc = (isCzk ? r.accounts.find(a => !a.iban) : r.accounts.find(a => a.iban)) || r.accounts[0]
-      if (acc.iban) {
-        currencyDraft.iban = acc.iban
-      } else {
-        currencyDraft.account_number = acc.prefix ? `${acc.prefix}-${acc.number}` : acc.number
-        currencyDraft.bank_code = acc.bank_code
-      }
+      applyBankAccount(acc)
       bankDraftMsg.value = {
         type: 'success',
         text: r.accounts.length === 1
@@ -355,8 +365,8 @@ async function testImapAccount(account: BankEmailImapSettings) {
   try {
     const r = await settingsApi.testBankEmailImapAccount(account.id)
     toast.success(`${account.name}: ${r.message}`)
-  } catch (e) {
-    toast.error(apiErrorMessage(e, t('bank_accounts.imap_test_failed')))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || apiErrorMessage(e, t('bank_accounts.imap_test_failed')))
   } finally {
     testingAccountId.value = null
   }
@@ -373,8 +383,8 @@ async function browseImapFolders() {
     } else {
       toast.info(t('bank_accounts.folders_none'))
     }
-  } catch (e) {
-    toast.error(apiErrorMessage(e, t('bank_accounts.folders_failed')))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || apiErrorMessage(e, t('bank_accounts.folders_failed')))
   } finally {
     browsingFolders.value = false
   }
@@ -1019,6 +1029,15 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
             }">
             {{ bankDraftMsg.text }}
           </div>
+          <div v-if="bankDraftAccounts.length > 1">
+            <label class="block text-xs font-medium text-neutral-500 mb-1">{{ t('bank_accounts.bank_lookup_pick') }}</label>
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="(acc, i) in bankDraftAccounts" :key="i" type="button" @click="applyBankAccount(acc)"
+                class="cursor-pointer h-7 px-2 text-xs font-mono bg-surface border border-neutral-300 rounded hover:bg-primary-50 hover:border-primary-300">
+                {{ acc.display }}
+              </button>
+            </div>
+          </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.account_label') }}</label>
             <input v-model="currencyDraft.label" type="text"
@@ -1105,13 +1124,13 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                 <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.subject_regex') }}</label>
                 <input v-model="providerDraft.subject_pattern" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"
-                  placeholder="Pohyb\\s+na\\s+účtě" />
+                  placeholder="Pohyb\s+na\s+účtě" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.body_regex') }}</label>
                 <input v-model="providerDraft.body_pattern" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"
-                  placeholder="Variabilní\\s+symbol" />
+                  placeholder="Variabilní\s+symbol" />
               </div>
             </div>
           </section>
