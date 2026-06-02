@@ -177,6 +177,20 @@ final class BankEmailNoticeRepository
             $normalizer = json_decode($normalizer, true) ?: [];
         }
 
+        // Regexy se uloží do DB a pak jdou rovnou do preg_match v parseru. Ověř, že se
+        // zkompilují, ať admin dostane hezkou 400 chybu místo tichého selhání scanu.
+        foreach ($fieldPatterns as $field => $pattern) {
+            if (is_string($pattern) && trim($pattern) !== '') {
+                $this->assertValidRegex($pattern, 'pole ' . (string) $field);
+            }
+        }
+        foreach (['subject_pattern' => 'předmět', 'body_pattern' => 'tělo'] as $key => $label) {
+            $value = trim((string) ($body[$key] ?? ''));
+            if ($value !== '') {
+                $this->assertValidRegex($value, $label);
+            }
+        }
+
         $data = [
             'supplier_id' => $supplierId,
             'code' => preg_replace('/[^a-z0-9_\\-]/', '_', strtolower(trim((string) ($body['code'] ?? '')))) ?: 'provider',
@@ -628,6 +642,19 @@ final class BankEmailNoticeRepository
     private function enum(string $value, array $allowed, string $default): string
     {
         return in_array($value, $allowed, true) ? $value : $default;
+    }
+
+    /**
+     * Ověří, že se regex zkompiluje (stejné `~…~u` delimitery jako parser).
+     */
+    private function assertValidRegex(string $pattern, string $label): void
+    {
+        set_error_handler(static fn (): bool => true);
+        $result = preg_match('~' . $pattern . '~u', '');
+        restore_error_handler();
+        if ($result === false) {
+            throw new \RuntimeException("Neplatný regulární výraz ({$label}).");
+        }
     }
 
     private function nullable(mixed $value): ?string

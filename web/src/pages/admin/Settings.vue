@@ -792,10 +792,10 @@ async function removeLogo() {
 
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('settings.currencies_banks') }}</h2>
-        <p class="text-sm text-neutral-500 mt-1">Měny, bankovní účty a mapování bankovních avíz jsou nově na samostatné stránce.</p>
+        <p class="text-sm text-neutral-500 mt-1">{{ t('settings.currencies_moved') }}</p>
         <RouterLink to="/admin/bank-accounts"
           class="inline-flex mt-3 h-9 px-3 items-center bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-          Otevřít bankovní účty
+          {{ t('settings.open_bank_accounts') }}
         </RouterLink>
       </section>
     </div>

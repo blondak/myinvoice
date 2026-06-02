@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   settingsApi,
   type BankEmailAccountMapping,
@@ -7,12 +8,16 @@ import {
   type BankEmailProcessedMessage,
   type BankEmailProvider,
   type CurrencyAccount,
+  type Supplier,
 } from '@/api/settings'
+import { clientsApi } from '@/api/clients'
 import { apiErrorMessage } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 
+const { t } = useI18n()
 const toast = useToast()
 
+const supplier = ref<Supplier | null>(null)
 const currencies = ref<CurrencyAccount[]>([])
 const mappings = ref<BankEmailAccountMapping[]>([])
 const providers = ref<BankEmailProvider[]>([])
@@ -38,19 +43,23 @@ const scanSummary = ref<Record<string, any> | null>(null)
 const bankEmailLoadError = ref<string | null>(null)
 const folderOptions = ref<string[]>([])
 
+// CRPDPH (registr plátců DPH) → bankovní účet do editované měny
+const bankDraftLoading = ref(false)
+const bankDraftMsg = ref<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+
 const currencyDraft = reactive<Partial<CurrencyAccount>>({})
 const imapDraft = reactive<Partial<BankEmailImapSettings> & { password?: string }>(defaultImapDraft())
 const regexFieldDefinitions = [
-  { key: 'variable_symbol', label: 'Variabilní symbol', required: true },
-  { key: 'amount', label: 'Částka', required: true },
-  { key: 'currency', label: 'Měna', required: true },
-  { key: 'posted_at', label: 'Datum platby', required: true },
-  { key: 'recipient_account', label: 'Cílový účet', required: true },
-  { key: 'counterparty_account', label: 'Protiúčet', required: false },
-  { key: 'counterparty_name', label: 'Název protistrany', required: false },
-  { key: 'constant_symbol', label: 'Konstantní symbol', required: false },
-  { key: 'message', label: 'Zpráva', required: false },
-  { key: 'bank_ref', label: 'Reference banky', required: false },
+  { key: 'variable_symbol', required: true },
+  { key: 'amount', required: true },
+  { key: 'currency', required: true },
+  { key: 'posted_at', required: true },
+  { key: 'recipient_account', required: true },
+  { key: 'counterparty_account', required: false },
+  { key: 'counterparty_name', required: false },
+  { key: 'constant_symbol', required: false },
+  { key: 'message', required: false },
+  { key: 'bank_ref', required: false },
 ] as const
 type RegexFieldKey = typeof regexFieldDefinitions[number]['key']
 interface RegexProviderDraft {
@@ -117,18 +126,30 @@ function defaultRegexProviderDraft(): RegexProviderDraft {
   }
 }
 
+function fieldLabel(key: RegexFieldKey): string {
+  return t(`bank_accounts.field_${key}`)
+}
+
+function autoLabel(code: string): string {
+  return t('bank_accounts.default_account_label', { code })
+}
+
 async function load() {
   loading.value = true
   try {
     bankEmailLoadError.value = null
-    const [currenciesResult, overviewResult] = await Promise.allSettled([
+    const [supplierResult, currenciesResult, overviewResult] = await Promise.allSettled([
+      settingsApi.getSupplier(),
       settingsApi.listCurrencies(),
       settingsApi.getBankEmailOverview(),
     ])
+    if (supplierResult.status === 'fulfilled') {
+      supplier.value = supplierResult.value
+    }
     if (currenciesResult.status === 'fulfilled') {
       currencies.value = currenciesResult.value
     } else {
-      toast.error(apiErrorMessage(currenciesResult.reason, 'Bankovní účty se nepodařilo načíst.'))
+      toast.error(apiErrorMessage(currenciesResult.reason, t('bank_accounts.load_currencies_failed')))
     }
     if (overviewResult.status === 'fulfilled') {
       const overview = overviewResult.value
@@ -137,7 +158,7 @@ async function load() {
       imapAccounts.value = overview.imap_accounts ?? (overview.imap?.id ? [overview.imap] : [])
       messages.value = overview.messages
     } else {
-      bankEmailLoadError.value = apiErrorMessage(overviewResult.reason, 'Konfiguraci bankovních avíz se nepodařilo načíst.')
+      bankEmailLoadError.value = apiErrorMessage(overviewResult.reason, t('bank_accounts.load_config_failed'))
       mappings.value = []
       providers.value = []
       imapAccounts.value = []
@@ -153,6 +174,7 @@ onMounted(load)
 function startEditCurrency(c: CurrencyAccount) {
   editingCurrency.value = c.id
   editingCurrencyLabel.value = c.label
+  bankDraftMsg.value = null
   currencyFormOpen.value = true
   Object.assign(currencyDraft, { ...c })
 }
@@ -170,10 +192,10 @@ async function saveCurrency() {
   }
   if (editingCurrency.value !== null) {
     await settingsApi.updateCurrency(editingCurrency.value, payload)
-    toast.success('Bankovní účet uložen.')
+    toast.success(t('bank_accounts.account_saved'))
   } else {
     await settingsApi.createCurrency({ ...payload, code: currencyDraft.code })
-    toast.success('Bankovní účet přidán.')
+    toast.success(t('bank_accounts.account_added'))
   }
   closeCurrencyForm()
   await load()
@@ -181,9 +203,10 @@ async function saveCurrency() {
 
 function startNewCurrencyAccount(code = 'CZK') {
   const isFirstForCode = !currencies.value.some(c => c.code === code)
+  bankDraftMsg.value = null
   Object.assign(currencyDraft, {
     code,
-    label: `${code} - bankovní účet`,
+    label: autoLabel(code),
     is_active: true,
     is_default: isFirstForCode,
     account_number: null,
@@ -200,8 +223,11 @@ function startNewCurrencyAccount(code = 'CZK') {
 function applyNewCurrencyCode() {
   const code = String(currencyDraft.code || 'CZK').toUpperCase()
   currencyDraft.code = code
-  if (!currencyDraft.label || /^[A-Z]{3} - bankovní účet$/.test(String(currencyDraft.label))) {
-    currencyDraft.label = `${code} - bankovní účet`
+  // Přepíšeme jen pokud label dosud nikdo neměnil (je prázdný nebo je to auto-label nějaké měny).
+  const label = String(currencyDraft.label || '')
+  const isAuto = label === '' || availableCurrencyCodes.value.some(c => label === autoLabel(c))
+  if (isAuto) {
+    currencyDraft.label = autoLabel(code)
   }
   currencyDraft.is_default = !currencies.value.some(c => c.code === code)
 }
@@ -210,13 +236,51 @@ function closeCurrencyForm() {
   editingCurrency.value = null
   editingCurrencyLabel.value = ''
   currencyFormOpen.value = false
+  bankDraftMsg.value = null
   Object.keys(currencyDraft).forEach(key => delete currencyDraft[key as keyof CurrencyAccount])
 }
 
+async function loadBankToDraft() {
+  const dic = (supplier.value?.dic || '').replace(/\D/g, '')
+  if (!/^\d{8,10}$/.test(dic)) {
+    bankDraftMsg.value = { type: 'error', text: t('supplier.bank_lookup_no_dic') }
+    return
+  }
+  bankDraftLoading.value = true
+  bankDraftMsg.value = null
+  try {
+    const r = await clientsApi.lookupBank(dic)
+    if (r.accounts.length === 0) {
+      bankDraftMsg.value = { type: 'error', text: t('supplier.bank_lookup_none') }
+    } else {
+      // Preferuj účet odpovídající editované měně: CZK → standardní účet, jinak IBAN.
+      const isCzk = (currencyDraft.code || '').toUpperCase() === 'CZK'
+      const acc = (isCzk ? r.accounts.find(a => !a.iban) : r.accounts.find(a => a.iban)) || r.accounts[0]
+      if (acc.iban) {
+        currencyDraft.iban = acc.iban
+      } else {
+        currencyDraft.account_number = acc.prefix ? `${acc.prefix}-${acc.number}` : acc.number
+        currencyDraft.bank_code = acc.bank_code
+      }
+      bankDraftMsg.value = {
+        type: 'success',
+        text: r.accounts.length === 1
+          ? t('supplier.bank_lookup_one')
+          : t('supplier.bank_lookup_many', { n: r.accounts.length }),
+      }
+    }
+    if (r.unreliable === true) bankDraftMsg.value = { type: 'warning', text: t('supplier.bank_lookup_unreliable') }
+  } catch (e: any) {
+    bankDraftMsg.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.bank_lookup_failed') }
+  } finally {
+    bankDraftLoading.value = false
+  }
+}
+
 async function removeCurrency(c: CurrencyAccount) {
-  if (!window.confirm(`Smazat účet ${c.label}?`)) return
+  if (!window.confirm(t('bank_accounts.delete_account_confirm', { label: c.label }))) return
   await settingsApi.deleteCurrency(c.id)
-  toast.success('Bankovní účet smazán.')
+  toast.success(t('bank_accounts.account_deleted'))
   await load()
 }
 
@@ -228,7 +292,7 @@ async function saveMappings() {
     enabled: m.imap_account_id === 0 ? false : m.enabled,
     amount_tolerance: m.amount_tolerance,
   })))
-  toast.success('Mapování bankovních avíz uloženo.')
+  toast.success(t('bank_accounts.mappings_saved'))
   await load()
 }
 
@@ -246,7 +310,7 @@ function onMappingImapChange(mapping: BankEmailAccountMapping, value: string) {
 }
 
 function startNewImapAccount() {
-  Object.assign(imapDraft, defaultImapDraft(), { name: 'Nový IMAP účet' })
+  Object.assign(imapDraft, defaultImapDraft(), { name: t('bank_accounts.new_imap_default_name') })
   editingImapId.value = null
   folderOptions.value = []
   imapFormOpen.value = true
@@ -271,15 +335,15 @@ async function saveImapAccount() {
   try {
     if (editingImapId.value !== null) {
       await settingsApi.updateBankEmailImapAccount(editingImapId.value, imapDraft)
-      toast.success('IMAP účet uložen.')
+      toast.success(t('bank_accounts.imap_saved'))
     } else {
       await settingsApi.createBankEmailImapAccount(imapDraft)
-      toast.success('IMAP účet vytvořen.')
+      toast.success(t('bank_accounts.imap_created'))
     }
     closeImapForm()
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'IMAP účet se nepodařilo uložit.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.imap_save_failed')))
   } finally {
     saving.value = false
   }
@@ -292,7 +356,7 @@ async function testImapAccount(account: BankEmailImapSettings) {
     const r = await settingsApi.testBankEmailImapAccount(account.id)
     toast.success(`${account.name}: ${r.message}`)
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'Test IMAP připojení selhal.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.imap_test_failed')))
   } finally {
     testingAccountId.value = null
   }
@@ -305,12 +369,12 @@ async function browseImapFolders() {
     const result = await settingsApi.browseBankEmailImapFolders(imapDraft, editingImapId.value)
     folderOptions.value = result.folders ?? []
     if (folderOptions.value.length > 0) {
-      toast.success(`Načteno složek: ${folderOptions.value.length}.`)
+      toast.success(t('bank_accounts.folders_loaded', { count: folderOptions.value.length }))
     } else {
-      toast.info('Připojení funguje, ale server nevrátil žádné složky.')
+      toast.info(t('bank_accounts.folders_none'))
     }
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'Složky se nepodařilo načíst.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.folders_failed')))
   } finally {
     browsingFolders.value = false
   }
@@ -323,9 +387,9 @@ function selectImapFolder(folder: string) {
 
 async function deleteImapAccount(account: BankEmailImapSettings) {
   if (account.id === null) return
-  if (!window.confirm(`Smazat IMAP účet ${account.name}? Zpracované záznamy zůstanou zachované.`)) return
+  if (!window.confirm(t('bank_accounts.delete_imap_confirm', { name: account.name }))) return
   await settingsApi.deleteBankEmailImapAccount(account.id)
-  toast.success('IMAP účet smazán.')
+  toast.success(t('bank_accounts.imap_deleted'))
   await load()
 }
 
@@ -333,18 +397,18 @@ async function runScan() {
   scanning.value = true
   try {
     scanSummary.value = await settingsApi.scanBankEmailNotices()
-    toast.success('Scan bankovních avíz dokončen.')
+    toast.success(t('bank_accounts.scan_done'))
     messages.value = await settingsApi.listBankEmailMessages()
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'Scan selhal.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.scan_failed')))
   } finally {
     scanning.value = false
   }
 }
 
 function providerOwnerLabel(provider: BankEmailProvider): string {
-  return provider.supplier_id === null ? 'Systémový' : 'Dodavatel'
+  return provider.supplier_id === null ? t('bank_accounts.owner_system') : t('bank_accounts.owner_supplier')
 }
 
 function parserTypeLabel(parserType: BankEmailProvider['parser_type']): string {
@@ -362,9 +426,9 @@ async function testParser() {
       text: parserText.value,
     })
     parserResult.value = r.parsed
-    toast.success(`Parser: ${r.provider.name}`)
+    toast.success(t('bank_accounts.parser_label', { name: r.provider.name }))
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'Parser nenašel platební údaje.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.parser_failed')))
   }
 }
 
@@ -412,11 +476,11 @@ async function saveProvider() {
   try {
     normalizerConfig = JSON.parse(providerDraft.normalizer_config_json || '{}')
   } catch {
-    toast.error('Normalizer config musí být validní JSON objekt.')
+    toast.error(t('bank_accounts.normalizer_invalid'))
     return
   }
   if (normalizerConfig === null || Array.isArray(normalizerConfig) || typeof normalizerConfig !== 'object') {
-    toast.error('Normalizer config musí být validní JSON objekt.')
+    toast.error(t('bank_accounts.normalizer_invalid'))
     return
   }
 
@@ -443,30 +507,30 @@ async function saveProvider() {
   try {
     if (providerDraft.id !== null) {
       await settingsApi.updateBankEmailProvider(providerDraft.id, payload)
-      toast.success('Provider uložen.')
+      toast.success(t('bank_accounts.provider_saved'))
     } else {
       await settingsApi.createBankEmailProvider(payload)
-      toast.success('Provider vytvořen.')
+      toast.success(t('bank_accounts.provider_created'))
     }
     closeProviderForm()
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e, 'Provider se nepodařilo uložit.'))
+    toast.error(apiErrorMessage(e, t('bank_accounts.provider_save_failed')))
   }
 }
 
 async function removeProvider(provider: BankEmailProvider) {
   if (provider.supplier_id === null) return
-  if (!window.confirm(`Smazat provider ${provider.name}?`)) return
+  if (!window.confirm(t('bank_accounts.delete_provider_confirm', { name: provider.name }))) return
   await settingsApi.deleteBankEmailProvider(provider.id)
-  toast.success('Provider smazán.')
+  toast.success(t('bank_accounts.provider_deleted'))
   await load()
 }
 
 async function deleteMessage(m: BankEmailProcessedMessage) {
-  if (!window.confirm(`Smazat záznam zpracování #${m.id}? Transakce ani faktura se tím nesmažou.`)) return
+  if (!window.confirm(t('bank_accounts.delete_message_confirm', { id: m.id }))) return
   await settingsApi.deleteBankEmailMessage(m.id)
-  toast.success('Záznam zpracování smazán.')
+  toast.success(t('bank_accounts.message_deleted'))
   messages.value = await settingsApi.listBankEmailMessages()
 }
 </script>
@@ -474,22 +538,22 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
 <template>
   <div>
     <div class="mb-4">
-      <h1 class="text-2xl font-semibold">Bankovní účty</h1>
-      <p class="text-sm text-neutral-500 mt-0.5">Měny, bankovní účty dodavatele, IMAP polling a mapování bankovních e-mailových avíz.</p>
+      <h1 class="text-2xl font-semibold">{{ t('bank_accounts.title') }}</h1>
+      <p class="text-sm text-neutral-500 mt-0.5">{{ t('bank_accounts.subtitle') }}</p>
     </div>
 
-    <div v-if="loading" class="text-sm text-neutral-500">Načítám…</div>
+    <div v-if="loading" class="text-sm text-neutral-500">{{ t('bank_accounts.loading') }}</div>
 
     <div v-else class="space-y-5">
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">Měny + bankovní účty</h2>
-            <p class="text-xs text-neutral-500 mt-0.5">Bankovní účty dodavatele používané v dokladech a bankovních výpisech.</p>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('bank_accounts.currencies_title') }}</h2>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.currencies_subtitle') }}</p>
           </div>
           <button type="button" @click="startNewCurrencyAccount()"
             class="cursor-pointer h-9 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-            Nový bankovní účet
+            {{ t('bank_accounts.new_account') }}
           </button>
         </header>
 
@@ -497,20 +561,20 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
-                <th class="px-3 py-2 text-left font-medium">Měna</th>
-                <th class="px-3 py-2 text-left font-medium">Účet</th>
-                <th class="px-3 py-2 text-left font-medium">Účet CZ</th>
-                <th class="px-3 py-2 text-left font-medium">IBAN</th>
-                <th class="px-3 py-2 text-left font-medium">BIC</th>
-                <th class="px-3 py-2 text-center font-medium">Výchozí</th>
-                <th class="px-3 py-2 text-center font-medium">Aktivní</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_currency') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_account') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_account_cz') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_iban') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_bic') }}</th>
+                <th class="px-3 py-2 text-center font-medium">{{ t('bank_accounts.th_default') }}</th>
+                <th class="px-3 py-2 text-center font-medium">{{ t('bank_accounts.th_active') }}</th>
                 <th class="px-3 py-2 text-right"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-if="currencies.length === 0">
                 <td colspan="8" class="px-3 py-4 text-sm text-neutral-500">
-                  Pro aktuálního dodavatele nejsou evidované žádné bankovní účty.
+                  {{ t('bank_accounts.currencies_empty') }}
                 </td>
               </tr>
               <tr v-for="c in currencies" :key="c.id">
@@ -530,9 +594,9 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                   <span v-else class="text-neutral-400">—</span>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
-                  <button type="button" @click="startEditCurrency(c)" class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs">Upravit</button>
+                  <button type="button" @click="startEditCurrency(c)" class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs">{{ t('common.edit') }}</button>
                   <button v-if="(c.invoices_count ?? 0) === 0" type="button" @click="removeCurrency(c)"
-                    class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs ml-2">Smazat</button>
+                    class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs ml-2">{{ t('common.delete') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -540,7 +604,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
         </div>
 
         <div class="px-5 py-3 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">
-          Pro více účtů ve stejné měně použij „Nový bankovní účet” a vyber stejný kód měny.
+          {{ t('bank_accounts.multi_account_hint') }}
         </div>
       </section>
 
@@ -551,12 +615,12 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">Mapování bankovních avíz</h2>
-            <p class="text-xs text-neutral-500 mt-0.5">Vazba bankovní účet → IMAP účet → parser určuje, které avízo se má párovat k danému účtu.</p>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('bank_accounts.mappings_title') }}</h2>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.mappings_subtitle') }}</p>
           </div>
           <button type="button" @click="saveMappings"
             class="cursor-pointer h-9 px-4 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
-            Uložit mapování
+            {{ t('bank_accounts.save_mappings') }}
           </button>
         </header>
 
@@ -564,17 +628,17 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
-                <th class="px-3 py-2 text-left font-medium">Bankovní účet</th>
-                <th class="px-3 py-2 text-left font-medium">IMAP účet</th>
-                <th class="px-3 py-2 text-left font-medium">Parser</th>
-                <th class="px-3 py-2 text-left font-medium">Tolerance</th>
-                <th class="px-3 py-2 text-center font-medium">Aktivní</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_bank_account') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_imap_account') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_parser') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_tolerance') }}</th>
+                <th class="px-3 py-2 text-center font-medium">{{ t('bank_accounts.th_active') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-if="mappings.length === 0">
                 <td colspan="5" class="px-3 py-4 text-sm text-neutral-500">
-                  Pro aktuálního dodavatele nejsou evidované žádné bankovní účty k mapování.
+                  {{ t('bank_accounts.mappings_empty') }}
                 </td>
               </tr>
               <tr v-for="mapping in mappings" :key="mapping.currency_id">
@@ -591,8 +655,8 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                 <td class="px-3 py-2">
                   <select v-model.number="mapping.imap_account_id" @change="onMappingImapChange(mapping, ($event.target as HTMLSelectElement).value)"
                     class="h-9 w-56 px-2 bg-surface border border-neutral-300 rounded-md text-sm">
-                    <option :value="0">Žádný IMAP účet</option>
-                    <option :value="null">Všechny IMAP účty</option>
+                    <option :value="0">{{ t('bank_accounts.imap_none') }}</option>
+                    <option :value="null">{{ t('bank_accounts.imap_all') }}</option>
                     <option v-for="account in imapAccounts" :key="account.id ?? account.name" :value="account.id">
                       {{ account.name }}
                     </option>
@@ -601,7 +665,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                 <td class="px-3 py-2">
                   <select v-model.number="mapping.provider_id"
                     class="h-9 w-56 px-2 bg-surface border border-neutral-300 rounded-md text-sm">
-                    <option :value="null">Automatický výběr</option>
+                    <option :value="null">{{ t('bank_accounts.provider_auto') }}</option>
                     <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
                 </td>
@@ -622,12 +686,12 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">IMAP účty pro bankovní avíza</h2>
-            <p class="text-xs text-neutral-500 mt-0.5">Každá banka může používat vlastní schránku. Polling používá read-only fetch a zprávy neoznačuje jako přečtené.</p>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('bank_accounts.imap_title') }}</h2>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.imap_subtitle') }}</p>
           </div>
           <button type="button" @click="startNewImapAccount"
             class="cursor-pointer h-9 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-            Nový IMAP účet
+            {{ t('bank_accounts.new_imap') }}
           </button>
         </header>
 
@@ -635,23 +699,23 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
-                <th class="px-3 py-2 text-left font-medium">Název</th>
-                <th class="px-3 py-2 text-left font-medium">Server</th>
-                <th class="px-3 py-2 text-left font-medium">Složka</th>
-                <th class="px-3 py-2 text-left font-medium">Limit</th>
-                <th class="px-3 py-2 text-left font-medium">Poslední scan</th>
-                <th class="px-3 py-2 text-center font-medium">Aktivní</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_name') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_server') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_folder') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_limit') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_last_scan') }}</th>
+                <th class="px-3 py-2 text-center font-medium">{{ t('bank_accounts.th_active') }}</th>
                 <th class="px-3 py-2 text-right"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-if="imapAccounts.length === 0">
-                <td colspan="7" class="px-3 py-4 text-sm text-neutral-500">Není nastavený žádný IMAP účet.</td>
+                <td colspan="7" class="px-3 py-4 text-sm text-neutral-500">{{ t('bank_accounts.imap_empty') }}</td>
               </tr>
               <tr v-for="account in imapAccounts" :key="account.id ?? account.name">
                 <td class="px-3 py-2">
                   <div class="font-medium">{{ account.name }}</div>
-                  <div class="text-xs text-neutral-500">{{ account.username || 'bez uživatele' }}</div>
+                  <div class="text-xs text-neutral-500">{{ account.username || t('bank_accounts.no_username') }}</div>
                 </td>
                 <td class="px-3 py-2 font-mono text-xs">{{ account.host || '—' }}<span v-if="account.port">:{{ account.port }}</span></td>
                 <td class="px-3 py-2">{{ account.folder || 'INBOX' }}</td>
@@ -662,14 +726,14 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                     {{ account.last_scan_status }}<span v-if="account.last_scan_message"> · {{ account.last_scan_message }}</span>
                   </div>
                 </td>
-                <td class="px-3 py-2 text-center">{{ account.enabled ? 'Ano' : 'Ne' }}</td>
+                <td class="px-3 py-2 text-center">{{ account.enabled ? t('common.yes') : t('common.no') }}</td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <button type="button" @click="testImapAccount(account)" :disabled="testingAccountId === account.id"
                     class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs disabled:opacity-50">
-                    {{ testingAccountId === account.id ? 'Testuji…' : 'Test' }}
+                    {{ testingAccountId === account.id ? t('bank_accounts.testing') : t('bank_accounts.test') }}
                   </button>
-                  <button type="button" @click="startEditImapAccount(account)" class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs ml-2">Upravit</button>
-                  <button type="button" @click="deleteImapAccount(account)" class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs ml-2">Smazat</button>
+                  <button type="button" @click="startEditImapAccount(account)" class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs ml-2">{{ t('common.edit') }}</button>
+                  <button type="button" @click="deleteImapAccount(account)" class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs ml-2">{{ t('common.delete') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -677,48 +741,48 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
         </div>
 
         <div v-if="imapFormOpen" class="border-t border-neutral-200 p-5">
-          <h3 class="text-sm font-semibold mb-3">{{ editingImapId === null ? 'Nový IMAP účet' : 'Upravit IMAP účet' }}</h3>
+          <h3 class="text-sm font-semibold mb-3">{{ editingImapId === null ? t('bank_accounts.new_imap') : t('bank_accounts.edit_imap') }}</h3>
           <div class="grid md:grid-cols-3 gap-4">
             <label class="flex items-center gap-2 text-sm md:col-span-3">
               <input v-model="imapDraft.enabled" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-              Povolit zpracování bankovních avíz z tohoto účtu
+              {{ t('bank_accounts.imap_enable') }}
             </label>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Název</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.th_name') }}</label>
               <input v-model="imapDraft.name" type="text" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Host</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.host') }}</label>
               <input v-model="imapDraft.host" type="text" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Port</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.port') }}</label>
               <input v-model.number="imapDraft.port" type="number" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Šifrování</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.encryption') }}</label>
               <select v-model="imapDraft.encryption" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm">
-                <option value="ssl">SSL</option>
-                <option value="tls">TLS</option>
-                <option value="none">Bez šifrování</option>
+                <option value="ssl">{{ t('bank_accounts.enc_ssl') }}</option>
+                <option value="tls">{{ t('bank_accounts.enc_tls') }}</option>
+                <option value="none">{{ t('bank_accounts.enc_none') }}</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Uživatel</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.username') }}</label>
               <input v-model="imapDraft.username" type="text" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Heslo</label>
-              <input v-model="imapDraft.password" type="password" :placeholder="imapDraft.has_password ? 'Uloženo, ponech prázdné' : ''"
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.password') }}</label>
+              <input v-model="imapDraft.password" type="password" :placeholder="imapDraft.has_password ? t('bank_accounts.password_saved_placeholder') : ''"
                 class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Složka</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.folder') }}</label>
               <div class="flex gap-2">
                 <input v-model="imapDraft.folder" type="text" class="min-w-0 flex-1 h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
                 <button type="button" @click="browseImapFolders" :disabled="browsingFolders"
                   class="cursor-pointer h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50 disabled:opacity-50">
-                  {{ browsingFolders ? 'Načítám…' : 'Procházet' }}
+                  {{ browsingFolders ? t('bank_accounts.browsing') : t('bank_accounts.browse') }}
                 </button>
               </div>
               <select v-if="folderOptions.length > 0" :value="imapDraft.folder" @change="selectImapFolder(($event.target as HTMLSelectElement).value)"
@@ -727,45 +791,45 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Max. zpráv na běh</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.max_per_run') }}</label>
               <input v-model.number="imapDraft.max_messages_per_run" type="number" min="1" max="500"
                 class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Zpracovat od data</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.process_from') }}</label>
               <input v-model="imapDraft.process_from_date" type="date"
                 class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <label class="flex items-center gap-2 text-sm mt-7">
               <input v-model="imapDraft.validate_cert" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-              Ověřit certifikát serveru
+              {{ t('bank_accounts.validate_cert') }}
             </label>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Po úspěchu</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.on_success') }}</label>
               <select v-model="imapDraft.success_action" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm">
-                <option value="none">Neměnit zprávu</option>
-                <option value="add_flag">Přidat flag</option>
-                <option value="move">Přesunout</option>
-                <option value="mark_seen">Označit jako přečtené</option>
+                <option value="none">{{ t('bank_accounts.action_none') }}</option>
+                <option value="add_flag">{{ t('bank_accounts.action_add_flag') }}</option>
+                <option value="move">{{ t('bank_accounts.action_move') }}</option>
+                <option value="mark_seen">{{ t('bank_accounts.action_mark_seen') }}</option>
               </select>
             </div>
             <div v-if="imapDraft.success_action === 'add_flag'">
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Success flag</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.success_flag') }}</label>
               <input v-model="imapDraft.success_flag" type="text" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
             <div v-if="imapDraft.success_action === 'move'">
-              <label class="block text-sm font-medium text-neutral-700 mb-1">Cílová složka</label>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.target_folder') }}</label>
               <input v-model="imapDraft.success_move_folder" type="text" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
           </div>
           <div class="mt-4 flex justify-end gap-2">
             <button type="button" @click="closeImapForm"
               class="cursor-pointer h-9 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-              Zrušit
+              {{ t('common.cancel') }}
             </button>
             <button type="button" @click="saveImapAccount" :disabled="saving"
               class="cursor-pointer h-9 px-4 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md disabled:opacity-50">
-              {{ saving ? 'Ukládám…' : 'Uložit IMAP účet' }}
+              {{ saving ? t('bank_accounts.saving') : t('bank_accounts.save_imap') }}
             </button>
           </div>
         </div>
@@ -774,29 +838,29 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
           <div>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">Parser provideri</h2>
-            <p class="text-xs text-neutral-500 mt-0.5">Registrované parsery pro bankovní e-mailová avíza a jejich rychlý test.</p>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('bank_accounts.providers_title') }}</h2>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.providers_subtitle') }}</p>
           </div>
           <button type="button" @click="startNewRegexProvider"
             class="cursor-pointer h-9 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-            Nový regex provider
+            {{ t('bank_accounts.new_regex_provider') }}
           </button>
         </header>
         <div class="overflow-x-auto">
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
-                <th class="px-3 py-2 text-left font-medium">Název</th>
-                <th class="px-3 py-2 text-left font-medium">Vlastník</th>
-                <th class="px-3 py-2 text-left font-medium">Parser</th>
-                <th class="px-3 py-2 text-left font-medium">Pravidla</th>
-                <th class="px-3 py-2 text-center font-medium">Aktivní</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_name') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_owner') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_parser') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_rules') }}</th>
+                <th class="px-3 py-2 text-center font-medium">{{ t('bank_accounts.th_active') }}</th>
                 <th class="px-3 py-2 text-right"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-if="providers.length === 0">
-                <td colspan="6" class="px-3 py-4 text-sm text-neutral-500">Není registrovaný žádný provider.</td>
+                <td colspan="6" class="px-3 py-4 text-sm text-neutral-500">{{ t('bank_accounts.providers_empty') }}</td>
               </tr>
               <tr v-for="p in providers" :key="p.id">
                 <td class="px-3 py-2">
@@ -810,22 +874,22 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                 </td>
                 <td class="px-3 py-2">{{ parserTypeLabel(p.parser_type) }}</td>
                 <td class="px-3 py-2 text-xs text-neutral-600">
-                  <div v-if="p.sender_whitelist">Odesílatel: {{ p.sender_whitelist }}</div>
-                  <div v-if="p.subject_pattern">Předmět: <span class="font-mono">{{ p.subject_pattern }}</span></div>
-                  <div v-if="p.body_pattern">Tělo: <span class="font-mono">{{ p.body_pattern }}</span></div>
+                  <div v-if="p.sender_whitelist">{{ t('bank_accounts.rule_sender') }}: {{ p.sender_whitelist }}</div>
+                  <div v-if="p.subject_pattern">{{ t('bank_accounts.rule_subject') }}: <span class="font-mono">{{ p.subject_pattern }}</span></div>
+                  <div v-if="p.body_pattern">{{ t('bank_accounts.rule_body') }}: <span class="font-mono">{{ p.body_pattern }}</span></div>
                   <span v-if="!p.sender_whitelist && !p.subject_pattern && !p.body_pattern">—</span>
                 </td>
                 <td class="px-3 py-2 text-center">
-                  <span :class="p.enabled ? 'text-success-600' : 'text-neutral-500'">{{ p.enabled ? 'Ano' : 'Ne' }}</span>
+                  <span :class="p.enabled ? 'text-success-600' : 'text-neutral-500'">{{ p.enabled ? t('common.yes') : t('common.no') }}</span>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <button v-if="p.supplier_id !== null && p.parser_type === 'regex'" type="button" @click="startEditProvider(p)"
                     class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs">
-                    Upravit
+                    {{ t('common.edit') }}
                   </button>
                   <button v-if="p.supplier_id !== null" type="button" @click="removeProvider(p)"
                     class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs ml-2">
-                    Smazat
+                    {{ t('common.delete') }}
                   </button>
                 </td>
               </tr>
@@ -833,28 +897,28 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           </table>
         </div>
         <div class="p-5 border-t border-neutral-200">
-            <h3 class="text-sm font-medium mb-2">Test parseru</h3>
+            <h3 class="text-sm font-medium mb-2">{{ t('bank_accounts.parser_test_title') }}</h3>
             <select v-model.number="parserProviderId" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm mb-2">
-              <option :value="null">Automatický výběr</option>
+              <option :value="null">{{ t('bank_accounts.provider_auto') }}</option>
               <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
             <div class="grid md:grid-cols-2 gap-3 mb-2">
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Odesílatel</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.sender') }}</label>
                 <input v-model="parserSender" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Předmět</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.subject') }}</label>
                 <input v-model="parserSubject" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
               </div>
             </div>
             <textarea v-model="parserText" rows="8" class="w-full p-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"
-              placeholder="Vlož text nebo HTML e-mailu…"></textarea>
+              :placeholder="t('bank_accounts.email_text_placeholder')"></textarea>
             <button type="button" @click="testParser"
               class="cursor-pointer mt-2 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
-              Otestovat parser
+              {{ t('bank_accounts.run_parser_test') }}
             </button>
             <pre v-if="parserResult" class="mt-3 text-xs bg-neutral-50 border border-neutral-200 rounded-md p-3 overflow-auto">{{ parserResult }}</pre>
         </div>
@@ -863,30 +927,34 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
       <section class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
           <div>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">Zpracované e-maily</h2>
-            <p class="text-xs text-neutral-500 mt-0.5">Emergency smazání smaže pouze deduplikační záznam, ne transakci ani fakturu.</p>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('bank_accounts.messages_title') }}</h2>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.messages_subtitle') }}</p>
           </div>
           <button type="button" @click="runScan" :disabled="scanning"
             class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md disabled:opacity-50">
-            {{ scanning ? '…' : 'Spustit scan' }}
+            {{ scanning ? '…' : t('bank_accounts.run_scan') }}
           </button>
         </header>
         <div v-if="scanSummary" class="px-5 py-2 text-xs border-b border-neutral-200 bg-neutral-50">
-          Zpracováno: {{ scanSummary.processed ?? 0 }}, spárováno: {{ scanSummary.matched ?? 0 }},
-          známé: {{ scanSummary.known_skipped ?? 0 }}, staré: {{ scanSummary.old_skipped ?? 0 }},
-          chyby: {{ scanSummary.errors ?? 0 }}
+          {{ t('bank_accounts.scan_summary', {
+            processed: scanSummary.processed ?? 0,
+            matched: scanSummary.matched ?? 0,
+            known: scanSummary.known_skipped ?? 0,
+            old: scanSummary.old_skipped ?? 0,
+            errors: scanSummary.errors ?? 0,
+          }) }}
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
                 <th class="px-3 py-2 text-left font-medium">ID</th>
-                <th class="px-3 py-2 text-left font-medium">IMAP účet</th>
-                <th class="px-3 py-2 text-left font-medium">Message-ID</th>
-                <th class="px-3 py-2 text-left font-medium">Stav</th>
-                <th class="px-3 py-2 text-left font-medium">Provider</th>
-                <th class="px-3 py-2 text-left font-medium">Platba</th>
-                <th class="px-3 py-2 text-left font-medium">Transakce</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_imap_account') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_message_id') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_status') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_parser') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_payment') }}</th>
+                <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_transaction') }}</th>
                 <th class="px-3 py-2 text-right"></th>
               </tr>
             </thead>
@@ -907,10 +975,10 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                 <td class="px-3 py-2">
                   <span v-if="m.bank_transaction_id">#{{ m.bank_transaction_id }}</span>
                   <span v-else>—</span>
-                  <div v-if="m.matched_varsymbol" class="text-xs text-success-600">Faktura {{ m.matched_varsymbol }}</div>
+                  <div v-if="m.matched_varsymbol" class="text-xs text-success-600">{{ t('bank_accounts.matched_invoice', { vs: m.matched_varsymbol }) }}</div>
                 </td>
                 <td class="px-3 py-2 text-right">
-                  <button type="button" @click="deleteMessage(m)" class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs">Smazat záznam</button>
+                  <button type="button" @click="deleteMessage(m)" class="cursor-pointer text-danger-600 hover:text-danger-700 text-xs">{{ t('bank_accounts.delete_message') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -921,64 +989,79 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
 
     <div v-if="currencyFormOpen" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div class="bg-surface rounded-xl shadow-lg max-w-md w-full p-5">
-        <h3 class="text-lg font-semibold mb-3">{{ editingCurrency === null ? 'Nový bankovní účet' : `Upravit ${editingCurrencyLabel}` }}</h3>
+        <h3 class="text-lg font-semibold mb-3">{{ editingCurrency === null ? t('bank_accounts.new_account') : t('bank_accounts.edit_account_title', { label: editingCurrencyLabel }) }}</h3>
         <div class="space-y-3">
           <div v-if="editingCurrency === null">
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Měna</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency') }}</label>
             <select v-model="currencyDraft.code" @change="applyNewCurrencyCode"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm">
               <option v-for="code in availableCurrencyCodes" :key="code" :value="code">{{ code }}</option>
             </select>
           </div>
           <div v-else>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Měna</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency') }}</label>
             <div class="h-10 px-3 flex items-center bg-neutral-50 border border-neutral-200 rounded-md text-sm font-mono">
               {{ currencyDraft.code }}
             </div>
           </div>
+          <div class="flex items-center justify-end">
+            <button type="button" @click="loadBankToDraft" :disabled="bankDraftLoading"
+              class="cursor-pointer h-8 px-3 text-xs bg-surface border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+              <span v-if="bankDraftLoading">…</span>
+              {{ bankDraftLoading ? t('common.loading') : t('supplier.bank_lookup') }}
+            </button>
+          </div>
+          <div v-if="bankDraftMsg" class="text-xs px-2 py-1 rounded"
+            :class="{
+              'bg-success-50 text-success-600': bankDraftMsg.type === 'success',
+              'bg-danger-50 text-danger-500': bankDraftMsg.type === 'error',
+              'bg-warning-50 text-warning-600': bankDraftMsg.type === 'warning',
+            }">
+            {{ bankDraftMsg.text }}
+          </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Název účtu</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.account_label') }}</label>
             <input v-model="currencyDraft.label" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Číslo účtu</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.account_number') }}</label>
             <input v-model="currencyDraft.account_number" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Kód banky</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.bank_code') }}</label>
             <input v-model="currencyDraft.bank_code" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">Název banky</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.bank_name') }}</label>
             <input v-model="currencyDraft.bank_name" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">IBAN</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.iban') }}</label>
             <input v-model="currencyDraft.iban" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">BIC</label>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.bic') }}</label>
             <input v-model="currencyDraft.bic" type="text"
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
           </div>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="currencyDraft.is_active" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-            Aktivní účet
+            {{ t('bank_accounts.active_account') }}
           </label>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="currencyDraft.is_default" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-            Výchozí pro danou měnu
+            {{ t('bank_accounts.default_for_currency') }}
           </label>
           <div class="flex justify-end gap-2 pt-2">
             <button type="button" @click="closeCurrencyForm"
-              class="cursor-pointer px-3 h-9 text-sm bg-surface border border-neutral-300 rounded-md hover:bg-neutral-50">Zrušit</button>
+              class="cursor-pointer px-3 h-9 text-sm bg-surface border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>
             <button type="button" @click="saveCurrency"
-              class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">Uložit</button>
+              class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">{{ t('common.save') }}</button>
           </div>
         </div>
       </div>
@@ -986,46 +1069,46 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
 
     <div v-if="providerFormOpen" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div class="bg-surface rounded-xl shadow-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto p-5">
-        <h3 class="text-lg font-semibold mb-4">{{ providerDraft.id === null ? 'Nový regex provider' : `Upravit ${providerDraft.name}` }}</h3>
+        <h3 class="text-lg font-semibold mb-4">{{ providerDraft.id === null ? t('bank_accounts.new_regex_provider') : t('bank_accounts.edit_provider_title', { name: providerDraft.name }) }}</h3>
 
         <div class="space-y-5">
           <section>
-            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">Základní nastavení</h4>
+            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('bank_accounts.basic_settings') }}</h4>
             <div class="grid md:grid-cols-3 gap-4">
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Název</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.name') }}</label>
                 <input v-model="providerDraft.name" @input="syncProviderCode" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Kód</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.code') }}</label>
                 <input v-model="providerDraft.code" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
               </div>
               <label class="flex items-center gap-2 text-sm mt-7">
                 <input v-model="providerDraft.enabled" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-                Aktivní provider
+                {{ t('bank_accounts.active_provider') }}
               </label>
             </div>
           </section>
 
           <section>
-            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">Pravidla e-mailu</h4>
+            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('bank_accounts.email_rules') }}</h4>
             <div class="grid md:grid-cols-3 gap-4">
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Odesílatel</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.sender') }}</label>
                 <input v-model="providerDraft.sender_whitelist" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm"
                   placeholder="info@banka.cz" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Regex předmětu</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.subject_regex') }}</label>
                 <input v-model="providerDraft.subject_pattern" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"
                   placeholder="Pohyb\\s+na\\s+účtě" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">Regex těla</label>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.body_regex') }}</label>
                 <input v-model="providerDraft.body_pattern" type="text"
                   class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"
                   placeholder="Variabilní\\s+symbol" />
@@ -1034,21 +1117,21 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           </section>
 
           <section>
-            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">Vytěžená pole</h4>
+            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('bank_accounts.extracted_fields') }}</h4>
             <div class="overflow-x-auto border border-neutral-200 rounded-lg">
               <table class="w-full text-sm">
                 <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
                   <tr>
-                    <th class="px-3 py-2 text-left font-medium w-56">Pole</th>
-                    <th class="px-3 py-2 text-left font-medium">Regex</th>
+                    <th class="px-3 py-2 text-left font-medium w-56">{{ t('bank_accounts.th_field') }}</th>
+                    <th class="px-3 py-2 text-left font-medium">{{ t('bank_accounts.th_regex') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                   <tr v-for="field in regexFieldDefinitions" :key="field.key">
                     <td class="px-3 py-2">
-                      <div class="font-medium">{{ field.label }}</div>
+                      <div class="font-medium">{{ fieldLabel(field.key) }}</div>
                       <div class="text-xs" :class="field.required ? 'text-warning-700' : 'text-neutral-500'">
-                        {{ field.required ? 'povinné' : 'volitelné' }}
+                        {{ field.required ? t('bank_accounts.field_required') : t('bank_accounts.field_optional') }}
                       </div>
                     </td>
                     <td class="px-3 py-2">
@@ -1062,16 +1145,16 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           </section>
 
           <section>
-            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">Normalizer config</h4>
+            <h4 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('bank_accounts.normalizer_config') }}</h4>
             <textarea v-model="providerDraft.normalizer_config_json" rows="4"
               class="w-full p-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono"></textarea>
           </section>
 
           <div class="flex justify-end gap-2 pt-1">
             <button type="button" @click="closeProviderForm"
-              class="cursor-pointer px-3 h-9 text-sm bg-surface border border-neutral-300 rounded-md hover:bg-neutral-50">Zrušit</button>
+              class="cursor-pointer px-3 h-9 text-sm bg-surface border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>
             <button type="button" @click="saveProvider"
-              class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">Uložit provider</button>
+              class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">{{ t('bank_accounts.save_provider') }}</button>
           </div>
         </div>
       </div>
