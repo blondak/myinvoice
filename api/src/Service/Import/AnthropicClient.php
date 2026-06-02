@@ -196,6 +196,7 @@ JSON schema:
       "quantity": number,
       "unit": string,
       "unit_price_without_vat": number,
+      "line_total_without_vat": number|null,
       "vat_rate": number
     }
   ],
@@ -323,6 +324,20 @@ DŮLEŽITÉ k řádkům faktury (`items`):
   celkovou částku 2-5× nad reálný total.
 - Pokud na faktuře vidíš stejnou položku "Vyvážení kola" s qty 1 i jako
   součtový řádek "Celkem Vyvážení" s vypočtenou sumou — vrať POUZE ten s qty 1.
+
+DŮLEŽITÉ k poli `line_total_without_vat` (řádková částka bez DPH):
+- Pokud má řádek faktury vlastní sloupec s CELKOVOU částkou ZA ŘÁDEK BEZ DPH
+  (typicky „Částka", „Celkem bez DPH", „Základ", „Cena celkem"), opiš ho do
+  `line_total_without_vat` PŘESNĚ tak, jak je na dokladu.
+- Je to klíčové hlavně tam, kde `quantity × unit_price_without_vat` NEODPOVÍDÁ té
+  částce — typicky autoservisy (NC Auto / BMW Service): sloupec „Cena" u položky NENÍ
+  jednotková cena k násobení množstvím (např. „AW 8,29 × 1 980" má řádkovou částku
+  1 980, ne 16 414). Náš systém pak vezme řádkovou částku jako pravdu.
+- Pokud doklad takový sloupec NEMÁ (jen jednotková cena, nebo jen „Cena s DPH"),
+  vrať `null`. NEVYMÝŠLEJ hodnotu a NEPŘEPOČÍTÁVEJ ji.
+- Hodnota je vždy BEZ DPH. U dokladu, kde jsou ceny uvedené VČETNĚ DPH (účtenky,
+  `unit_prices_include_vat=true`), vrať `null` — bez DPH částku tam nehledej.
+- U dobropisu vrať kladnou absolutní hodnotu (sign aplikuje importér).
 
 DŮLEŽITÉ k VÍCESTRÁNKOVÝM dokladům (faktura + příloha/rozpis):
 - Některé doklady mají na PRVNÍ straně vlastní fakturu se sumarizovanými

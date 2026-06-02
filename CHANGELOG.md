@@ -5,6 +5,15 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.1] — 2026-06-02
+
+Oprava AI extrakce přijatých dokladů: u faktur s více položkami se už **nezahazuje itemizace**. Návazné na [#99](https://github.com/radekhulan/myinvoice/issues/99).
+
+### Fixed
+
+- **AI extrakce zachová položky u dokladů s cenami včetně DPH.** Víceřádkový doklad, kde jsou jednotkové ceny ve skutečnosti brutto (e-shopy se sloupcem „Cena celkem s DPH"), se už neslučuje na jediný základový řádek. Rozpozná se podle konzistentní jednosazbové rekapitulace, kde součet řádků odpovídá celkové částce s DPH; faktura se vede v režimu „ceny s DPH" a DPH se dopočte shora koeficientem (§ 37 ZDPH), přesná rekapitulace dokladu se připne přes ruční override (§ 73). Všechny položky zůstanou zachované a celek sedí na haléř.
+- **AI extrakce respektuje řádkovou částku z dokladu (autoservisy).** Nové pole `line_total_without_vat` (sloupec „Částka" / „Celkem bez DPH" / „Základ"): když součin množství × jednotková cena neodpovídá řádkové částce na dokladu (typicky autoservisy, kde „Cena" není jednotková cena k násobení množstvím — např. „AW 8,29 × 1 980" má řádkovou částku 1 980), vezme se řádková částka jako pravda. Doklad si tak zachová všechny položky místo sloučení na jediný řádek.
+
 ## [4.12.0] — 2026-06-02
 
 Velká novinka: **elektronické podpisy**. Vydané faktury a výkazy práce lze podepisovat certifikátem (**PAdES**) a odchozí e-maily přes **S/MIME** — vše přes nové podpisové profily s konfigurací per výstup. K tomu oprava daňově korektní AI extrakce přijatých dokladů a několik UX vylepšení.

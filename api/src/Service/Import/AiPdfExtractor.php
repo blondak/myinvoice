@@ -327,6 +327,19 @@ final class AiPdfExtractor
             $rate = (float) ($line['vat_rate'] ?? 0);
             $qtyAi = (float) ($line['quantity'] ?? 0);
             $priceAi = (float) ($line['unit_price_without_vat'] ?? 0);
+            // Doklad s explicitní řádkovou částkou bez DPH (sloupec „Částka"/„Celkem bez
+            // DPH"/„Základ") — autoservisy NC Auto/BMW, kde „Cena" NENÍ jednotková cena
+            // k násobení množstvím a qty×cena nesedí na řádkovou částku. Vezmeme částku
+            // jako pravdu (1 ks × částka), aby se zachovala itemizace a součet řádků sedl
+            // na základ z rekapitulace (jinak by se doklad sloučil na jediný řádek).
+            // JEN v režimu zdola — v režimu shora je cena brutto a sloupec bez DPH neplatí.
+            if (!$pricesIncludeVat) {
+                [$qtyAi, $priceAi] = self::reconcileLineAmount(
+                    $qtyAi,
+                    $priceAi,
+                    $line['line_total_without_vat'] ?? null,
+                );
+            }
             if ($isCredit) {
                 // Dobropis: AI vrací kladné absolutní hodnoty, sign aplikujeme.
                 $qty = -1.0 * abs($qtyAi);
@@ -366,18 +379,38 @@ final class AiPdfExtractor
         // ho z rekapitulace; DPH připne seedVatOverridesFromDocument a celek pak přesně
         // sedí (žádné umělé zaokrouhlení, žádné chybné +DPH navrch). Neplátce vynecháme
         // (na dokladu žádná DPH, řeší se výš), dobropisy taky (znaménka).
+        // Když AI mylně označila brutto řádkové ceny jako bez DPH (e-shopy se sloupcem
+        // „Cena celkem s DPH"), záleží na počtu řádků:
+        //   - VÍCEŘÁDKOVÝ doklad → řádky ZACHOVÁME a přepneme do režimu „ceny s DPH"
+        //     (DPH shora koeficientem § 37; přesnou rekapitulaci § 73 připne seeder).
+        //     Sloučení na 1 základový řádek by zbytečně zahodilo itemizaci (issue: pneu
+        //     faktura NejlevnejsiPNEU.cz — 3 položky se kolabovaly na 1).
+        //   - JEDNOŘÁDKOVÝ doklad → authoritativeRecapBaseLine ho nahradí 1 ks × základ
+        //     z rekapitulace (čistší než 1 brutto řádek + koeficientové dorovnání).
+        $grossLinesPricesInclVat = false;
         if (!$vendorNonPayer) {
-            $authoritative = self::authoritativeRecapBaseLine($items, $data, $isCredit);
-            if ($authoritative !== null) {
-                $this->logger->info('AI extractor: konzistentní rekapitulace DPH → evidováno verbatim (§73, brutto/netto drift řádků)', [
+            if (!$pricesIncludeVat && count($items) > 1 && self::linesAreGrossSingleRate($items, $data, $isCredit)) {
+                $this->logger->info('AI extractor: víceřádkové brutto ceny dle rekapitulace → režim ceny s DPH, řádky zachovány', [
                     'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
-                    'lines_before'          => count($items),
+                    'lines'                 => count($items),
                     'recap_base'            => $data['total_without_vat'] ?? null,
                     'recap_total'           => $data['total_with_vat'] ?? null,
                 ]);
-                $items = $authoritative;
-                // Základ je základ; DPH připne override → žádná „shora" math z brutto.
-                $pricesIncludeVat = false;
+                $pricesIncludeVat = true;
+                $grossLinesPricesInclVat = true;
+            } else {
+                $authoritative = self::authoritativeRecapBaseLine($items, $data, $isCredit);
+                if ($authoritative !== null) {
+                    $this->logger->info('AI extractor: konzistentní rekapitulace DPH → evidováno verbatim (§73, brutto/netto drift řádků)', [
+                        'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
+                        'lines_before'          => count($items),
+                        'recap_base'            => $data['total_without_vat'] ?? null,
+                        'recap_total'           => $data['total_with_vat'] ?? null,
+                    ]);
+                    $items = $authoritative;
+                    // Základ je základ; DPH připne override → žádná „shora" math z brutto.
+                    $pricesIncludeVat = false;
+                }
             }
         }
 
@@ -449,8 +482,13 @@ final class AiPdfExtractor
         // Naseeduj ruční rekapitulaci DPH dle dokladu (§ 73) — uloží základ/DPH dle
         // dokladu dodavatele. Varování (rozdíl > tolerance) zapíšeme až na konci, ať
         // ho pozdější setExtractionWarning() (mismatch / neplátce) nepřepíše.
+        // Seed rekapitulace běží v režimu ZDOLA, a navíc v režimu SHORA, do kterého jsme
+        // přepnuli kvůli víceřádkovým brutto cenám ($grossLinesPricesInclVat) — tam DPH
+        // sice sedí koeficientem, ale doklad může DPH zaokrouhlit o haléř jinak (§ 73),
+        // takže rekapitulaci dokladu připneme i tady. Genuine účtenky (receipt s ceny-s-DPH
+        // od začátku) seed nepotřebují (celek sedí koeficientem) → ty se neseedují.
         $vatRecapWarning = null;
-        if (!$pricesIncludeVat) {
+        if (!$pricesIncludeVat || $grossLinesPricesInclVat) {
             $vatRecapWarning = $this->seedVatOverridesFromDocument($id, $supplierId, $data, $isCredit);
         }
         // Rounding počítáme AŽ TADY (po recompute) — vůči přesnému total z items,
@@ -673,6 +711,76 @@ final class AiPdfExtractor
      * @param array<string,mixed> $data
      * @return list<array{description:string, quantity:float, unit:string, unit_price_without_vat:float, vat_rate_id:int, order_index:int}>|null
      */
+    /**
+     * Sjednotí množství a jednotkovou cenu řádku, když doklad uvádí explicitní řádkovou
+     * částku BEZ DPH (`line_total_without_vat` — sloupec „Částka"/„Celkem bez DPH"/„Základ")
+     * a součin `qty × unit_price` jí neodpovídá. Typicky autoservisy (NC Auto / BMW), kde
+     * „Cena" není jednotková cena k násobení množstvím (AW 8,29 × 1 980 ≠ částka 1 980).
+     * V takovém případě vezmeme řádkovou částku jako pravdu → `1 ks × částka`; jinak řádek
+     * ponecháme beze změny (qty × cena už sedí, nebo doklad částku neuvádí).
+     *
+     * Záporná částka (sleva/storno řádek u běžné faktury) se zachová se znaménkem.
+     *
+     * Snapujeme při JAKÉMKOLI nesouladu (po zaokrouhlení na 2 des. místa), ne až nad
+     * tolerancí — řádková částka na dokladu je autoritativní a i haléřový per-řádkový
+     * drift by jinak rozhodil součet řádků vůči základu z rekapitulace a spustil
+     * sloučení na jediný řádek ({@see collapseToSummaryBaseLine}). U korektní faktury,
+     * kde qty×cena přesně sedí na řádkovou částku, k žádné změně nedojde.
+     *
+     * @return array{0: float, 1: float} [quantity, unit_price_without_vat]
+     */
+    public static function reconcileLineAmount(float $qty, float $unitPrice, mixed $lineTotal): array
+    {
+        if (!is_numeric($lineTotal)) {
+            return [$qty, $unitPrice];
+        }
+        $lineTotal = (float) $lineTotal;
+        if ($lineTotal === 0.0) {
+            return [$qty, $unitPrice]; // 0 částka → nic spolehlivého k dosazení
+        }
+        if (round($qty * $unitPrice, 2) !== round($lineTotal, 2)) {
+            return [1.0, $lineTotal];
+        }
+        return [$qty, $unitPrice];
+    }
+
+    /**
+     * Rozpozná doklad, jehož řádkové ceny jsou ve skutečnosti BRUTTO (včetně DPH),
+     * i když je AI extrakce označila jako ceny bez DPH (`unit_prices_include_vat=false`).
+     * Tell-tale: existuje konzistentní jednosazbová rekapitulace DPH a součet řádků
+     * (Σ qty × cena) se shoduje s CELKEM s DPH (= základ + daň z rekapitulace), NE
+     * se základem. Typicky e-shopy se sloupcem „Cena celkem s DPH" (pneu, drogerie…),
+     * kde je „Jed. cena" také brutto.
+     *
+     * Pokud vrátí true, je správné řádky PONECHAT a fakturu vést v režimu „ceny s DPH"
+     * (DPH shora koeficientem, § 37 ZDPH; přesnou rekapitulaci § 73 připne seeder) —
+     * na rozdíl od {@see authoritativeRecapBaseLine}, který slučuje na jediný základový
+     * řádek a zahodil by itemizaci. Volá se proto jen pro VÍCEŘÁDKOVÉ doklady; jednořádkový
+     * sloučí authoritativeRecapBaseLine (čistší než 1 brutto řádek + dorovnání).
+     *
+     * @param list<array{quantity:float|int, unit_price_without_vat:float|int, vat_rate_id:int}> $items
+     * @param array<string,mixed> $data
+     */
+    public static function linesAreGrossSingleRate(array $items, array $data, bool $isCredit): bool
+    {
+        if ($isCredit || count($items) === 0) {
+            return false;
+        }
+        $recap = self::singleRateConsistentRecap($data);
+        if ($recap === null) {
+            return false;
+        }
+        $sumLines = 0.0;
+        foreach ($items as $it) {
+            $sumLines += round((float) $it['quantity'] * (float) $it['unit_price_without_vat'], 2);
+        }
+        $sumLines = round($sumLines, 2);
+        $tol   = PurchaseVatRecapSeeder::toleranceFor((string) ($data['currency'] ?? 'CZK'));
+        $gross = round($recap['base'] + $recap['vat'], 2);
+        // Řádky odpovídají CELKEM s DPH (brutto) a NE základu (jinak jsou už netto → nech být).
+        return abs($sumLines - $gross) <= $tol && abs($sumLines - round($recap['base'], 2)) > $tol;
+    }
+
     public static function authoritativeRecapBaseLine(array $items, array $data, bool $isCredit): ?array
     {
         if ($isCredit || count($items) === 0) {
