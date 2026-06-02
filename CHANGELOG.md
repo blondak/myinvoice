@@ -5,6 +5,23 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.2] — 2026-06-02
+
+Číslování interních čísel přijatých faktur je nově **konfigurovatelné per dodavatel** a dotažené ošetření kolizí (obdoba vydaných faktur). Plus oprava ověření DIČ u českých OSVČ. Navázáno na [#103](https://github.com/radekhulan/myinvoice/issues/103).
+
+### Added
+
+- **Vlastní šablona interního čísla přijaté faktury ([#103](https://github.com/radekhulan/myinvoice/issues/103)).** V **Nastavení → Číslování faktur** přibylo pole **„Šablona pro přijatou fakturu"** (stávající „Šablona pro fakturu" se přejmenovala na **„Šablona pro vydanou fakturu"**). Placeholdery: `{PP}` daňový prefix (PF/PN plný nárok, KU/KN krácený, NU/NN bez nároku), `{YYYY}`/`{YY}`/`{MM}` datum, `{C+}` čítač. Výchozí (a beze změny pro existující instalace) zůstává `{PP}{YY}{MM}{CCC}` → `PF2605001`; lze zadat i legacy `PF-{YYYY}{MM}-{CCCC}` → `PF-202605-0001`. Scope čítače plyne ze šablony (s `{MM}` měsíční řada, jinak roční). Živý náhled příštího čísla přímo u pole.
+
+### Fixed
+
+- **Ošetření kolize ručního interního čísla přijaté faktury ([#103](https://github.com/radekhulan/myinvoice/issues/103)).** Doteď ruční zadání už obsazeného čísla končilo holou chybou 500 a auto-generátor nepřeskakoval obsazená čísla (ručně zadané číslo „dopředu" mohlo shodit přechod na stav Přijatá). Nově je generátor **samoopravný** (přeskočí obsazená, skočí za nejvyšší použité číslo řady) a kolize ručního čísla vrátí srozumitelnou hlášku **409** místo 500 — stejně jako u vydaných faktur. Unikátní index zůstává definitivní pojistka proti duplicitám.
+- **Ověření DIČ u českých OSVČ (rodné číslo) ve VIES.** Tuzemská DIČ ve tvaru `CZ` + rodné číslo (9–10 číslic, typicky OSVČ) se chybně hlásila jako „neplatné / neexistuje", protože se číselná část posílala do ARES jako IČO (8 číslic). Nově se taková DIČ ověří přímo přes autoritativní VIES (např. `CZ8901311870` → platné).
+
+### Changed
+
+- **Upřesnění interního číslování přijatých faktur v manuálu a UI.** Zastaralý formát `PF-YYYYMM-NNNN` nahrazen aktuálním `PF2605001` (popisky pole, placeholder, manuál); doplněn popis prefixů dle daňového typu a chování čítače.
+
 ## [4.12.1] — 2026-06-02
 
 Oprava AI extrakce přijatých dokladů: u faktur s více položkami se už **nezahazuje itemizace**. Návazné na [#99](https://github.com/radekhulan/myinvoice/issues/99).
