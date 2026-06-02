@@ -491,7 +491,12 @@ final class SettingsAction
             'SELECT c.id, c.code, c.label, c.symbol, c.name_cs, c.name_en, c.decimals,
                     c.is_active, c.is_default,
                     c.account_number, c.bank_code, c.bank_name, c.iban, c.bic,
-                    (SELECT COUNT(*) FROM invoices i WHERE i.currency_id = c.id) AS invoices_count
+                    (
+                        (SELECT COUNT(*) FROM invoices i WHERE i.currency_id = c.id)
+                      + (SELECT COUNT(*) FROM purchase_invoices pi WHERE pi.currency_id = c.id OR pi.payment_currency_id = c.id)
+                      + (SELECT COUNT(*) FROM projects p WHERE p.currency_id = c.id)
+                      + (SELECT COUNT(*) FROM recurring_invoice_templates rit WHERE rit.currency_id = c.id)
+                    ) AS invoices_count
                FROM currencies c
               WHERE c.supplier_id = ?
            ORDER BY c.code, c.is_default DESC, c.label'
@@ -844,13 +849,29 @@ final class SettingsAction
         if ($ownerSid === 0) return Json::error($response, 'not_found', 'Měna nenalezena.', 404);
         if ($ownerSid !== $sid) return Json::error($response, 'wrong_supplier', 'Tato měna patří jinému supplier.', 403);
 
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM invoices WHERE currency_id = ?');
-        $stmt->execute([$id]);
-        $invoices = (int) $stmt->fetchColumn();
-        if ($invoices > 0) {
-            return Json::error($response, 'has_dependencies', "Měnu nelze smazat — má $invoices faktur.", 409);
+        // Použití napříč doklady (vydané, přijaté vč. platební měny, zakázky, pravidelné fakturace).
+        $stmt = $pdo->prepare(
+            'SELECT (
+                (SELECT COUNT(*) FROM invoices WHERE currency_id = ?)
+              + (SELECT COUNT(*) FROM purchase_invoices WHERE currency_id = ? OR payment_currency_id = ?)
+              + (SELECT COUNT(*) FROM projects WHERE currency_id = ?)
+              + (SELECT COUNT(*) FROM recurring_invoice_templates WHERE currency_id = ?)
+            ) AS cnt'
+        );
+        $stmt->execute([$id, $id, $id, $id, $id]);
+        $deps = (int) $stmt->fetchColumn();
+        if ($deps > 0) {
+            return Json::error($response, 'has_dependencies', "Měnu nelze smazat — je použita na $deps dokladech.", 409);
         }
-        $pdo->prepare('DELETE FROM currencies WHERE id = ?')->execute([$id]);
+        try {
+            $pdo->prepare('DELETE FROM currencies WHERE id = ?')->execute([$id]);
+        } catch (\PDOException $e) {
+            // Pojistka pro ostatní FK (cache přepočtů, výchozí měna klienta/dodavatele apod.).
+            if ($e->getCode() === '23000') {
+                return Json::error($response, 'has_dependencies', 'Měnu nelze smazat — je použita v jiných záznamech.', 409);
+            }
+            throw $e;
+        }
         $this->log($request, 'currency.deleted', $id, []);
         return Json::ok($response, ['deleted' => true]);
     }
