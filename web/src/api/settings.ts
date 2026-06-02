@@ -191,6 +191,14 @@ export interface BankEmailOverview {
   providers: BankEmailProvider[]
   mappings: BankEmailAccountMapping[]
   messages: BankEmailProcessedMessage[]
+  messages_total: number
+}
+
+export interface BankEmailMessagePage {
+  items: BankEmailProcessedMessage[]
+  total: number
+  page: number
+  limit: number
 }
 
 export interface VatRate {
@@ -446,8 +454,8 @@ export const settingsApi = {
     ).then(r => r.data),
   scanBankEmailNotices: (limit?: number) =>
     api.post<Record<string, any>>('/settings/bank-email-notices/scan', limit ? { limit } : {}).then(r => r.data),
-  listBankEmailMessages: () =>
-    api.get<BankEmailProcessedMessage[]>('/settings/bank-email-notices/messages').then(r => r.data),
+  listBankEmailMessages: (page = 1) =>
+    api.get<BankEmailMessagePage>('/settings/bank-email-notices/messages', { params: { page } }).then(r => r.data),
   deleteBankEmailMessage: (id: number) =>
     api.delete<{ deleted: boolean }>(`/settings/bank-email-notices/messages/${id}`).then(r => r.data),
 

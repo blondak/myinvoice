@@ -23,6 +23,12 @@ const mappings = ref<BankEmailAccountMapping[]>([])
 const providers = ref<BankEmailProvider[]>([])
 const imapAccounts = ref<BankEmailImapSettings[]>([])
 const messages = ref<BankEmailProcessedMessage[]>([])
+const messagesTotal = ref(0)
+const messagesPage = ref(1)
+const messagesPerPage = ref(50)
+const messagesTotalPages = computed(() => Math.max(1, Math.ceil(messagesTotal.value / messagesPerPage.value)))
+const messagesFrom = computed(() => (messagesTotal.value === 0 ? 0 : (messagesPage.value - 1) * messagesPerPage.value + 1))
+const messagesTo = computed(() => Math.min(messagesPage.value * messagesPerPage.value, messagesTotal.value))
 const loading = ref(false)
 const saving = ref(false)
 const testingAccountId = ref<number | null>(null)
@@ -154,6 +160,8 @@ async function load() {
       providers.value = overview.providers
       imapAccounts.value = overview.imap_accounts ?? (overview.imap?.id ? [overview.imap] : [])
       messages.value = overview.messages
+      messagesTotal.value = overview.messages_total ?? overview.messages.length
+      messagesPage.value = 1
       // Rozbal jen když už něco existuje; jinak nech sbalené s dotazem.
       emailNoticesOpen.value = imapAccounts.value.length > 0
         || messages.value.length > 0
@@ -164,6 +172,7 @@ async function load() {
       providers.value = []
       imapAccounts.value = []
       messages.value = []
+      messagesTotal.value = 0
     }
   } finally {
     loading.value = false
@@ -171,6 +180,15 @@ async function load() {
 }
 
 onMounted(load)
+
+async function loadMessagesPage(p: number) {
+  const np = Math.min(Math.max(1, p), messagesTotalPages.value)
+  const r = await settingsApi.listBankEmailMessages(np)
+  messages.value = r.items
+  messagesTotal.value = r.total
+  messagesPerPage.value = r.limit
+  messagesPage.value = r.page
+}
 
 function startEditCurrency(c: CurrencyAccount) {
   editingCurrency.value = c.id
@@ -416,7 +434,6 @@ async function runScan() {
   try {
     scanSummary.value = await settingsApi.scanBankEmailNotices()
     toast.success(t('bank_accounts.scan_done'))
-    messages.value = await settingsApi.listBankEmailMessages()
     await load()
   } catch (e) {
     toast.error(apiErrorMessage(e, t('bank_accounts.scan_failed')))
@@ -554,7 +571,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
   try {
     await settingsApi.deleteBankEmailMessage(m.id)
     toast.success(t('bank_accounts.message_deleted'))
-    messages.value = await settingsApi.listBankEmailMessages()
+    await loadMessagesPage(messagesPage.value)
   } catch (e) {
     toast.error(apiErrorMessage(e, t('common.error')))
   }
@@ -1068,6 +1085,16 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="messagesTotal > messagesPerPage" class="px-5 py-3 border-t border-neutral-200 flex items-center justify-between gap-3 text-sm">
+          <span class="text-neutral-500">{{ t('common.pagination_range', { from: messagesFrom, to: messagesTo, total: messagesTotal }) }}</span>
+          <div class="flex items-center gap-1">
+            <button type="button" :disabled="messagesPage <= 1" @click="loadMessagesPage(messagesPage - 1)"
+              class="cursor-pointer h-8 px-3 border border-neutral-300 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+            <span class="px-2 text-neutral-600">{{ messagesPage }} / {{ messagesTotalPages }}</span>
+            <button type="button" :disabled="messagesPage >= messagesTotalPages" @click="loadMessagesPage(messagesPage + 1)"
+              class="cursor-pointer h-8 px-3 border border-neutral-300 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+          </div>
         </div>
       </section>
       </div>

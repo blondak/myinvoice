@@ -38,7 +38,8 @@ final class BankEmailNoticeAction
                 'imap_accounts' => $this->repo->imapAccounts($sid),
                 'providers' => $this->repo->providers($sid),
                 'mappings' => $this->repo->accountMappings($sid),
-                'messages' => $this->repo->processedMessages($sid, 100),
+                'messages' => $this->repo->processedMessages($sid, 50, 0),
+                'messages_total' => $this->repo->countProcessedMessages($sid),
             ]);
         } catch (\PDOException $e) {
             if (str_starts_with((string) $e->getCode(), '42S02')) {
@@ -239,7 +240,16 @@ final class BankEmailNoticeAction
     public function messages(Request $request, Response $response): Response
     {
         if (!$this->admin($request, $response, $err)) return $err;
-        return Json::ok($response, $this->repo->processedMessages($this->supplierId($request), 200));
+        $sid = $this->supplierId($request);
+        $q = $request->getQueryParams();
+        $limit = 50;
+        $page = max(1, (int) ($q['page'] ?? 1));
+        return Json::ok($response, [
+            'items' => $this->repo->processedMessages($sid, $limit, ($page - 1) * $limit),
+            'total' => $this->repo->countProcessedMessages($sid),
+            'page' => $page,
+            'limit' => $limit,
+        ]);
     }
 
     public function deleteMessage(Request $request, Response $response, array $args): Response

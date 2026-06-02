@@ -405,7 +405,7 @@ final class BankEmailNoticeRepository
     /**
      * @return list<array<string,mixed>>
      */
-    public function processedMessages(int $supplierId, int $limit = 100): array
+    public function processedMessages(int $supplierId, int $limit = 100, int $offset = 0): array
     {
         $stmt = $this->db->pdo()->prepare(
             'SELECT pm.*, im.name AS imap_account_name, i.varsymbol AS matched_varsymbol
@@ -414,10 +414,11 @@ final class BankEmailNoticeRepository
           LEFT JOIN invoices i ON i.id = pm.matched_invoice_id AND i.supplier_id = pm.supplier_id
               WHERE pm.supplier_id = ?
            ORDER BY pm.processed_at DESC, pm.id DESC
-              LIMIT ?'
+              LIMIT ? OFFSET ?'
         );
         $stmt->bindValue(1, $supplierId, \PDO::PARAM_INT);
         $stmt->bindValue(2, max(1, min(500, $limit)), \PDO::PARAM_INT);
+        $stmt->bindValue(3, max(0, $offset), \PDO::PARAM_INT);
         $stmt->execute();
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         foreach ($rows as &$row) {
@@ -433,6 +434,13 @@ final class BankEmailNoticeRepository
             $row['parsed_payload'] = $this->decodeJson($row['parsed_payload'] ?? null);
         }
         return $rows;
+    }
+
+    public function countProcessedMessages(int $supplierId): int
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT COUNT(*) FROM bank_email_processed_messages WHERE supplier_id = ?');
+        $stmt->execute([$supplierId]);
+        return (int) $stmt->fetchColumn();
     }
 
     public function deleteProcessedMessage(int $supplierId, int $id): bool
@@ -454,23 +462,47 @@ final class BankEmailNoticeRepository
     ): array {
         [$account, $bankCode] = $this->splitAccount($notice->recipientAccount);
         $pdo = $this->db->pdo();
-        $pdo->prepare(
-            'INSERT INTO bank_statements
-                (source, source_ref, file_name, file_hash, account_number, bank_code, currency, statement_date,
-                 transaction_count, matched_count, imported_by)
-             VALUES
-                (?,?,?,?,?,?,?,?,1,0,NULL)'
-        )->execute([
-            'email_notice',
-            $sourceRef,
-            'Email avizo ' . mb_substr($sourceRef, 0, 120),
-            hash('sha256', 'email-notice:' . $sourceRef . ':' . microtime(true)),
-            $account,
-            $bankCode,
-            $notice->currency,
-            $notice->postedAt,
-        ]);
-        $statementId = (int) $pdo->lastInsertId();
+
+        // Měsíční výpis: avíza pro stejný účet/měnu/měsíc se sbírají do jednoho
+        // bank_statements (source=email_notice), ať seznam výpisů nezaplaví 1 řádek/avízo.
+        // Deterministický file_hash + UNIQUE uq_bs_hash = atomický find-or-create.
+        $ym = preg_match('/^\d{4}-\d{2}/', (string) $notice->postedAt, $mm) === 1 ? $mm[0] : date('Y-m');
+        $monthKey = $account . '|' . ($bankCode ?? '') . '|' . strtoupper($notice->currency) . '|' . $ym;
+        $fileHash = hash('sha256', 'email-notice-monthly:' . $monthKey);
+
+        $findStmt = $pdo->prepare('SELECT id FROM bank_statements WHERE file_hash = ? LIMIT 1');
+        $findStmt->execute([$fileHash]);
+        $found = $findStmt->fetchColumn();
+        if ($found !== false) {
+            $statementId = (int) $found;
+        } else {
+            try {
+                $pdo->prepare(
+                    'INSERT INTO bank_statements
+                        (source, source_ref, file_name, file_hash, account_number, bank_code, currency, statement_date,
+                         transaction_count, matched_count, imported_by)
+                     VALUES (?,?,?,?,?,?,?,?,0,0,NULL)'
+                )->execute([
+                    'email_notice',
+                    'imap-monthly:' . $monthKey,
+                    'Email avíza ' . $ym,
+                    $fileHash,
+                    $account,
+                    $bankCode,
+                    $notice->currency,
+                    $ym . '-01',
+                ]);
+                $statementId = (int) $pdo->lastInsertId();
+            } catch (\PDOException $e) {
+                // Souběh — jiný běh výpis mezitím založil; načti existující.
+                if ($e->getCode() === '23000') {
+                    $findStmt->execute([$fileHash]);
+                    $statementId = (int) $findStmt->fetchColumn();
+                } else {
+                    throw $e;
+                }
+            }
+        }
 
         $pdo->prepare(
             'INSERT INTO bank_transactions
@@ -495,9 +527,13 @@ final class BankEmailNoticeRepository
         ]);
         $transactionId = (int) $pdo->lastInsertId();
         $match = $matcher->match($transactionId);
-        if (in_array($match['status'] ?? '', ['auto_exact', 'auto_partial'], true)) {
-            $pdo->prepare('UPDATE bank_statements SET matched_count = 1 WHERE id = ?')->execute([$statementId]);
-        }
+        $matched = in_array($match['status'] ?? '', ['auto_exact', 'auto_partial'], true);
+        // Naakumuluj počty do měsíčního výpisu.
+        $pdo->prepare(
+            'UPDATE bank_statements
+                SET transaction_count = transaction_count + 1, matched_count = matched_count + ?
+              WHERE id = ?'
+        )->execute([$matched ? 1 : 0, $statementId]);
 
         return ['statement_id' => $statementId, 'transaction_id' => $transactionId, 'match_result' => $match];
     }

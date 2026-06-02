@@ -721,6 +721,7 @@
     "days_ago": "před {n} dny"
   },
   "common": {
+    "pagination_range": "{from}–{to} z {total}",
     "view_all": "Zobrazit vše",
     "year": "Rok", "month": "Měsíc",
     "loading": "Načítám…", "save": "Uložit", "cancel": "Zrušit", "add": "Přidat",
@@ -2519,7 +2520,7 @@
       "records": "záznamů"
     },
     "income_tax": {
-      "title": "Daň z příjmů (DPFO / DPPO)",
+      "title": "Daň z příjmů",
       "subtitle": "Roční přiznání k dani z příjmů. **MVP foundation** — výkaz není kompletní.",
       "mvp_disclaimer_title": "⚠️ Pouze foundation — výkaz NENÍ kompletní",
       "mvp_disclaimer_body": "Tento výkaz obsahuje jen orientační čísla z fakturačního systému a identifikaci poplatníka. Skutečné daňové přiznání vyžaduje účetní data (odpisy, mzdy, sociální a zdravotní pojištění, zálohy na daň, slevy), která MyInvoice.cz neeviduje. Před podáním VŽDY doplnit ve spolupráci s účetní/poradcem nebo v účetnickém software.",
