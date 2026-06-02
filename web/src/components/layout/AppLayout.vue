@@ -195,6 +195,7 @@ const navSections = computed<NavSection[]>(() => {
       accent: 'neutral',
       items: [
         { to: '/admin/settings',         label: t('nav.settings'),        icon: ICONS.settings },
+        { to: '/admin/bank-accounts',    label: t('nav.bank_accounts'),   icon: ICONS.bank },
         { to: '/admin/electronic-signatures', label: t('nav.electronic_signatures'), icon: ICONS.approvals },
         { to: '/admin/codebooks',        label: t('nav.codebooks'),       icon: ICONS.codebooks },
         { to: '/admin/integrations',     label: t('nav.integrations'),    icon: ICONS.api_tokens },
