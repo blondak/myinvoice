@@ -159,7 +159,7 @@ Odchozí e-maily lze volitelně podepisovat S/MIME certifikátem. Nastavuje se v
 Podpis se aplikuje až na sestavený e-mail včetně příloh; příjemce ho ověří v
 běžném e-mailovém klientovi.
 
-Detail nastavení je v [kapitole 21. Elektronické podpisy](28_Elektronicke_podpisy.md).
+Detail nastavení je v [kapitole 28. Elektronické podpisy](28_Elektronicke_podpisy.md).
 
 ## 12.5 Historie PDF
 
