@@ -87,6 +87,21 @@ TEXT;
         self::assertSame('1120', $parsed->constantSymbol);
     }
 
+    public function testRejectsSpoofedSenderDomain(): void
+    {
+        $parser = new CsobBankEmailNoticeParser();
+        $message = new BankEmailNoticeMessage(
+            uid: 1,
+            messageId: '<spoof@evil.com>',
+            date: new \DateTimeImmutable('2026-05-31 10:00:00'),
+            sender: 'ČSOB <attacker@csob.cz.evil.com>',
+            subject: 'Moje info - Avízo',
+            text: 'Parametry platby Částka Vaše ČSOB',
+            raw: '',
+        );
+        self::assertFalse($parser->supports($message, $this->provider($parser)));
+    }
+
     private function message(string $body): BankEmailNoticeMessage
     {
         return new BankEmailNoticeMessage(

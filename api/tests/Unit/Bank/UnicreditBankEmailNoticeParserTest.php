@@ -59,4 +59,22 @@ HTML;
         self::assertSame('PLÁTCE DEMO s.r.o.', $parsed->counterpartyName);
         self::assertSame('Faktura 2026017', $parsed->message);
     }
+
+    public function testRejectsSpoofedSenderDomain(): void
+    {
+        $parser = new UnicreditBankEmailNoticeParser();
+        $provider = $parser->defaultProvider();
+        self::assertInstanceOf(BankEmailNoticeProvider::class, $provider);
+
+        $message = new BankEmailNoticeMessage(
+            uid: 1,
+            messageId: '<spoof@evil.com>',
+            date: new \DateTimeImmutable('2026-05-25 13:02:54'),
+            sender: 'UniCredit Bank <attacker@unicreditgroup.cz.evil.com>',
+            subject: 'Informace o pohybu na účtu',
+            text: 'Variabilní symbol: 1 Číslo účtu protistrany: 1/0100 UniCredit Bank',
+            raw: '',
+        );
+        self::assertFalse($parser->supports($message, $provider));
+    }
 }

@@ -281,8 +281,9 @@ final class BankEmailNoticeRepository
 
     /**
      * @param list<array<string,mixed>> $rows
+     * @param list<string> $allowedSystemCodes whitelist `system:<code>` referencí (kódy parserů z registry)
      */
-    public function saveAccountMappings(int $supplierId, array $rows): void
+    public function saveAccountMappings(int $supplierId, array $rows, array $allowedSystemCodes = []): void
     {
         $pdo = $this->db->pdo();
         $stmt = $pdo->prepare(
@@ -304,10 +305,7 @@ final class BankEmailNoticeRepository
             if ($imapAccountId !== null && !$this->imapAccountBelongsToSupplier($imapAccountId, $supplierId)) {
                 continue;
             }
-            [$providerId, $providerCode] = $this->providerTargetFromMappingPayload($row, $supplierId);
-            if ($providerId !== null && !$this->providerAvailableToSupplier($providerId, $supplierId)) {
-                continue;
-            }
+            [$providerId, $providerCode] = $this->providerTargetFromMappingPayload($row, $supplierId, $allowedSystemCodes);
             $stmt->execute([
                 $supplierId,
                 $currencyId,
@@ -668,10 +666,14 @@ final class BankEmailNoticeRepository
     }
 
     /**
+     * Neplatná reference (cizí/neexistující DB provider, neznámý system kód)
+     * degraduje na [null, null] = auto-detekce, stejně jako prázdný výběr.
+     *
      * @param array<string,mixed> $row
+     * @param list<string> $allowedSystemCodes
      * @return array{0:?int,1:?string}
      */
-    private function providerTargetFromMappingPayload(array $row, int $supplierId): array
+    private function providerTargetFromMappingPayload(array $row, int $supplierId, array $allowedSystemCodes): array
     {
         $ref = trim((string) ($row['provider_ref'] ?? ''));
         if ($ref === '') {
@@ -682,7 +684,7 @@ final class BankEmailNoticeRepository
             return $this->providerAvailableToSupplier($id, $supplierId) ? [$id, null] : [null, null];
         }
         if (preg_match('/^system:([a-z0-9_\\-]{1,80})$/', $ref, $m) === 1) {
-            return [null, $m[1]];
+            return in_array($m[1], $allowedSystemCodes, true) ? [null, $m[1]] : [null, null];
         }
         return [null, null];
     }

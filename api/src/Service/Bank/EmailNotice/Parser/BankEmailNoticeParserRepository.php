@@ -26,7 +26,9 @@ final class BankEmailNoticeParserRepository
     private ?array $defaultProvidersCache = null;
 
     /**
-     * @param array<string,BankEmailNoticeParserInterface> $parsers
+     * Jediné místo validace registry — Bootstrap jen resolvuje class names ze slotů cfg.
+     *
+     * @param list<object> $parsers
      */
     public function __construct(
         private readonly Connection $db,
@@ -34,28 +36,31 @@ final class BankEmailNoticeParserRepository
     ) {
         foreach ($parsers as $parser) {
             if (!$parser instanceof BankEmailNoticeParserInterface) {
-                throw new \RuntimeException('Parser registry obsahuje službu bez BankEmailNoticeParserInterface.');
+                throw new \RuntimeException(sprintf(
+                    'Parser %s neimplementuje BankEmailNoticeParserInterface.',
+                    get_debug_type($parser),
+                ));
             }
             $code = trim($parser->key());
             if ($code === '') {
-                throw new \RuntimeException('Parser registry obsahuje parser s prázdným key().');
+                throw new \RuntimeException(sprintf('Parser %s vrací prázdný key().', $parser::class));
             }
             if (isset($this->parsers[$code])) {
-                throw new \RuntimeException("Duplicitní bank email parser key: {$code}.");
+                throw new \RuntimeException(sprintf('Duplicitní bank email parser key: %s (%s).', $code, $parser::class));
             }
             $this->parsers[$code] = $parser;
         }
         if ($this->parsers === []) {
-            throw new \RuntimeException('Parser registry je prázdný.');
+            throw new \RuntimeException('cfg.bank_email.notice_parsers neobsahuje žádný aktivní parser.');
         }
     }
 
     /**
      * @return array{provider:BankEmailNoticeProvider, parsed:ParsedBankEmailNotice}
      */
-    public function parse(BankEmailNoticeMessage $message, ?string $preferredProviderRef = null, ?int $supplierId = null): array
+    public function parse(BankEmailNoticeMessage $message, ?string $preferredProviderRef = null, ?int $supplierId = null, bool $enabledOnly = true): array
     {
-        foreach ($this->providers($preferredProviderRef, $supplierId) as $provider) {
+        foreach ($this->providers($preferredProviderRef, $supplierId, $enabledOnly) as $provider) {
             $parser = $this->parsers[$provider->parserType] ?? null;
             if ($parser === null) {
                 continue;
@@ -87,10 +92,18 @@ final class BankEmailNoticeParserRepository
         return $providers;
     }
 
-    public function clearCache(): void
+    /**
+     * Kódy systémových providerů dodaných parsery z kódu (bez DB řádku) —
+     * whitelist pro validaci `system:<code>` referencí z UI.
+     *
+     * @return list<string>
+     */
+    public function systemProviderCodes(): array
     {
-        $this->providersCache = [];
-        $this->defaultProvidersCache = null;
+        return array_map(
+            static fn (BankEmailNoticeProvider $provider): string => $provider->code,
+            $this->defaultProviders(),
+        );
     }
 
     /**

@@ -191,7 +191,7 @@ final class BankEmailNoticeAction
         $sid = $this->supplierId($request);
         $body = (array) ($request->getParsedBody() ?? []);
         $rows = isset($body['mappings']) && is_array($body['mappings']) ? $body['mappings'] : [];
-        $this->repo->saveAccountMappings($sid, $rows);
+        $this->repo->saveAccountMappings($sid, $rows, $this->parsers->systemProviderCodes());
         $this->audit($request, 'bank_email.mappings_updated', ['supplier_id' => $sid, 'count' => count($rows)]);
         return Json::ok($response, $this->repo->accountMappings($sid));
     }
@@ -209,11 +209,15 @@ final class BankEmailNoticeAction
             text: (string) ($body['text'] ?? ''),
             raw: (string) ($body['text'] ?? ''),
         );
+        $preferredRef = !empty($body['provider_ref']) ? (string) $body['provider_ref'] : null;
         try {
             $parsed = $this->parsers->parse(
                 $message,
-                !empty($body['provider_ref']) ? (string) $body['provider_ref'] : null,
+                $preferredRef,
                 $this->supplierId($request),
+                // Explicitně vybraný provider jde otestovat i vypnutý (admin ladí
+                // konfiguraci před zapnutím); auto-detekce kopíruje scan = jen enabled.
+                enabledOnly: $preferredRef === null,
             );
         } catch (\Throwable $e) {
             return Json::error($response, 'parse_failed', $e->getMessage(), 400);

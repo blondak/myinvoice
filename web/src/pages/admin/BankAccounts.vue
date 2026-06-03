@@ -454,7 +454,14 @@ function parserTypeLabel(parserType: BankEmailProvider['parser_type']): string {
 }
 
 function providerSelectLabel(provider: BankEmailProvider): string {
-  return `${provider.name} (${providerOwnerLabel(provider)})`
+  const base = `${provider.name} (${providerOwnerLabel(provider)})`
+  return provider.enabled ? base : `${base} — ${t('bank_accounts.provider_disabled')}`
+}
+
+// Mapování nabízí jen zapnuté providery; aktuálně vybraný vypnutý zůstává
+// viditelný (se suffixem), aby uložené mapování tiše nezmizelo ze selectu.
+function mappingProviderOptions(mapping: BankEmailAccountMapping): BankEmailProvider[] {
+  return providers.value.filter(p => p.enabled || p.provider_ref === mapping.provider_ref)
 }
 
 async function testParser() {
@@ -760,7 +767,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                   <select v-model="mapping.provider_ref"
                     class="h-9 w-56 px-2 bg-surface border border-neutral-300 rounded-md text-sm">
                     <option :value="null">{{ t('bank_accounts.provider_auto') }}</option>
-                    <option v-for="p in providers" :key="p.provider_ref" :value="p.provider_ref">
+                    <option v-for="p in mappingProviderOptions(mapping)" :key="p.provider_ref" :value="p.provider_ref">
                       {{ providerSelectLabel(p) }}
                     </option>
                   </select>

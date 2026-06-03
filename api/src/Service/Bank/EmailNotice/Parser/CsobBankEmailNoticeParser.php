@@ -43,8 +43,7 @@ final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        $sender = strtolower($message->sender);
-        if (!str_contains($sender, 'noreply@csob.cz') && !str_contains($sender, '@csob.cz')) {
+        if (!SenderDomain::matches($message->sender, 'csob.cz')) {
             return false;
         }
 

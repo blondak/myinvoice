@@ -1767,6 +1767,7 @@
     "imap_none": "Žádný IMAP účet",
     "imap_all": "Všechny IMAP účty",
     "provider_auto": "Automatický výběr",
+    "provider_disabled": "vypnutý",
     "imap_title": "IMAP účty pro bankovní avíza",
     "imap_subtitle": "Každá banka může používat vlastní schránku. Polling používá read-only fetch a zprávy neoznačuje jako přečtené.",
     "new_imap": "Nový IMAP účet",

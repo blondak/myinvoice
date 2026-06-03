@@ -1767,6 +1767,7 @@
     "imap_none": "No IMAP account",
     "imap_all": "All IMAP accounts",
     "provider_auto": "Automatic selection",
+    "provider_disabled": "disabled",
     "imap_title": "IMAP accounts for bank notices",
     "imap_subtitle": "Each bank may use its own mailbox. Polling uses a read-only fetch and does not mark messages as read.",
     "new_imap": "New IMAP account",

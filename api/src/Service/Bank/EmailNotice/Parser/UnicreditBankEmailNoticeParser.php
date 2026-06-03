@@ -43,12 +43,7 @@ final class UnicreditBankEmailNoticeParser implements BankEmailNoticeParserInter
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        $sender = strtolower($message->sender);
-        if (
-            !str_contains($sender, 'unicreditbank@unicreditgroup.cz')
-            && !str_contains($sender, '@unicreditgroup.cz')
-            && !str_contains($sender, 'noe@unicredit.eu')
-        ) {
+        if (!SenderDomain::matches($message->sender, 'unicreditgroup.cz', 'unicredit.eu')) {
             return false;
         }
 

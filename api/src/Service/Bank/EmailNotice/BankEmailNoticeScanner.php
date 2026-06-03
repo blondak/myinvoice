@@ -301,12 +301,11 @@ final class BankEmailNoticeScanner
 
             $provider = $parsed['provider'];
             $notice = $parsed['parsed'];
-            $providerRef = $provider->providerRef;
             $mapping = $this->repo->mappingForRecipientAccount(
                 $supplierId,
                 $notice->recipientAccount,
                 $imapFilter,
-                $providerRef,
+                $provider->providerRef,
             );
             $resolved = ['provider' => $provider, 'notice' => $notice, 'mapping' => $mapping];
             if ($mapping !== null) {

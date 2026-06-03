@@ -157,7 +157,11 @@ final class Bootstrap
     }
 
     /**
-     * @return array<string,\MyInvoice\Service\Bank\EmailNotice\Parser\BankEmailNoticeParserInterface>
+     * Resolve class names ze slotů cfg.bank_email.notice_parsers na instance.
+     * Validaci (interface, prázdný/duplicitní key) dělá konstruktor
+     * BankEmailNoticeParserRepository — tady se jen vypínají sloty (null/false/'').
+     *
+     * @return list<object>
      */
     private static function bankEmailNoticeParsers(ContainerInterface $container, Config $config): array
     {
@@ -168,29 +172,10 @@ final class Bootstrap
 
         $parsers = [];
         foreach ($classes as $class) {
-            if ($class === null || $class === false || $class === '') {
-                continue;
+            if ($class === null || $class === false || trim((string) $class) === '') {
+                continue; // slot vypnutý přes cfg.php
             }
-            $class = trim((string) $class);
-            if ($class === '') {
-                throw new \RuntimeException('cfg.bank_email.notice_parsers obsahuje prázdný class name.');
-            }
-
-            $parser = $container->get($class);
-            if (!$parser instanceof \MyInvoice\Service\Bank\EmailNotice\Parser\BankEmailNoticeParserInterface) {
-                throw new \RuntimeException("Parser {$class} neimplementuje BankEmailNoticeParserInterface.");
-            }
-            $code = trim($parser->key());
-            if ($code === '') {
-                throw new \RuntimeException("Parser {$class} vrací prázdný key().");
-            }
-            if (isset($parsers[$code])) {
-                throw new \RuntimeException("Duplicitní bank email parser key: {$code}.");
-            }
-            $parsers[$code] = $parser;
-        }
-        if ($parsers === []) {
-            throw new \RuntimeException('cfg.bank_email.notice_parsers neobsahuje žádný aktivní parser.');
+            $parsers[] = $container->get(trim((string) $class));
         }
 
         return $parsers;

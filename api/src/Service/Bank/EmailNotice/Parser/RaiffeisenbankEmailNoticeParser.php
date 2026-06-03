@@ -29,7 +29,7 @@ final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInte
             supplierId: null,
             providerRef: 'system:' . $this->key(),
             code: $this->key(),
-            name: 'Raiffeisenbank - Pohyb na ucte',
+            name: 'Raiffeisenbank - Pohyb na účtě',
             parserType: $this->key(),
             enabled: true,
             senderWhitelist: 'info@rb.cz',
@@ -43,8 +43,7 @@ final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInte
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        $sender = strtolower($message->sender);
-        if (!str_contains($sender, 'info@rb.cz') && !str_contains($sender, '@rb.cz')) {
+        if (!SenderDomain::matches($message->sender, 'rb.cz')) {
             return false;
         }
         $subject = mb_strtolower($message->subject);
