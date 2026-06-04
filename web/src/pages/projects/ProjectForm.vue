@@ -298,35 +298,38 @@ async function submit() {
           </div>
         </div>
 
-        <!-- Billing emails -->
-        <div class="border-t border-neutral-200 pt-4">
-          <h3 class="text-sm font-semibold mb-1">{{ t('project.billing_emails') }}</h3>
-          <p class="text-xs text-neutral-500 mb-3">
-            {{ $i18n.locale === 'cs'
-              ? 'Vedle hlavního emailu klienta budou faktury chodit i na tyto adresy.'
-              : 'Invoices will be sent to these addresses in addition to the client\'s main email.' }}
-          </p>
-          <div class="space-y-2">
-            <div v-for="(_, i) in billingEmailInput" :key="i" class="space-y-1">
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input autocomplete="off" v-model="billingEmailInput[i].email" type="email" :placeholder="`Email #${i + 1}`"
-                  class="sm:col-span-2 h-9 px-3 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
-                <input autocomplete="off" v-model="billingEmailInput[i].label" :placeholder="$i18n.locale === 'cs' ? 'Popisek (účetní, PM…)' : 'Label (accountant, PM…)'"
-                  class="h-9 px-3 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
-              </div>
-              <!-- Účely (#86) — pro které typy zpráv se e-mail použije; vše zaškrtnuté = default -->
-              <div v-if="billingEmailInput[i].email.trim()" class="flex items-center gap-x-4 gap-y-1 flex-wrap pl-1 text-xs text-neutral-600">
-                <label v-for="code in PROJECT_EMAIL_USAGES" :key="code" class="flex items-center gap-1 cursor-pointer">
-                  <input type="checkbox" :checked="billingEmailInput[i].usages.includes(code)" @change="toggleBillingUsage(i, code)"
-                    class="rounded border-neutral-300 text-primary-600" />
-                  {{ t(`client.email_contacts.usage.${code}`) }}
-                </label>
-                <span v-if="!billingEmailInput[i].usages.length" class="text-neutral-400">{{ t('project.billing_email_no_usage_hint') }}</span>
-              </div>
+        <!-- Billing emails — boxík ve stylu e-mailových kontaktů u klienta (#86) -->
+        <div class="border border-neutral-200 rounded-md p-3 space-y-3">
+          <div>
+            <div class="text-sm font-medium text-neutral-700">{{ t('project.billing_emails') }}</div>
+            <p class="text-xs text-neutral-500 mt-0.5">
+              {{ $i18n.locale === 'cs'
+                ? 'Vedle hlavního emailu klienta budou faktury chodit i na tyto adresy.'
+                : 'Invoices will be sent to these addresses in addition to the client\'s main email.' }}
+            </p>
+          </div>
+
+          <div v-for="(_, i) in billingEmailInput" :key="i"
+            :class="['rounded-md p-3 space-y-2', billingEmailInput[i].email.trim() ? 'border border-neutral-200 bg-neutral-50/50' : 'border border-dashed border-neutral-200']">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input autocomplete="off" v-model="billingEmailInput[i].email" type="email" :placeholder="`Email #${i + 1}`"
+                class="sm:col-span-2 h-9 px-2.5 border border-neutral-300 rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+              <input autocomplete="off" v-model="billingEmailInput[i].label" :placeholder="$i18n.locale === 'cs' ? 'Popisek (účetní, PM…)' : 'Label (accountant, PM…)'"
+                class="h-9 px-2.5 border border-neutral-300 rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+            </div>
+            <!-- Účely (#86) — pro které typy zpráv se e-mail použije; vše zaškrtnuté = default -->
+            <div v-if="billingEmailInput[i].email.trim()" class="flex items-center gap-x-4 gap-y-1 flex-wrap text-sm">
+              <label v-for="code in PROJECT_EMAIL_USAGES" :key="code" class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" :checked="billingEmailInput[i].usages.includes(code)" @change="toggleBillingUsage(i, code)"
+                  class="rounded border-neutral-300 text-primary-600" />
+                <span class="text-neutral-700">{{ t(`client.email_contacts.usage.${code}`) }}</span>
+              </label>
+              <span v-if="!billingEmailInput[i].usages.length" class="text-xs text-neutral-400">{{ t('project.billing_email_no_usage_hint') }}</span>
             </div>
           </div>
+
           <!-- Režim kombinace s kontakty/hlavním e-mailem klienta (#86) -->
-          <div class="mt-3">
+          <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.billing_emails_mode') }}</label>
             <select v-model="form.billing_emails_mode"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
