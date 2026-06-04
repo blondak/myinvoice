@@ -1301,6 +1301,8 @@
       "kind_cc": "Copy (cc)",
       "kind_bcc": "Blind copy (bcc)",
       "active": "Active",
+      "inactive": "inactive",
+      "no_usage": "no purpose",
       "usage": {
         "documents": "Documents",
         "reminders": "Reminders",

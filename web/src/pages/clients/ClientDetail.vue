@@ -400,6 +400,28 @@ async function deleteClient() {
             <dd class="text-neutral-900 font-mono">{{ client.phone }}</dd>
           </div>
         </dl>
+        <!-- E-mailové kontakty dle účelu (#86) -->
+        <div v-if="client.email_contacts?.length" class="mt-3 pt-3 border-t border-neutral-200">
+          <div class="text-xs text-neutral-500 mb-2">{{ t('client.email_contacts.title') }}</div>
+          <div class="space-y-2">
+            <div v-for="ec in client.email_contacts" :key="ec.id ?? ec.email"
+              :class="['text-sm', ec.is_active ? '' : 'opacity-50']">
+              <div class="text-neutral-900 break-all">
+                {{ ec.email }}
+                <span v-if="ec.contact_name || ec.label" class="text-neutral-500 text-xs">
+                  — {{ [ec.contact_name, ec.label].filter(Boolean).join(', ') }}</span>
+                <span v-if="!ec.is_active" class="text-xs text-neutral-400">({{ t('client.email_contacts.inactive') }})</span>
+              </div>
+              <div class="flex flex-wrap gap-1 mt-0.5">
+                <span v-for="u in ec.usages" :key="u.usage"
+                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary-50 border border-primary-200 text-primary-700 text-[11px]">
+                  {{ t(`client.email_contacts.usage.${u.usage}`) }}<template v-if="u.recipient !== 'to'"> · {{ u.recipient.toUpperCase() }}</template>
+                </span>
+                <span v-if="!ec.usages.length" class="text-[11px] text-neutral-400">{{ t('client.email_contacts.no_usage') }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Adresa -->

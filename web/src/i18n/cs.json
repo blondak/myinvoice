@@ -1301,6 +1301,8 @@
       "kind_cc": "Kopie (cc)",
       "kind_bcc": "Skrytá kopie (bcc)",
       "active": "Aktivní",
+      "inactive": "neaktivní",
+      "no_usage": "bez účelu",
       "usage": {
         "documents": "Doklady",
         "reminders": "Upomínky",
