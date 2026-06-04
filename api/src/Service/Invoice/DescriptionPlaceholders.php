@@ -25,7 +25,12 @@ use DateTimeImmutable;
  *   {DATE}                 15. 5. 2026       — celé ref. datum, formát dle jazyka
  *                                              (cs „j. n. Y", en „M j, Y" — stejné jako PDF)
  *   {DATE+1Y-1D}           14. 5. 2027       — datová aritmetika: kombinace ±N D/M/Y,
- *                                              vyhodnocuje se zleva doprava
+ *                                              vyhodnocuje se zleva doprava; posun po
+ *                                              měsících/letech je CLAMPOVANÝ (31. 1. +1M
+ *                                              → 28. 2., ne 3. 3. — jako MySQL DATE_ADD)
+ *   {BOM} {EOM}            1. 5. 2026,       — začátek/konec měsíce ref. data (celé datum
+ *                          31. 5. 2026         dle jazyka); offset po měsících: {EOM+1} →
+ *                                              30. 6. 2026, {EOM-1} → 30. 4. 2026
  *
  * Nerozpoznané tokeny ({FOO}, {yyyy}, …) zůstávají netknuté → žádné escapování
  * není potřeba a stávající šablony fungují beze změny.
@@ -49,8 +54,16 @@ final class DescriptionPlaceholders
         $monthAnchor = $ref->setDate((int) $ref->format('Y'), (int) $ref->format('n'), 1);
 
         $result = preg_replace_callback(
-            '/\{(YYYY|YY|MMMM|MM|M|Q|DD|D)([+-]\d{1,3})?\}|\{DATE((?:[+-]\d{1,3}[DMY])*)\}/',
+            '/\{(YYYY|YY|MMMM|MM|M|Q|DD|D)([+-]\d{1,3})?\}|\{DATE((?:[+-]\d{1,3}[DMY])*)\}|\{(BOM|EOM)([+-]\d{1,3})?\}/',
             static function (array $m) use ($ref, $monthAnchor, $lang): string {
+                // {BOM±N}/{EOM±N} větev — začátek/konec měsíce posunutého o N měsíců.
+                if (($m[4] ?? '') !== '') {
+                    $month = $monthAnchor->modify(sprintf('%+d months', (int) ($m[5] ?? 0)));
+                    if ($m[4] === 'EOM') {
+                        $month = $month->setDate((int) $month->format('Y'), (int) $month->format('n'), (int) $month->format('t'));
+                    }
+                    return self::formatDate($month, $lang);
+                }
                 // {DATE…} větev — token group 1 je prázdný string.
                 if (($m[1] ?? '') === '') {
                     return self::formatDate(self::shiftDate($ref, $m[3] ?? ''), $lang);
@@ -74,7 +87,13 @@ final class DescriptionPlaceholders
         return $result ?? $text;
     }
 
-    /** Datová aritmetika pro {DATE…}: sekvence ±N[DMY] aplikovaná zleva doprava. */
+    /**
+     * Datová aritmetika pro {DATE…}: sekvence ±N[DMY] aplikovaná zleva doprava.
+     * Posun po měsících/letech je clampovaný na poslední den cílového měsíce
+     * (31. 1. +1M → 28. 2., 29. 2. +1Y → 28. 2.) — PHP modify() by přetekl
+     * do dalšího měsíce (31. 1. +1M = 3. 3.), což je pro fakturační období
+     * překvapivé; chováme se jako MySQL DATE_ADD. Dny zůstávají exaktní.
+     */
     private static function shiftDate(DateTimeImmutable $ref, string $ops): DateTimeImmutable
     {
         if ($ops === '') {
@@ -82,11 +101,23 @@ final class DescriptionPlaceholders
         }
         preg_match_all('/([+-]\d{1,3})([DMY])/', $ops, $all, PREG_SET_ORDER);
         foreach ($all as [, $n, $unit]) {
-            $ref = $ref->modify(sprintf('%+d %s', (int) $n, match ($unit) {
-                'D' => 'days', 'M' => 'months', default => 'years',
-            }));
+            $ref = match ($unit) {
+                'D' => $ref->modify(sprintf('%+d days', (int) $n)),
+                'M' => self::addMonthsClamped($ref, (int) $n),
+                default => self::addMonthsClamped($ref, 12 * (int) $n),
+            };
         }
         return $ref;
+    }
+
+    /** Posun o N měsíců se zachováním dne; přetečení se ořízne na poslední den cílového měsíce. */
+    private static function addMonthsClamped(DateTimeImmutable $d, int $months): DateTimeImmutable
+    {
+        $total = ((int) $d->format('Y')) * 12 + ((int) $d->format('n') - 1) + $months;
+        $year  = intdiv($total, 12);
+        $month = ($total % 12) + 1;
+        $lastDay = (int) $d->setDate($year, $month, 1)->format('t');
+        return $d->setDate($year, $month, min((int) $d->format('j'), $lastDay));
     }
 
     private static function formatDate(DateTimeImmutable $d, string $lang): string

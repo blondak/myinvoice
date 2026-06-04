@@ -66,6 +66,15 @@ final class DescriptionPlaceholdersTest extends TestCase
         yield 'DATE+1Y-1D'  => ['{DATE+1Y-1D}', '14. 5. 2027'];
         yield 'DATE+14D'    => ['{DATE+14D}', '29. 5. 2026'];
         yield 'DATE+2M'     => ['{DATE+2M}', '15. 7. 2026'];
+
+        // Začátek/konec měsíce
+        yield 'BOM'         => ['{BOM}', '1. 5. 2026'];
+        yield 'BOM+1'       => ['{BOM+1}', '1. 6. 2026'];
+        yield 'EOM'         => ['{EOM}', '31. 5. 2026'];
+        yield 'EOM+1'       => ['{EOM+1}', '30. 6. 2026'];
+        yield 'EOM-1'       => ['{EOM-1}', '30. 4. 2026'];
+        yield 'EOM-3'       => ['{EOM-3}', '28. 2. 2026'];
+        yield 'mesicni obdobi' => ['období {BOM} - {EOM}', 'období 1. 5. 2026 - 31. 5. 2026'];
         yield 'domena use case' => [
             'Prodloužení domény example.cz na období {DATE} - {DATE+1Y-1D}',
             'Prodloužení domény example.cz na období 15. 5. 2026 - 14. 5. 2027',
@@ -97,6 +106,29 @@ final class DescriptionPlaceholdersTest extends TestCase
     public function testDecemberYearRollover(): void
     {
         self::assertSame('1/2027', DescriptionPlaceholders::apply('{M+1}/{YYYY+1}', self::ref('2026-12-10'), 'cs'));
+    }
+
+    public function testDateArithmeticClampsMonthOverflow(): void
+    {
+        // PHP modify() by dal 31. 1. +1M = 3. 3. — clampujeme na konec února (jako MySQL DATE_ADD).
+        self::assertSame('28. 2. 2026', DescriptionPlaceholders::apply('{DATE+1M}', self::ref('2026-01-31'), 'cs'));
+        self::assertSame('27. 2. 2026', DescriptionPlaceholders::apply('{DATE+1M-1D}', self::ref('2026-01-31'), 'cs'));
+        // Přestupný rok: únor 2028 má 29 dní.
+        self::assertSame('29. 2. 2028', DescriptionPlaceholders::apply('{DATE+1M}', self::ref('2028-01-31'), 'cs'));
+        // Roky: 29. 2. přestupného roku +1Y → 28. 2.
+        self::assertSame('28. 2. 2029', DescriptionPlaceholders::apply('{DATE+1Y}', self::ref('2028-02-29'), 'cs'));
+        // Posun po dnech zůstává exaktní (žádný clamp).
+        self::assertSame('2. 3. 2026', DescriptionPlaceholders::apply('{DATE+30D}', self::ref('2026-01-31'), 'cs'));
+        // Clamp je per-krok: 31. 1. +1M (→28. 2.) +1M → 28. 3. (den už zůstává 28).
+        self::assertSame('28. 3. 2026', DescriptionPlaceholders::apply('{DATE+1M+1M}', self::ref('2026-01-31'), 'cs'));
+    }
+
+    public function testEomClampsFebruaryAndLeapYear(): void
+    {
+        self::assertSame('28. 2. 2026', DescriptionPlaceholders::apply('{EOM+1}', self::ref('2026-01-31'), 'cs'));
+        self::assertSame('29. 2. 2028', DescriptionPlaceholders::apply('{EOM+1}', self::ref('2028-01-15'), 'cs'));
+        self::assertSame('31. 12. 2026', DescriptionPlaceholders::apply('{EOM+1}', self::ref('2026-11-30'), 'cs'));
+        self::assertSame('Feb 28, 2026', DescriptionPlaceholders::apply('{EOM}', self::ref('2026-02-10'), 'en'));
     }
 
     public function testIdempotentWithMonthSynchronizerOutput(): void

@@ -97,6 +97,7 @@ do faktury jde vyhodnocený text. Inline přehled je přímo v editoru šablony
 | `{D}`, `{DD}` | 15, 15 | den; posun po dnech: `{D+14}` → 29 |
 | `{DATE}` | 15. 5. 2026 | celé ref. datum, formát dle jazyka dokladu (en: May 15, 2026) |
 | `{DATE+1Y-1D}` | 14. 5. 2027 | datová aritmetika — kombinace `±N` jednotek `D`/`M`/`Y`, zleva doprava |
+| `{BOM}`, `{EOM}` | 1. 5. 2026, 31. 5. 2026 | začátek/konec měsíce (celé datum); posun po měsících: `{EOM+1}` → 30. 6. 2026, `{EOM-1}` → 30. 4. 2026 |
 
 Typický příklad (prodloužení domény na rok):
 
@@ -106,7 +107,15 @@ Prodloužení domény example.cz na období {DATE} - {DATE+1Y-1D}
 ```
 
 Další ukázky: `sezóna {YY}/{YY+1}` → „sezóna 26/27", `servis {Q}Q/{YYYY}` →
-„servis 2Q/2026", `úklid za {MMMM} {YYYY}` → „úklid za květen 2026".
+„servis 2Q/2026", `úklid za {MMMM} {YYYY}` → „úklid za květen 2026",
+`služby za období {BOM} - {EOM}` → „služby za období 1. 5. 2026 - 31. 5. 2026".
+
+> 💡 **Přetečení měsíce je ošetřené.** Posun po měsících/letech v `{DATE±…}`
+> se ořezává na poslední den cílového měsíce (jako MySQL `DATE_ADD`):
+> 31. 1. `{DATE+1M}` → **28. 2.** (ne 3. 3., jak by dalo holé PHP), 29. 2. 2028
+> `{DATE+1Y}` → 28. 2. 2029. Posun po dnech (`{DATE+30D}`) zůstává exaktní.
+> Měsíční tokeny (`{M}`, `{MMMM}`, `{EOM}`…) jsou kotvené na měsíc, takže
+> přetečení u nich nehrozí vůbec (31. 1. `{M+1}` → 2).
 
 > 💡 Tokeny se píší **velkými písmeny**. Cokoli nerozpoznaného (`{foo}`, `{yyyy}`,
 > obyčejné závorky v textu) zůstává beze změny — existující šablony fungují

@@ -522,7 +522,8 @@
       { "c": "{'{MMMM}'}", "d": "month name per document language → May · {'{MMMM+1}'} → June" },
       { "c": "{'{Q}'}", "d": "quarter → 2 · {'{Q+1}'} → 3" },
       { "c": "{'{D}'}, {'{DD}'}", "d": "day → 15, 15 · shift by days: {'{D+14}'} → 29" },
-      { "c": "{'{DATE}'}", "d": "full date → May 15, 2026 · ±D/M/Y arithmetic: {'{DATE+1Y-1D}'} → May 14, 2027" }
+      { "c": "{'{DATE}'}", "d": "full date → May 15, 2026 · ±D/M/Y arithmetic: {'{DATE+1Y-1D}'} → May 14, 2027 · month overflow is clamped (Jan 31 {'{DATE+1M}'} → Feb 28)" },
+      { "c": "{'{BOM}'}, {'{EOM}'}", "d": "start/end of month → May 1, 2026, May 31, 2026 · shift by months: {'{EOM+1}'} → Jun 30, 2026, {'{EOM-1}'} → Apr 30, 2026" }
     ],
     "placeholders_example": "Example: \"Renewal of domain example.cz for period {'{DATE}'} - {'{DATE+1Y-1D}'}\" → \"Renewal of domain example.cz for period May 15, 2026 - May 14, 2027\"",
     "status": {
