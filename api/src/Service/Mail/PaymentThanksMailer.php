@@ -27,6 +27,7 @@ final class PaymentThanksMailer
         private readonly InvoiceEmailVarsBuilder $varsBuilder,
         private readonly InvoicePdfRenderer $renderer,
         private readonly ActivityLogger $logger,
+        private readonly RecipientResolver $recipients,
     ) {}
 
     /**
@@ -67,7 +68,11 @@ final class PaymentThanksMailer
             return $this->logSkip($invoiceId, $invoice, 'already_sent', $trigger, $userId, $ip, $userAgent);
         }
 
-        $to = $this->resolveRecipients($invoice);
+        // Jednotný resolver (#86) — poděkování se váže k dokladu, účel `documents`.
+        $r = $this->recipients->resolve(RecipientResolver::TYPE_DOCUMENTS, $invoice);
+        $to = $r['to'];
+        $cc = $r['cc'];
+        $bcc = $r['bcc'];
         if (empty($to)) {
             return $this->logSkip($invoiceId, $invoice, 'no_recipient', $trigger, $userId, $ip, $userAgent);
         }
@@ -87,7 +92,7 @@ final class PaymentThanksMailer
         }
 
         try {
-            $smtp = $this->mailer->sendTemplate('invoice_payment_thanks', $locale, $to, $vars, null, [], [], $attachments, $userId);
+            $smtp = $this->mailer->sendTemplate('invoice_payment_thanks', $locale, $to, $vars, null, $cc, $bcc, $attachments, $userId);
         } catch (\Throwable $e) {
             $this->logger->log('invoice.payment_thanks_failed', $userId, 'invoice', $invoiceId, [
                 'varsymbol' => $invoice['varsymbol'] ?? null,
@@ -171,27 +176,6 @@ final class PaymentThanksMailer
     }
 
     /** Stejná logika jako SendEmailAction::resolveRecipients (klient + fakturační e-maily zakázky). */
-    private function resolveRecipients(array $invoice): array
-    {
-        $emails = [];
-        if (!empty($invoice['client_main_email'])) {
-            $emails[] = (string) $invoice['client_main_email'];
-        }
-        if (!empty($invoice['project_id'])) {
-            $stmt = $this->db->pdo()->prepare(
-                'SELECT email FROM project_billing_emails WHERE project_id = ? ORDER BY position'
-            );
-            $stmt->execute([$invoice['project_id']]);
-            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $em) {
-                $em = trim((string) $em);
-                if ($em !== '' && !in_array($em, $emails, true)) {
-                    $emails[] = $em;
-                }
-            }
-        }
-        return array_values(array_filter($emails, static fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL)));
-    }
-
     /** @return array{status:'skipped', reason:string} */
     private function logSkip(int $invoiceId, array $invoice, string $reason, string $trigger, ?int $userId, ?string $ip, ?string $ua): array
     {

@@ -68,6 +68,44 @@ Doporučený postup pro českého klienta:
 | Splatnost | Preset **7 dnů / 14 dnů / Měsíc / Vlastní**, nebo **Použít výchozí** = dědit z dodavatele. „Měsíc" = kalendářní měsíc (1. 2. → 1. 3., 31. 1. → 28. 2.), ne fixních 30 dní |
 | Poznámka | Interní text — nezobrazí se na faktuře |
 
+### 7.2.2 E-mailové kontakty podle účelu *(od v4.15.0)*
+
+U firemních odběratelů je běžné, že různé typy zpráv mají chodit na různé
+adresy — faktury na účtárnu, upomínky na odpovědnou osobu, schvalování
+výkazů na projektového manažera. Sekce **E-mailové kontakty podle účelu**
+ve formuláři klienta to umožňuje nastavit.
+
+U každého kontaktu vyplníš:
+
+| Pole | Význam |
+|---|---|
+| E-mail | Adresa kontaktu |
+| Jméno osoby | Volitelné |
+| Popisek | Volitelný (např. „účtárna", „PM") |
+| Účely | **Doklady** (faktury, dobropisy, poděkování za platbu) · **Upomínky** · **Schvalování** (výkazy víceprací) · **Komunikace** (jen evidence, nic se na ni automaticky neposílá) |
+| Role | **Příjemce (to)** / **Kopie (cc)** / **Skrytá kopie (bcc)** |
+| Aktivní | Neaktivní kontakt se při odesílání ignoruje |
+
+**Jak se vybírají příjemci:**
+
+- **Bez kontaktů** se nic nemění — vše chodí na **hlavní e-mail** klienta
+  (+ fakturační e-maily zakázky, viz [§ 8](08_Zakazky.md)). Stávající
+  klienti tedy fungují přesně jako dřív.
+- **Jakmile má účel přiřazený aktivní kontakt**, použijí se kontakty s tímto
+  účelem a hlavní e-mail se už automaticky **nepřidává** (zůstává jen
+  záchranný fallback). Chceš-li hlavní e-mail zachovat mezi příjemci,
+  přidej ho jako kontakt — tlačítko **Převzít hlavní e-mail**.
+- **Upomínky bez vlastního kontaktu** spadnou na kontakty s účelem
+  **Doklady**; teprve bez nich na hlavní e-mail.
+- Duplicitní adresy se odstraní (priorita to > cc > bcc), neplatné se ignorují.
+
+V modalu odeslání faktury vidíš u každého příjemce **odkud byl doplněn**
+(kontakt: doklady / zakázka / hlavní e-mail) a celý seznam můžeš pro
+konkrétní odeslání ručně upravit jako dosud.
+
+Limit je 10 kontaktů na klienta. Kontakty jsou dostupné i přes API
+(`email_contacts` v detailu klienta, replace-all při create/update).
+
 ## 7.3 Detail klienta
 
 Klik na jméno v seznamu → detail.

@@ -410,6 +410,16 @@ export const invoicesApi = {
       payload || {},
     ).then(r => r.data),
 
+  /** Vyřešení příjemci dle kontaktů klienta / e-mailů zakázky (#86) — pro prefill modalu s provenancí. */
+  recipients: (id: number, type: 'documents' | 'reminders' | 'approvals' = 'documents') =>
+    api.get<{
+      type: string
+      to: string[]
+      cc: string[]
+      bcc: string[]
+      resolved: Array<{ email: string; recipient: 'to' | 'cc' | 'bcc'; source: 'contact' | 'project' | 'main_email'; usage: string | null; label: string | null }>
+    }>(`/invoices/${id}/recipients`, { params: { type } }).then(r => r.data),
+
   sendReminder: (id: number) =>
     api.post<{ invoice: Invoice; sent_to: string[]; days_overdue: number; sent_at: string }>(
       `/invoices/${id}/reminder`,

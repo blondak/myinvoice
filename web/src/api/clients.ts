@@ -1,5 +1,22 @@
 import { api } from './client'
 
+// E-mailové kontakty odběratele dle účelu (#86)
+export type EmailContactUsageCode = 'communication' | 'documents' | 'reminders' | 'approvals'
+export type EmailContactRecipient = 'to' | 'cc' | 'bcc'
+export interface EmailContactUsage {
+  usage: EmailContactUsageCode
+  recipient: EmailContactRecipient
+}
+export interface ClientEmailContact {
+  id?: number
+  email: string
+  label?: string | null
+  contact_name?: string | null
+  is_active: boolean
+  sort_order?: number
+  usages: EmailContactUsage[]
+}
+
 export interface Client {
   id: number
   company_name: string
@@ -57,6 +74,7 @@ export interface Client {
   last_purchase_date?: string | null
   last_invoice_date?: string | null
   invoice_count?: number
+  email_contacts?: ClientEmailContact[]
   created_at?: string
   updated_at?: string
 }
@@ -162,6 +180,8 @@ export interface ClientPayload {
   proforma_number_format?: string | null
   credit_note_number_format?: string | null
   invoice_number_period?: 'year' | 'month' | 'none' | null
+  /** Replace-all (#86): pošli kompletní pole; vynech klíč, pokud kontakty neměníš. */
+  email_contacts?: ClientEmailContact[]
 }
 
 export interface ListResponse<T> {

@@ -15,6 +15,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Mail\InvoiceEmailVarsBuilder;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Mail\RecipientResolver;
 use MyInvoice\Service\Pdf\InvoicePdfRenderer;
 use MyInvoice\Service\Pdf\PdfArchiveService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -33,6 +34,7 @@ final class SendEmailAction
         private readonly Config $config,
         private readonly PdfArchiveService $pdfArchive,
         private readonly InvoiceAttachmentRepository $attachments,
+        private readonly RecipientResolver $recipients,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -71,7 +73,20 @@ final class SendEmailAction
             }
         }
 
-        $to = $overrideTo ?? $this->resolveRecipients($invoice);
+        // Jednotný resolver (#86): kontakty klienta dle účelu `documents`,
+        // bez kontaktů legacy chování (main_email + e-maily zakázky). Když UI
+        // pošle explicitní `to` (uživatel editoval v modalu), je autoritativní
+        // a resolver cc/bcc se nepřidávají (uživatel viděl a upravil celý seznam).
+        $resolvedRecipients = [];
+        if ($overrideTo !== null) {
+            $to = $overrideTo;
+        } else {
+            $r = $this->recipients->resolve(RecipientResolver::TYPE_DOCUMENTS, $invoice);
+            $to = $r['to'];
+            $cc = array_values(array_unique(array_merge($r['cc'], $cc)));
+            $bcc = array_values(array_unique(array_merge($r['bcc'], $bcc)));
+            $resolvedRecipients = $r['resolved'];
+        }
         if (empty($to)) {
             return Json::error($response, 'no_recipients', 'Žádný platný příjemce (chybí email klienta).', 400);
         }
@@ -163,6 +178,7 @@ final class SendEmailAction
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('invoice.sent', $user['id'] ?? null, 'invoice', $id, [
             'to' => $to, 'cc' => $cc, 'bcc' => $bcc,
+            'resolved_recipients' => $resolvedRecipients,
             'pdf_path' => basename($pdfPath),
             'pdf_archive_id' => $archiveId,
             'attachment_ids' => $sentAttachmentIds,
@@ -172,28 +188,8 @@ final class SendEmailAction
 
         return Json::ok($response, [
             'sent_to' => $to, 'cc' => $cc, 'bcc' => $bcc,
+            'resolved_recipients' => $resolvedRecipients,
             'sent_at' => date('Y-m-d H:i:s'), 'is_test' => false,
         ]);
-    }
-
-    private function resolveRecipients(array $invoice): array
-    {
-        $emails = [];
-        if (!empty($invoice['client_main_email'])) {
-            $emails[] = $invoice['client_main_email'];
-        }
-        if (!empty($invoice['project_id'])) {
-            $stmt = $this->db->pdo()->prepare(
-                'SELECT email FROM project_billing_emails WHERE project_id = ? ORDER BY position'
-            );
-            $stmt->execute([$invoice['project_id']]);
-            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $em) {
-                $em = trim((string) $em);
-                if ($em !== '' && !in_array($em, $emails, true)) {
-                    $emails[] = $em;
-                }
-            }
-        }
-        return $emails;
     }
 }

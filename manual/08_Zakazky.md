@@ -71,7 +71,18 @@ kam se má kromě hlavního klienta posílat každá vystavená faktura — typi
 | Popisek | Volitelný — „účetní", „PM", „asistentka" |
 
 Při odesílání faktury jdou kopie na: `klient.hlavni_email + zakazka.fakturacni_emaily[]`.
-Pokud faktura nemá zakázku, jde jen na hlavní e-mail klienta.
+Pokud faktura nemá zakázku, jde jen na hlavní e-mail klienta. Má-li klient
+nastavené **e-mailové kontakty podle účelu** (viz [§ 7.2.2](07_Klienti.md)),
+nahrazují hlavní e-mail kontakty s účelem **Doklady**.
+
+**Kombinace s e-maily klienta** *(od v4.15.0)* — pod sekcí je volba, jak se
+fakturační e-maily zakázky kombinují s kontakty / hlavním e-mailem klienta:
+
+| Režim | Chování |
+|---|---|
+| **Výchozí** *(default)* | Dosavadní chování: u dokladů a upomínek se e-maily zakázky **přidávají**, u schvalování výkazů **nahrazují** hlavní e-mail |
+| **Vždy přidat** | E-maily zakázky se přidají k příjemcům dle kontaktů klienta u všech typů zpráv |
+| **Vždy nahradit** | Jsou-li e-maily zakázky vyplněné, použijí se **jen ony** (kontakty klienta se přeskočí) |
 
 ## 8.3 Detail zakázky
 
@@ -116,9 +127,10 @@ schválení se faktura **automaticky vystaví a odešle**.
 
 ### Kam jde e-mail se žádostí o schválení
 
-| Konfigurace zakázky | Příjemce schvalovacího e-mailu |
+| Konfigurace | Příjemce schvalovacího e-mailu |
 |---|---|
-| Zakázka má **fakturační e-maily** (sekce 7.2.1) | Jen na ně, hlavní e-mail klienta NEDOSTANE |
+| Klient má **kontakty s účelem Schvalování** (§ 7.2.2) | Tyto kontakty (+ e-maily zakázky dle režimu kombinace) |
+| Zakázka má **fakturační e-maily** (sekce 8.2.1) | Jen na ně, hlavní e-mail klienta NEDOSTANE |
 | Zakázka **nemá** fakturační e-maily | Hlavní e-mail klienta |
 
 > Záměr: na schvalovacím e-mailu může být účetní (fakturační e-mail), zákazník

@@ -37,7 +37,7 @@ final class ProjectRepository
             'SELECT p.id, p.name, p.status, p.currency_id, cur.code AS currency,
                     p.hourly_rate, p.payment_due_days, p.payment_due_unit, p.project_number,
                     p.contract_number, p.budget_total, p.budget_yearly, p.budget_monthly,
-                    p.default_revenue_category_id, p.archived_at
+                    p.default_revenue_category_id, p.billing_emails_mode, p.archived_at
                FROM projects p
                JOIN currencies cur ON cur.id = p.currency_id
               WHERE p.client_id = ?
@@ -139,8 +139,8 @@ final class ProjectRepository
             $sql = 'INSERT INTO projects
                 (client_id, name, payment_due_days, payment_due_unit, project_number, contract_number,
                  budget_total, budget_yearly, budget_monthly, hourly_rate, currency_id, status,
-                 requires_work_report_approval, note, default_revenue_category_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                 requires_work_report_approval, note, default_revenue_category_id, billing_emails_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 $clientId,
@@ -158,6 +158,7 @@ final class ProjectRepository
                 !empty($data['requires_work_report_approval']) ? 1 : 0,
                 $this->nullable($data, 'note'),
                 $this->resolveRevenueCategoryId($data, $supplierId),
+                $this->billingEmailsMode($data),
             ]);
             $id = (int) $pdo->lastInsertId();
 
@@ -198,7 +199,7 @@ final class ProjectRepository
                     name = ?, payment_due_days = ?, payment_due_unit = ?, project_number = ?, contract_number = ?,
                     budget_total = ?, budget_yearly = ?, budget_monthly = ?, hourly_rate = ?,
                     currency_id = ?, status = ?, requires_work_report_approval = ?, note = ?,
-                    default_revenue_category_id = ?
+                    default_revenue_category_id = ?, billing_emails_mode = ?
                     WHERE id = ?';
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -216,6 +217,7 @@ final class ProjectRepository
                 !empty($data['requires_work_report_approval']) ? 1 : 0,
                 $this->nullable($data, 'note'),
                 $newDefaultRevenueCategory,
+                $this->billingEmailsMode($data),
                 $id,
             ]);
 
@@ -411,6 +413,20 @@ final class ProjectRepository
         if ($v === null) return null;
         if (!in_array($v, ['days', 'month'], true)) {
             throw new \InvalidArgumentException("{$key} musí být 'days' nebo 'month'.");
+        }
+        return $v;
+    }
+
+    /**
+     * Režim kombinace e-mailů zakázky s kontakty klienta (#86).
+     * Default 'auto' = dosavadní per-typ chování (viz RecipientResolver).
+     */
+    private function billingEmailsMode(array $data): string
+    {
+        $v = trim((string) ($data['billing_emails_mode'] ?? 'auto'));
+        if ($v === '') return 'auto';
+        if (!in_array($v, ['auto', 'append', 'replace'], true)) {
+            throw new \InvalidArgumentException("billing_emails_mode musí být 'auto', 'append' nebo 'replace'.");
         }
         return $v;
     }

@@ -55,6 +55,7 @@ const form = ref<ProjectPayload>({
   note: null,
   default_revenue_category_id: null,
   billing_emails: [],
+  billing_emails_mode: 'auto',
 })
 
 const billingEmailInput = ref<{ position: 1 | 2 | 3; email: string; label: string }[]>([
@@ -148,6 +149,7 @@ function sanitize(p: Project): Partial<ProjectPayload> {
     requires_work_report_approval: !!p.requires_work_report_approval,
     note: p.note ?? null,
     default_revenue_category_id: p.default_revenue_category_id ?? null,
+    billing_emails_mode: p.billing_emails_mode ?? 'auto',
   }
 }
 
@@ -299,6 +301,17 @@ async function submit() {
               <input autocomplete="off" v-model="billingEmailInput[i].label" :placeholder="$i18n.locale === 'cs' ? 'Popisek (účetní, PM…)' : 'Label (accountant, PM…)'"
                 class="h-9 px-3 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
             </div>
+          </div>
+          <!-- Režim kombinace s kontakty/hlavním e-mailem klienta (#86) -->
+          <div class="mt-3">
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.billing_emails_mode') }}</label>
+            <select v-model="form.billing_emails_mode"
+              class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
+              <option value="auto">{{ t('project.billing_emails_mode_auto') }}</option>
+              <option value="append">{{ t('project.billing_emails_mode_append') }}</option>
+              <option value="replace">{{ t('project.billing_emails_mode_replace') }}</option>
+            </select>
+            <p class="text-xs text-neutral-500 mt-1">{{ t('project.billing_emails_mode_hint') }}</p>
           </div>
         </div>
 

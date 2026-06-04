@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { clientsApi, type ClientPayload, type Client } from '@/api/clients'
+import { clientsApi, type ClientPayload, type Client, type ClientEmailContact, type EmailContactUsageCode, type EmailContactRecipient } from '@/api/clients'
 import { codebooksApi, type Country, type Currency } from '@/api/codebooks'
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
 import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
@@ -119,6 +119,42 @@ const form = ref<ClientPayload>({
 const lockCustomer = ref(false)  // true pokud klient má vydané faktury (server enforces)
 const lockVendor   = ref(false)  // true pokud má přijaté faktury
 
+// ── E-mailové kontakty dle účelu (#86) ──────────────────────────────────────
+// Replace-all model: pole se posílá celé; bez kontaktů platí dosavadní chování
+// (vše na hlavní e-mail + e-maily zakázky). UI: per-kontakt checkboxy účelů
+// + jedna role to/cc/bcc (datový model umí roli per účel, UI drží jednu na kontakt).
+const USAGE_CODES: EmailContactUsageCode[] = ['documents', 'reminders', 'approvals', 'communication']
+const emailContacts = ref<ClientEmailContact[]>([])
+
+function addEmailContact(prefillEmail = '') {
+  emailContacts.value.push({
+    email: prefillEmail,
+    label: null,
+    contact_name: null,
+    is_active: true,
+    usages: [{ usage: 'documents', recipient: 'to' }],
+  })
+}
+function removeEmailContact(idx: number) {
+  emailContacts.value.splice(idx, 1)
+}
+function hasUsage(c: ClientEmailContact, code: EmailContactUsageCode): boolean {
+  return c.usages.some(u => u.usage === code)
+}
+function toggleUsage(c: ClientEmailContact, code: EmailContactUsageCode) {
+  if (hasUsage(c, code)) {
+    c.usages = c.usages.filter(u => u.usage !== code)
+  } else {
+    c.usages.push({ usage: code, recipient: contactRecipient(c) })
+  }
+}
+function contactRecipient(c: ClientEmailContact): EmailContactRecipient {
+  return c.usages[0]?.recipient ?? 'to'
+}
+function setContactRecipient(c: ClientEmailContact, r: EmailContactRecipient) {
+  c.usages = c.usages.map(u => ({ ...u, recipient: r }))
+}
+
 const countries = ref<Country[]>([])
 const currencies = ref<Currency[]>([])
 const expenseCategories = ref<ExpenseCategory[]>([])
@@ -171,6 +207,10 @@ onMounted(async () => {
   if (isEdit.value && clientId.value) {
     const c = await clientsApi.get(clientId.value)
     Object.assign(form.value, sanitize(c))
+    emailContacts.value = (c.email_contacts ?? []).map(ec => ({
+      ...ec,
+      usages: (ec.usages ?? []).map(u => ({ usage: u.usage, recipient: u.recipient ?? 'to' })),
+    }))
     lockCustomer.value = (c.invoices_count ?? 0) > 0
     lockVendor.value   = (c.purchase_invoices_count ?? 0) > 0
   } else if (props.embedded && props.defaults) {
@@ -303,9 +343,22 @@ async function submit() {
   submitting.value = true
   error.value = ''
   errors.value = {}
+  // Kontakty: vyřaď řádky bez e-mailu (rozpracované), pošli celé pole (replace-all).
+  const payload: ClientPayload = {
+    ...form.value,
+    email_contacts: emailContacts.value
+      .filter(c => (c.email || '').trim() !== '')
+      .map(c => ({
+        email: c.email.trim(),
+        label: c.label || null,
+        contact_name: c.contact_name || null,
+        is_active: c.is_active,
+        usages: c.usages,
+      })),
+  }
   try {
     if (isEdit.value && clientId.value) {
-      const updated = await clientsApi.update(clientId.value, form.value)
+      const updated = await clientsApi.update(clientId.value, payload)
       const backfilled = updated.expense_category_backfilled ?? 0
       if (backfilled > 0) {
         toast.success(t('client.default_expense_category_backfilled', { count: backfilled }))
@@ -317,7 +370,7 @@ async function submit() {
       if (props.embedded) { emit('created', updated); return }
       router.push(`/clients/${clientId.value}`)
     } else {
-      const created = await clientsApi.create(form.value)
+      const created = await clientsApi.create(payload)
       if (props.embedded) { emit('created', created); return }
       router.push(`/clients/${created.id}`)
     }
@@ -449,6 +502,67 @@ async function submit() {
             <input autocomplete="off" v-model="form.phone"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
           </div>
+        </div>
+
+        <!-- E-mailové kontakty dle účelu (#86) — jen plný editor, ne embedded modal -->
+        <div v-if="!embedded" class="border border-neutral-200 rounded-md p-3 space-y-3">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <div class="text-sm font-medium text-neutral-700">{{ t('client.email_contacts.title') }}</div>
+              <p class="text-xs text-neutral-500 mt-0.5">{{ t('client.email_contacts.hint') }}</p>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button type="button" @click="addEmailContact(form.main_email)"
+                v-if="form.main_email && !emailContacts.some(c => c.email === form.main_email)"
+                class="cursor-pointer h-8 px-2.5 text-xs border border-neutral-300 rounded-md text-neutral-600 hover:bg-neutral-50">
+                {{ t('client.email_contacts.add_main') }}
+              </button>
+              <button type="button" @click="addEmailContact()"
+                class="cursor-pointer h-8 px-2.5 text-xs border border-primary-500/40 text-primary-700 rounded-md hover:bg-primary-50 font-medium">
+                + {{ t('client.email_contacts.add') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-for="(c, idx) in emailContacts" :key="idx"
+            :class="['rounded-md border p-3 space-y-2', c.is_active ? 'border-neutral-200 bg-neutral-50/50' : 'border-neutral-200 bg-neutral-100 opacity-60']">
+            <div class="grid grid-cols-1 sm:grid-cols-[1fr_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] gap-2 items-start">
+              <input autocomplete="off" v-model="c.email" type="email" :placeholder="t('client.email_contacts.email_ph')"
+                class="w-full h-9 px-2.5 border border-neutral-300 rounded-md text-sm bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+              <input autocomplete="off" v-model="c.contact_name" :placeholder="t('client.email_contacts.name_ph')"
+                class="w-full h-9 px-2.5 border border-neutral-300 rounded-md text-sm bg-surface" />
+              <input autocomplete="off" v-model="c.label" :placeholder="t('client.email_contacts.label_ph')"
+                class="w-full h-9 px-2.5 border border-neutral-300 rounded-md text-sm bg-surface" />
+              <button type="button" @click="removeEmailContact(idx)"
+                class="cursor-pointer w-9 h-9 inline-flex items-center justify-center border border-danger-500/40 text-danger-500 hover:bg-danger-50 rounded-md text-lg leading-none shrink-0">×</button>
+            </div>
+            <div class="flex items-center gap-x-4 gap-y-2 flex-wrap text-sm">
+              <label v-for="code in USAGE_CODES" :key="code" class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" :checked="hasUsage(c, code)" @change="toggleUsage(c, code)"
+                  class="rounded border-neutral-300 text-primary-600" />
+                <span class="text-neutral-700">{{ t(`client.email_contacts.usage.${code}`) }}</span>
+              </label>
+              <span class="grow"></span>
+              <label class="flex items-center gap-1.5 text-xs text-neutral-600">
+                {{ t('client.email_contacts.recipient_kind') }}
+                <select :value="contactRecipient(c)" @change="setContactRecipient(c, ($event.target as HTMLSelectElement).value as any)"
+                  class="h-8 px-1.5 border border-neutral-300 rounded-md bg-surface text-xs">
+                  <option value="to">{{ t('client.email_contacts.kind_to') }}</option>
+                  <option value="cc">{{ t('client.email_contacts.kind_cc') }}</option>
+                  <option value="bcc">{{ t('client.email_contacts.kind_bcc') }}</option>
+                </select>
+              </label>
+              <label class="flex items-center gap-1.5 text-xs text-neutral-600 cursor-pointer">
+                <input type="checkbox" v-model="c.is_active" class="rounded border-neutral-300 text-primary-600" />
+                {{ t('client.email_contacts.active') }}
+              </label>
+            </div>
+          </div>
+
+          <p v-if="emailContacts.some(c => c.is_active && c.email && c.usages.some(u => u.usage !== 'communication'))"
+            class="text-xs text-warning-700 bg-warning-50 border border-warning-200 rounded-md px-2.5 py-1.5">
+            {{ t('client.email_contacts.main_excluded_note') }}
+          </p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">

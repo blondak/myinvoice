@@ -72,6 +72,8 @@ $varsBuilder = $container->get(ApprovalEmailVarsBuilder::class);
 $logger = $container->get(ActivityLogger::class);
 /** @var PdfArchiveService $pdfArchive */
 $pdfArchive = $container->get(PdfArchiveService::class);
+/** @var \MyInvoice\Service\Mail\RecipientResolver $recipientResolver */
+$recipientResolver = $container->get(\MyInvoice\Service\Mail\RecipientResolver::class);
 
 $run = CronRun::start($conn->pdo(), 'cron-send-approval-reminders');
 
@@ -126,20 +128,12 @@ foreach ($candidates as $inv) {
         continue;
     }
 
-    // Recipients: stejná logika jako RequestApprovalAction — project_billing_emails fallback main_email
-    $to = [];
-    if (!empty($inv['project_id'])) {
-        $st = $pdo->prepare('SELECT email FROM project_billing_emails WHERE project_id = ? ORDER BY position');
-        $st->execute([$inv['project_id']]);
-        foreach ($st->fetchAll(\PDO::FETCH_COLUMN) as $em) {
-            $em = trim((string) $em);
-            if ($em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL)) $to[] = $em;
-        }
-    }
-    if (empty($to) && !empty($inv['client_main_email'])) {
-        $main = trim((string) $inv['client_main_email']);
-        if (filter_var($main, FILTER_VALIDATE_EMAIL)) $to[] = $main;
-    }
+    // Recipients: jednotný resolver (#86) — účel `approvals`, stejná logika
+    // jako RequestApprovalAction (kontakty klienta; legacy fallback
+    // project_billing_emails NEBO main_email).
+    $r = $recipientResolver->resolve(\MyInvoice\Service\Mail\RecipientResolver::TYPE_APPROVALS, $inv);
+    $to = $r['to'];
+    $cc = $r['cc'];
     if (empty($to)) {
         $report['errors']++;
         fprintf(STDERR, "  ✗ #%d %s — no recipients\n", $invId, $vs);
@@ -147,7 +141,7 @@ foreach ($candidates as $inv) {
     }
 
     // BCC dodavateli pro audit
-    $bcc = [];
+    $bcc = $r['bcc'];
     if ($ccSupplier) {
         $st = $pdo->prepare('SELECT email FROM supplier WHERE id = ?');
         $st->execute([(int) $inv['supplier_id']]);
@@ -168,18 +162,18 @@ foreach ($candidates as $inv) {
             $to,
             $vars,
             null,
-            [],
+            $cc,
             $bcc,
             [['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf']],
         );
 
         // Archivuj odeslaný výkaz — viz RequestApprovalAction.
-        $sentToAll = array_values(array_unique(array_merge($to, $bcc)));
+        $sentToAll = array_values(array_unique(array_merge($to, $cc, $bcc)));
         $archiveId = $pdfArchive->archiveCopy($invId, $pdfPath, 'approval_reminder', wasSent: true, sentTo: $sentToAll);
 
         $repo->markApprovalReminderSent($invId);
         $logger->log('invoice.approval_reminder_sent', null, 'invoice', $invId, [
-            'to' => $to, 'bcc' => $bcc,
+            'to' => $to, 'cc' => $cc, 'bcc' => $bcc,
             'reminder_n' => ((int) $inv['approval_reminder_count']) + 1,
             'pdf_archive_id' => $archiveId,
         ]);

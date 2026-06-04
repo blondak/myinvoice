@@ -851,7 +851,8 @@ paths:
           (faktura se po schválení vystaví bez dalších změn),
         - zákazník dostane email `invoice_approval` s **PDF výkazu** v příloze
           (ne fakturu — tu uvidí až po vystavení),
-        - příjemci: `project.billing_emails`, fallback `client.main_email`,
+        - příjemci: kontakty klienta s účelem `approvals` (viz `email_contacts`);
+          bez nich `project.billing_emails`, fallback `client.main_email`,
         - audit log: `invoice.approval_requested`.
 
         Po rozhodnutí zákazníka (přes veřejný link) můžeš stav zjistit
@@ -964,6 +965,54 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/invoices/{id}/recipients:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceComms]
+      summary: Vyřešení e-mailoví příjemci pro odeslání
+      description: |
+        Vrátí příjemce, na které by se daný typ zprávy odeslal (#86) — jednotný
+        `RecipientResolver`: aktivní kontakty klienta s daným účelem
+        (`email_contacts`, u upomínek fallback na účel `documents`); bez kontaktů
+        dosavadní logika (`main_email` + `project.billing_emails`; u schvalování
+        e-maily zakázky NAHRAZUJÍ hlavní e-mail). Kombinaci s e-maily zakázky
+        řídí `project.billing_emails_mode`. Read-only — nic neodesílá; hodí se
+        pro náhled příjemců před voláním `/send`.
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string, enum: [documents, reminders, approvals], default: documents }
+          description: Typ zprávy (doklad / upomínka / žádost o schválení výkazu).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string, enum: [documents, reminders, approvals] }
+                  to:  { type: array, items: { type: string, format: email } }
+                  cc:  { type: array, items: { type: string, format: email } }
+                  bcc: { type: array, items: { type: string, format: email } }
+                  resolved:
+                    type: array
+                    description: Provenance každého příjemce (zdroj + účel + popisek).
+                    items:
+                      type: object
+                      properties:
+                        email: { type: string, format: email }
+                        recipient: { type: string, enum: [to, cc, bcc] }
+                        source: { type: string, enum: [contact, project, main_email] }
+                        usage: { type: string, nullable: true, enum: [communication, documents, reminders, approvals, null] }
+                        label: { type: string, nullable: true }
+        '404': { description: Faktura nenalezena }
+
   /api/v1/invoices/{id}/send:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
@@ -979,8 +1028,11 @@ paths:
         být `issued` nebo navazující stav. Předmět + tělo z šablony `invoice_send`
         (per locale, per supplier override v Email šablonách).
 
-        Body je volitelné — když chybí, použijí se výchozí příjemci z klienta /
-        zakázky. Příjemce/CC/BCC jdou přepsat.
+        Body je volitelné — když chybí, příjemce vyřeší jednotný resolver (#86):
+        kontakty klienta s účelem `documents` (vč. cc/bcc rolí); bez kontaktů
+        `client.main_email` + `project.billing_emails`. Explicitní `to` v body
+        je autoritativní (resolver se přeskočí). Response obsahuje
+        `resolved_recipients` s provenancí každého příjemce.
       requestBody:
         content:
           application/json:
@@ -1014,6 +1066,17 @@ paths:
                   recipients:
                     type: array
                     items: { type: string, format: email }
+                  resolved_recipients:
+                    type: array
+                    description: "Provenance příjemců (#86) — prázdné při explicitním `to` v body."
+                    items:
+                      type: object
+                      properties:
+                        email: { type: string, format: email }
+                        recipient: { type: string, enum: [to, cc, bcc] }
+                        source: { type: string, enum: [contact, project, main_email] }
+                        usage: { type: string, nullable: true, enum: [communication, documents, reminders, approvals, null] }
+                        label: { type: string, nullable: true }
                   archived_pdf_id: { type: integer, format: int64 }
         '409':
           description: Faktura není ve stavu pro odeslání (draft)
@@ -4108,7 +4171,7 @@ components:
         zip: { type: string }
         country_id: { type: integer }
         country_iso2: { type: string, description: "Denormalizovaný ISO2 kód země (alias z countries)" }
-        main_email: { type: string, format: email, description: "Hlavní email klienta — povinný, na něj chodí faktury." }
+        main_email: { type: string, format: email, description: "Hlavní email klienta — povinný. Bez e-mailových kontaktů (email_contacts) na něj chodí všechny zprávy; s kontakty slouží jako fallback a pro běžnou komunikaci." }
         phone: { type: string, nullable: true }
         language: { type: string, enum: [cs, en], description: "Jazyk faktur a emailů. Default cs." }
         currency_default_id: { type: integer, nullable: true, description: "Výchozí měna pro faktury klienta. Default = supplier.default_currency_id." }
@@ -4133,11 +4196,34 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
+    ClientEmailContact:
+      type: object
+      description: "E-mailový kontakt odběratele dle účelu (#86). Účely: communication (běžná komunikace), documents (faktury/dobropisy/poděkování za platbu), reminders (upomínky; bez nich fallback na documents), approvals (schvalování výkazů). Jakmile má klient aktivní kontakt s daným účelem, main_email se pro tento typ zprávy přestane automaticky přidávat (zůstává jen fallback)."
+      properties:
+        id: { type: integer, readOnly: true }
+        email: { type: string, format: email }
+        label: { type: string, nullable: true, maxLength: 80, description: 'Popisek (např. „účetní oddělení")' }
+        contact_name: { type: string, nullable: true, maxLength: 120, description: "Jméno kontaktní osoby" }
+        is_active: { type: boolean, default: true }
+        sort_order: { type: integer, readOnly: true, description: "Pořadí — odvozeno z pořadí v zaslaném poli" }
+        usages:
+          type: array
+          description: "Účely použití kontaktu + role příjemce."
+          items:
+            type: object
+            required: [usage]
+            properties:
+              usage: { type: string, enum: [communication, documents, reminders, approvals] }
+              recipient: { type: string, enum: [to, cc, bcc], default: to }
+
     ClientDetail:
       allOf:
         - $ref: '#/components/schemas/Client'
         - type: object
           properties:
+            email_contacts:
+              type: array
+              items: { $ref: '#/components/schemas/ClientEmailContact' }
             projects:
               type: array
               items: { $ref: '#/components/schemas/Project' }
@@ -4218,6 +4304,10 @@ components:
         proforma_number_format: { type: string, nullable: true }
         credit_note_number_format: { type: string, nullable: true }
         invoice_number_period: { type: string, enum: [year, month, none], nullable: true }
+        email_contacts:
+          type: array
+          description: "E-mailové kontakty dle účelu (#86) — replace-all: pošli kompletní pole; klíč vynech, pokud kontakty neměníš. Max 10 kontaktů."
+          items: { $ref: '#/components/schemas/ClientEmailContact' }
 
     Invoice:
       type: object
@@ -4437,6 +4527,11 @@ components:
               type: array
               maxItems: 3
               items: { $ref: '#/components/schemas/ProjectBilingEmail' }
+            billing_emails_mode:
+              type: string
+              enum: [auto, append, replace]
+              default: auto
+              description: "Jak kombinovat e-maily zakázky s kontakty klienta (#86): auto = dosavadní per-typ chování (doklady/upomínky přidat, schvalování nahradit), append = vždy přidat, replace = vždy nahradit."
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
 
@@ -4550,8 +4645,15 @@ components:
           maxItems: 3
           items: { $ref: '#/components/schemas/ProjectBilingEmail' }
           description: |
-            Až 3 fakturační emaily (slot 1/2/3). Když je seznam neprázdný,
-            ti dostávají faktury z této zakázky místo emailů na klientovi.
+            Až 3 fakturační emaily (slot 1/2/3). Kombinace s kontakty/hlavním
+            e-mailem klienta se řídí přes `billing_emails_mode` (default `auto`
+            = dosavadní chování: u dokladů a upomínek se přidávají, u schvalování
+            výkazů nahrazují).
+        billing_emails_mode:
+          type: string
+          enum: [auto, append, replace]
+          default: auto
+          description: "Jak kombinovat e-maily zakázky s příjemci dle kontaktů klienta (#86)."
 
     WorkReportItem:
       type: object

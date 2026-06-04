@@ -103,6 +103,7 @@ use MyInvoice\Action\Invoice\Attachment\ListAttachmentsAction;
 use MyInvoice\Action\Invoice\Attachment\UploadAttachmentAction;
 use MyInvoice\Action\Invoice\Attachment\DeleteAttachmentAction;
 use MyInvoice\Action\Invoice\Attachment\DownloadAttachmentAction;
+use MyInvoice\Action\Invoice\GetRecipientsAction;
 use MyInvoice\Action\Invoice\SendEmailAction;
 use MyInvoice\Action\Invoice\SendReminderAction;
 use MyInvoice\Action\Invoice\BulkSendRemindersAction;
@@ -266,6 +267,7 @@ final class Routes
         $app->post   ('/api/invoices/{id:[0-9]+}/attachments', UploadAttachmentAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/attachments/{attId:[0-9]+}', DownloadAttachmentAction::class);
         $app->delete ('/api/invoices/{id:[0-9]+}/attachments/{attId:[0-9]+}', DeleteAttachmentAction::class);
+        $app->get    ('/api/invoices/{id:[0-9]+}/recipients', GetRecipientsAction::class);  // #86 vyřešení příjemců pro modal
         $app->post   ('/api/invoices/{id:[0-9]+}/send',      SendEmailAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/send-test', SendTestEmailAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/reminder',  SendReminderAction::class);

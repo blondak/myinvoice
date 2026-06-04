@@ -61,6 +61,10 @@ const cancelReason = ref('')
 const sendOpen = ref(false)
 const sendTo = ref('')
 const sendNote = ref('')
+// #86 — vyřešení příjemci z backendu (provenance chips + cc/bcc)
+const sendCc = ref<string[]>([])
+const sendBcc = ref<string[]>([])
+const sendResolved = ref<Array<{ email: string; recipient: 'to' | 'cc' | 'bcc'; source: 'contact' | 'project' | 'main_email'; usage: string | null; label: string | null }>>([])
 
 // Reminder modal state
 const reminderOpen = ref(false)
@@ -703,17 +707,37 @@ const canSendTestReminder = computed(() =>
   && Number(invoice.value.amount_to_pay ?? 0) > 0
 )
 
-function openSendModal() {
+async function openSendModal() {
   if (!invoice.value) return
-  // Pre-fill recipients: client_main_email + project billing emails (de-duplikováno).
-  // Stejná logika jako backend SendEmailAction::resolveRecipients — ať uživatel
-  // v modalu vidí přesně to, co se odešle (a může to libovolně upravit).
-  const main = invoice.value.client_main_email || ''
-  const billing = (invoice.value.project_billing_emails || []).map(b => b.email)
-  const all = [main, ...billing].filter(Boolean)
-  sendTo.value = Array.from(new Set(all)).join(', ')
+  // Příjemce vyřeší backend (RecipientResolver, #86) — kontakty klienta dle účelu
+  // `documents` + e-maily zakázky; modal zobrazí provenanci a nechá vše upravit.
+  // Fallback (chyba API): dosavadní lokální složení main + billing emails.
   sendNote.value = ''
+  sendResolved.value = []
+  sendCc.value = []
+  sendBcc.value = []
+  try {
+    const r = await invoicesApi.recipients(invoice.value.id, 'documents')
+    sendTo.value = r.to.join(', ')
+    sendCc.value = r.cc
+    sendBcc.value = r.bcc
+    sendResolved.value = r.resolved
+  } catch {
+    const main = invoice.value.client_main_email || ''
+    const billing = (invoice.value.project_billing_emails || []).map(b => b.email)
+    sendTo.value = Array.from(new Set([main, ...billing].filter(Boolean))).join(', ')
+  }
   sendOpen.value = true
+}
+
+/** Lidský popis zdroje příjemce pro chip v modalu (#86). */
+function recipientSourceLabel(rr: { source: string; usage: string | null; label: string | null }): string {
+  if (rr.source === 'contact') {
+    const usage = rr.usage ? t(`client.email_contacts.usage.${rr.usage}`) : ''
+    return rr.label ? `${t('invoice.send_source_contact')}: ${rr.label}` : `${t('invoice.send_source_contact')}: ${usage}`
+  }
+  if (rr.source === 'project') return t('invoice.send_source_project')
+  return t('invoice.send_source_main')
 }
 
 async function send() {
@@ -728,6 +752,8 @@ async function send() {
     const note = sendNote.value.trim()
     const r = await invoicesApi.send(invoice.value.id, {
       to: recipients,
+      ...(sendCc.value.length ? { cc: sendCc.value } : {}),
+      ...(sendBcc.value.length ? { bcc: sendBcc.value } : {}),
       ...(note ? { note } : {}),
     })
     sendOpen.value = false
@@ -796,8 +822,16 @@ const daysOverdue = computed(() => {
   return Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86_400_000))
 })
 
-function openReminderModal() {
+// #86 — příjemci upomínky z resolveru (kontakty s účelem `reminders`, fallback documents/main).
+const reminderResolved = ref<Array<{ email: string; recipient: 'to' | 'cc' | 'bcc'; source: 'contact' | 'project' | 'main_email'; usage: string | null; label: string | null }>>([])
+
+async function openReminderModal() {
   if (!invoice.value) return
+  reminderResolved.value = []
+  try {
+    const r = await invoicesApi.recipients(invoice.value.id, 'reminders')
+    reminderResolved.value = r.resolved
+  } catch { /* fallback na legacy zobrazení níže */ }
   reminderOpen.value = true
 }
 
@@ -1132,6 +1166,17 @@ async function updateApprovalStatus() {
         <h3 class="text-lg font-semibold mb-3">{{ t('invoice.modals.send_title') }}</h3>
         <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.send_recipients') }}</label>
         <input v-model="sendTo" type="text" class="w-full h-10 px-3 border border-neutral-300 rounded-md mb-2 text-sm" />
+        <!-- Provenance chips (#86) — odkud byl každý příjemce doplněn -->
+        <div v-if="sendResolved.length" class="flex flex-wrap gap-1.5 mb-2">
+          <span v-for="rr in sendResolved" :key="rr.email"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200 text-xs"
+            :title="rr.email">
+            <span class="font-mono">{{ rr.email }}</span>
+            <span class="text-neutral-400">·</span>
+            <span class="text-neutral-500">{{ recipientSourceLabel(rr) }}</span>
+            <span v-if="rr.recipient !== 'to'" class="uppercase text-[10px] font-semibold text-primary-700">{{ rr.recipient }}</span>
+          </span>
+        </div>
         <p class="text-xs text-neutral-500 mb-4">{{ t('invoice.modals.send_default_hint') }}</p>
         <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.send_note_label') }}</label>
         <textarea v-model="sendNote" rows="4" maxlength="5000"
@@ -1154,7 +1199,14 @@ async function updateApprovalStatus() {
         <h3 class="text-lg font-semibold mb-1">{{ t('invoice.modals.reminder_title') }}</h3>
         <p class="text-sm text-warning-600 font-medium mb-3">{{ t('invoice.modals.reminder_overdue', { days: daysOverdue }) }}</p>
         <p class="text-sm text-neutral-600 mb-3">{{ t('invoice.modals.reminder_body') }}</p>
-        <div v-if="invoice && (invoice.client_main_email || invoice.project_billing_emails?.length)" class="bg-neutral-50 border border-neutral-200 rounded-md px-3 py-2 mb-4 text-xs">
+        <!-- #86: příjemci z resolveru s provenancí; fallback legacy zobrazení při chybě API -->
+        <div v-if="reminderResolved.length" class="bg-neutral-50 border border-neutral-200 rounded-md px-3 py-2 mb-4 text-xs">
+          <div class="text-neutral-500 mb-0.5">{{ t('invoice.modals.reminder_recipients') }}</div>
+          <div v-for="rr in reminderResolved" :key="rr.email" class="font-mono">
+            ✉ {{ rr.email }}<span class="text-neutral-400 font-sans"> ({{ recipientSourceLabel(rr) }}<template v-if="rr.recipient !== 'to'">, {{ rr.recipient.toUpperCase() }}</template>)</span>
+          </div>
+        </div>
+        <div v-else-if="invoice && (invoice.client_main_email || invoice.project_billing_emails?.length)" class="bg-neutral-50 border border-neutral-200 rounded-md px-3 py-2 mb-4 text-xs">
           <div class="text-neutral-500 mb-0.5">{{ t('invoice.modals.reminder_recipients') }}</div>
           <div v-if="invoice.client_main_email" class="font-mono">✉ {{ invoice.client_main_email }}</div>
           <div v-for="b in (invoice.project_billing_emails || []).filter(b => b.email !== invoice!.client_main_email)" :key="b.email" class="font-mono">

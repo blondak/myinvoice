@@ -7,6 +7,7 @@ namespace MyInvoice\Action\Client;
 use MyInvoice\Http\Json;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\SupplierScopeMiddleware;
+use MyInvoice\Repository\ClientEmailContactRepository;
 use MyInvoice\Repository\ClientRepository;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -16,6 +17,7 @@ final class GetClientAction
     public function __construct(
         private readonly ClientRepository $repo,
         private readonly Connection $db,
+        private readonly ClientEmailContactRepository $emailContacts,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -27,6 +29,7 @@ final class GetClientAction
             return Json::error($response, 'not_found', 'Klient nenalezen.', 404);
         }
         $client['projects'] = $this->repo->projectsForClient($id);
+        $client['email_contacts'] = $this->emailContacts->listForClient($id, $sid);
         $pdo = $this->db->pdo();
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM invoices WHERE client_id = ?');
         $stmt->execute([$id]);

@@ -15,6 +15,7 @@ use MyInvoice\Service\Invoice\AutoIssueAndSendService;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Mail\ApprovalEmailVarsBuilder;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Mail\RecipientResolver;
 use MyInvoice\Service\Pdf\PdfArchiveService;
 use MyInvoice\Service\Pdf\WorkReportPdfRenderer;
 use MyInvoice\Service\Validation\InvoiceAmountPolicy;
@@ -50,6 +51,7 @@ final class RequestApprovalAction
         private readonly Config $config,
         private readonly AutoIssueAndSendService $autoIssue,
         private readonly PdfArchiveService $pdfArchive,
+        private readonly RecipientResolver $recipients,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -75,8 +77,13 @@ final class RequestApprovalAction
             return Json::error($response, 'invalid_amount', InvoiceAmountPolicy::NON_POSITIVE_DRAFT_MESSAGE, 409);
         }
 
-        // Příjemci: project_billing_emails (fallback client_main_email)
-        $to = $this->resolveApprovalRecipients($invoice);
+        // Příjemci — jednotný resolver (#86), účel `approvals`: kontakty klienta
+        // s tímto účelem; bez nich legacy chování (project_billing_emails NEBO
+        // client_main_email, nikdy nesměšovat).
+        $r = $this->recipients->resolve(RecipientResolver::TYPE_APPROVALS, $invoice);
+        $to = $r['to'];
+        $cc = $r['cc'];
+        $resolverBcc = $r['bcc'];
         if (empty($to)) {
             return Json::error($response, 'no_recipients', 'Zakázka nemá fakturační email a klient nemá hlavní email.', 400);
         }
@@ -109,7 +116,7 @@ final class RequestApprovalAction
         $vars = $this->varsBuilder->build($invoice, $token, false, $locale);
 
         // BCC dodavateli pro audit — sdílený flag s upomínkou schválení (cron-send-approval-reminders).
-        $bcc = [];
+        $bcc = $resolverBcc;
         if ((bool) $this->config->get('approval.cc_supplier_on_approval', true)) {
             $st = $this->db->pdo()->prepare('SELECT email FROM supplier WHERE id = ?');
             $st->execute([(int) $invoice['supplier_id']]);
@@ -126,7 +133,7 @@ final class RequestApprovalAction
                 $to,
                 $vars,
                 null,
-                [],
+                $cc,
                 $bcc,
                 [['path' => $pdfPath, 'name' => basename($pdfPath), 'contentType' => 'application/pdf']],
                 $userId,
@@ -137,7 +144,7 @@ final class RequestApprovalAction
 
         // Archivuj odeslaný výkaz do PDF historie faktury — důkaz toho, co klient dostal
         // ke schválení. wasSent=true + sent_to → v UI se zobrazí "Odesláno klientovi".
-        $sentToAll = array_values(array_unique(array_merge($to, $bcc)));
+        $sentToAll = array_values(array_unique(array_merge($to, $cc, $bcc)));
         $archiveId = $this->pdfArchive->archiveCopy(
             $id,
             $pdfPath,
@@ -148,7 +155,8 @@ final class RequestApprovalAction
 
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('invoice.approval_requested', $user['id'] ?? null, 'invoice', $id, [
-            'to' => $to,
+            'to' => $to, 'cc' => $cc, 'bcc' => $bcc,
+            'resolved_recipients' => $r['resolved'],
             'pdf_path' => basename($pdfPath),
             'pdf_archive_id' => $archiveId,
         ], $ip, $request->getHeaderLine('User-Agent'));
@@ -160,33 +168,4 @@ final class RequestApprovalAction
         ]);
     }
 
-    /**
-     * Schvalovací email jde:
-     *  - na project_billing_emails (pokud existují) — primárně
-     *  - jinak na client_main_email
-     * (NIKDY nesměšujeme — když jsou project emails, klient se nemusí dozvědět)
-     */
-    private function resolveApprovalRecipients(array $invoice): array
-    {
-        $emails = [];
-        if (!empty($invoice['project_id'])) {
-            $stmt = $this->db->pdo()->prepare(
-                'SELECT email FROM project_billing_emails WHERE project_id = ? ORDER BY position'
-            );
-            $stmt->execute([$invoice['project_id']]);
-            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $em) {
-                $em = trim((string) $em);
-                if ($em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL)) {
-                    $emails[] = $em;
-                }
-            }
-        }
-        if (empty($emails) && !empty($invoice['client_main_email'])) {
-            $main = trim((string) $invoice['client_main_email']);
-            if (filter_var($main, FILTER_VALIDATE_EMAIL)) {
-                $emails[] = $main;
-            }
-        }
-        return $emails;
-    }
 }
