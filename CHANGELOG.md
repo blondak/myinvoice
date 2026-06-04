@@ -5,6 +5,22 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.0] — 2026-06-04
+
+Velká novinka: **e-mailové kontakty odběratele podle účelu** ([#86](https://github.com/radekhulan/myinvoice/issues/86), díky [@blondak](https://github.com/blondak) za výborný návrh) — komu chodí doklady, upomínky a schvalování výkazů, vč. rolí CC/BCC a účelů u e-mailů zakázky.
+
+### Added
+
+- **E-mailové kontakty odběratele podle účelu ([#86](https://github.com/radekhulan/myinvoice/issues/86)).** U klienta lze evidovat až 10 e-mailových kontaktů s účely **Doklady** (faktury, dobropisy, poděkování za platbu), **Upomínky**, **Schvalování** (výkazy víceprací) a **Komunikace**, každý s rolí **to/cc/bcc** (role může být per účel) a stavem aktivní/neaktivní. Jakmile má účel přiřazený aktivní kontakt, hlavní e-mail se pro daný typ zprávy přestane automaticky přidávat (zůstává záchranný fallback — tlačítko „Převzít hlavní e-mail" ho přidá explicitně). Upomínky bez vlastního kontaktu spadnou na kontakty Doklady. Kontakty se zobrazují v detailu klienta a spravují ve formuláři klienta i přes API (`email_contacts`, replace-all).
+- **Účely u fakturačních e-mailů zakázky.** Každý ze 3 e-mailů zakázky lze omezit na typy zpráv (Doklady/Upomínky/Schvalování); nic nevybráno = všechny typy (dosavadní chování). Účely jsou vidět v detailu zakázky.
+- **Režim kombinace e-mailů zakázky s kontakty klienta** — `Výchozí` (dosavadní per-typ chování: doklady/upomínky přidat, schvalování nahradit), `Vždy přidat`, `Vždy nahradit`.
+- **Jednotný `RecipientResolver`** nahrazuje šest dříve duplicitních výpočtů příjemců (odeslání, auto-odeslání po schválení, upomínky, žádost o schválení, cron připomínek schválení, poděkování za platbu). Dedup napříč to/cc/bcc (case-insensitive, priorita to > cc > bcc), stabilní pořadí, validace; finální příjemci vč. provenance v activity logu. Pokryto 62 testy vč. 24-řádkové kombinační matice — **bez nastavených kontaktů je chování bit-perfect stejné jako dřív** (žádná datová migrace, žádná změna pro existující instalace).
+- **Modal odeslání a upomínky zobrazuje původ příjemců** (kontakt: popisek/účel · zakázka · hlavní e-mail) — příjemce vyřeší backend (`GET /api/v1/invoices/{id}/recipients`), CC/BCC jsou v modalu viditelné a editovatelné. Seznam jde dál libovolně ručně upravit.
+
+### Fixed
+
+- **Kontakt jen s rolí kopie (cc/bcc) nezablokuje odeslání** — typicky „kopie účtárně, hlavní příjemce zůstává jednatel": prázdné TO se doplní hlavním e-mailem klienta.
+
 ## [4.14.0] — 2026-06-04
 
 Novinka: **placeholdery období v pravidelné fakturaci** ([#108](https://github.com/radekhulan/myinvoice/issues/108), díky [@blondak](https://github.com/blondak) za návrh) + oprava párování GPC výpisů cizoměnových účtů evidovaných IBANem ([#109](https://github.com/radekhulan/myinvoice/issues/109)).
