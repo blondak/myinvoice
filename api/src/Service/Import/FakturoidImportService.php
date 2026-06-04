@@ -337,7 +337,13 @@ final class FakturoidImportService
 
         $payload = [
             'vendor_id'             => $vendorId,
-            'vendor_invoice_number' => $this->sanitizeVendorNumber((string) ($e['number'] ?? $e['original_number'] ?? '')),
+            // #113: original_number = číslo dokladu dodavatele; number je jen interní číslo
+            // přidělené Fakturoidem — to použij jen jako fallback, když original_number chybí.
+            'vendor_invoice_number' => $this->sanitizeVendorNumber(
+                trim((string) ($e['original_number'] ?? '')) !== ''
+                    ? (string) $e['original_number']
+                    : (string) ($e['number'] ?? '')
+            ),
             'document_kind'         => 'invoice',
             'issue_date'            => $issueDate,
             'tax_date'              => $taxDate,
