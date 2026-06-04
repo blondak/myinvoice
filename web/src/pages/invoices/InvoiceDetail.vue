@@ -61,9 +61,10 @@ const cancelReason = ref('')
 const sendOpen = ref(false)
 const sendTo = ref('')
 const sendNote = ref('')
-// #86 — vyřešení příjemci z backendu (provenance chips + cc/bcc)
-const sendCc = ref<string[]>([])
-const sendBcc = ref<string[]>([])
+// #86 — vyřešení příjemci z backendu (provenance chips + editovatelné cc/bcc)
+const sendCcText = ref('')
+const sendBccText = ref('')
+const sendCcBccVisible = ref(false)
 const sendResolved = ref<Array<{ email: string; recipient: 'to' | 'cc' | 'bcc'; source: 'contact' | 'project' | 'main_email'; usage: string | null; label: string | null }>>([])
 
 // Reminder modal state
@@ -714,13 +715,15 @@ async function openSendModal() {
   // Fallback (chyba API): dosavadní lokální složení main + billing emails.
   sendNote.value = ''
   sendResolved.value = []
-  sendCc.value = []
-  sendBcc.value = []
+  sendCcText.value = ''
+  sendBccText.value = ''
+  sendCcBccVisible.value = false
   try {
     const r = await invoicesApi.recipients(invoice.value.id, 'documents')
     sendTo.value = r.to.join(', ')
-    sendCc.value = r.cc
-    sendBcc.value = r.bcc
+    sendCcText.value = r.cc.join(', ')
+    sendBccText.value = r.bcc.join(', ')
+    sendCcBccVisible.value = r.cc.length > 0 || r.bcc.length > 0
     sendResolved.value = r.resolved
   } catch {
     const main = invoice.value.client_main_email || ''
@@ -750,10 +753,12 @@ async function send() {
   busy.value = 'send'
   try {
     const note = sendNote.value.trim()
+    const cc = sendCcText.value.split(',').map(e => e.trim()).filter(Boolean)
+    const bcc = sendBccText.value.split(',').map(e => e.trim()).filter(Boolean)
     const r = await invoicesApi.send(invoice.value.id, {
       to: recipients,
-      ...(sendCc.value.length ? { cc: sendCc.value } : {}),
-      ...(sendBcc.value.length ? { bcc: sendBcc.value } : {}),
+      ...(cc.length ? { cc } : {}),
+      ...(bcc.length ? { bcc } : {}),
       ...(note ? { note } : {}),
     })
     sendOpen.value = false
@@ -1166,16 +1171,31 @@ async function updateApprovalStatus() {
         <h3 class="text-lg font-semibold mb-3">{{ t('invoice.modals.send_title') }}</h3>
         <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.send_recipients') }}</label>
         <input v-model="sendTo" type="text" class="w-full h-10 px-3 border border-neutral-300 rounded-md mb-2 text-sm" />
-        <!-- Provenance chips (#86) — odkud byl každý příjemce doplněn -->
-        <div v-if="sendResolved.length" class="flex flex-wrap gap-1.5 mb-2">
-          <span v-for="rr in sendResolved" :key="rr.email"
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200 text-xs"
-            :title="rr.email">
-            <span class="font-mono">{{ rr.email }}</span>
-            <span class="text-neutral-400">·</span>
-            <span class="text-neutral-500">{{ recipientSourceLabel(rr) }}</span>
-            <span v-if="rr.recipient !== 'to'" class="uppercase text-[10px] font-semibold text-primary-700">{{ rr.recipient }}</span>
-          </span>
+
+        <!-- CC/BCC — editovatelné; zobrazí se když je resolver naplnil, jinak na klik -->
+        <template v-if="sendCcBccVisible">
+          <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.modals.send_cc_label') }}</label>
+          <input v-model="sendCcText" type="text" class="w-full h-9 px-3 border border-neutral-300 rounded-md mb-2 text-sm" />
+          <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.modals.send_bcc_label') }}</label>
+          <input v-model="sendBccText" type="text" class="w-full h-9 px-3 border border-neutral-300 rounded-md mb-2 text-sm" />
+        </template>
+        <button v-else type="button" @click="sendCcBccVisible = true"
+          class="cursor-pointer text-xs text-primary-700 hover:text-primary-800 mb-2">+ CC / BCC</button>
+
+        <!-- Provenance (#86) — vysvětluje, ODKUD se každá adresa v polích výše vzala
+             (nejsou to další příjemci; duplicity už jsou sloučené) -->
+        <div v-if="sendResolved.length" class="rounded-md bg-neutral-50 border border-neutral-200 px-2.5 py-2 mb-2">
+          <div class="text-[11px] text-neutral-500 mb-1">{{ t('invoice.modals.send_sources_label') }}</div>
+          <div class="flex flex-wrap gap-1.5">
+            <span v-for="rr in sendResolved" :key="rr.email"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface border border-neutral-200 text-xs"
+              :title="rr.email">
+              <span class="font-mono">{{ rr.email }}</span>
+              <span class="text-neutral-400">·</span>
+              <span class="text-neutral-500">{{ recipientSourceLabel(rr) }}</span>
+              <span v-if="rr.recipient !== 'to'" class="uppercase text-[10px] font-semibold text-primary-700">{{ rr.recipient }}</span>
+            </span>
+          </div>
         </div>
         <p class="text-xs text-neutral-500 mb-4">{{ t('invoice.modals.send_default_hint') }}</p>
         <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.send_note_label') }}</label>
