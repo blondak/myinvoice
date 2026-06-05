@@ -7,7 +7,6 @@ namespace MyInvoice\Action\Approval;
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Infrastructure\Config\Config;
-use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
@@ -42,7 +41,6 @@ final class RequestApprovalAction
 {
     public function __construct(
         private readonly InvoiceRepository $repo,
-        private readonly Connection $db,
         private readonly WorkReportPdfRenderer $renderer,
         private readonly Mailer $mailer,
         private readonly ApprovalEmailVarsBuilder $varsBuilder,
@@ -79,11 +77,12 @@ final class RequestApprovalAction
 
         // Příjemci — jednotný resolver (#86), účel `approvals`: kontakty klienta
         // s tímto účelem; bez nich legacy chování (project_billing_emails NEBO
-        // client_main_email, nikdy nesměšovat).
+        // client_main_email, nikdy nesměšovat). Včetně kopie dodavateli pro audit
+        // (supplier.self_copy / cfg approval.cc_supplier_on_approval, default BCC).
         $r = $this->recipients->resolve(RecipientResolver::TYPE_APPROVALS, $invoice);
         $to = $r['to'];
         $cc = $r['cc'];
-        $resolverBcc = $r['bcc'];
+        $bcc = $r['bcc'];
         if (empty($to)) {
             return Json::error($response, 'no_recipients', 'Zakázka nemá fakturační email a klient nemá hlavní email.', 400);
         }
@@ -114,17 +113,6 @@ final class RequestApprovalAction
 
         $locale = (string) ($invoice['language'] ?? 'cs');
         $vars = $this->varsBuilder->build($invoice, $token, false, $locale);
-
-        // BCC dodavateli pro audit — sdílený flag s upomínkou schválení (cron-send-approval-reminders).
-        $bcc = $resolverBcc;
-        if ((bool) $this->config->get('approval.cc_supplier_on_approval', true)) {
-            $st = $this->db->pdo()->prepare('SELECT email FROM supplier WHERE id = ?');
-            $st->execute([(int) $invoice['supplier_id']]);
-            $supEmail = trim((string) $st->fetchColumn());
-            if ($supEmail !== '' && filter_var($supEmail, FILTER_VALIDATE_EMAIL) && !in_array($supEmail, $to, true)) {
-                $bcc[] = $supEmail;
-            }
-        }
 
         try {
             $this->mailer->sendTemplate(

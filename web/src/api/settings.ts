@@ -1,5 +1,10 @@
 import { api } from './client'
 
+/** Typy zpráv pro kopii dodavateli — zrcadlí RecipientResolver::TYPE_*. */
+export type SelfCopyType = 'documents' | 'reminders' | 'approvals'
+/** off = neposílat, cc/bcc = role kopie dodavatele. */
+export type SelfCopyMode = 'off' | 'cc' | 'bcc'
+
 export interface Supplier {
   id: number
   company_name: string
@@ -57,6 +62,12 @@ export interface Supplier {
   payment_thanks_auto_send: boolean
   payment_thanks_default_checked: boolean
   payment_thanks_attach_paid_pdf: boolean
+  // Kopie odchozích e-mailů dodavateli (migrace 0102). Klíč chybí / objekt null
+  // = typ jede dle cfg fallbacku (cfg_self_copy_fallback níže).
+  self_copy?: Partial<Record<SelfCopyType, SelfCopyMode>> | null
+  // Efektivní hodnoty z cfg (read-only) — UI je ukáže u volby „dle konfigurace".
+  // `approvals` má v cfg dva flagy: žádost (approvals) a upomínka (approval_reminders).
+  cfg_self_copy_fallback?: Record<SelfCopyType | 'approval_reminders', SelfCopyMode>
   // Tax settings pro EPO výkazy DPH/KH (migrace 0038, fáze 6)
   taxpayer_type?: 'fo' | 'po' | null
   vat_period?: 'monthly' | 'quarterly' | null

@@ -740,6 +740,7 @@ function recipientSourceLabel(rr: { source: string; usage: string | null; label:
     return rr.label ? `${t('invoice.send_source_contact')}: ${rr.label}` : `${t('invoice.send_source_contact')}: ${usage}`
   }
   if (rr.source === 'project') return t('invoice.send_source_project')
+  if (rr.source === 'supplier') return t('invoice.send_source_supplier')
   return t('invoice.send_source_main')
 }
 

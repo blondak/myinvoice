@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Mail;
 
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
 
@@ -31,10 +32,17 @@ use PDO;
  *   append  — e-maily zakázky se vždy přidají (i pro approvals legacy větev).
  *   replace — e-maily zakázky (jsou-li) příjemce nahradí; prázdné → jako auto.
  *
+ * Kopie dodavateli (audit vlastních odchozích zpráv): supplier.self_copy JSON
+ * ({"documents":"cc","reminders":"off","approvals":"bcc"}) — chybějící klíč
+ * nebo NULL sloupec = fallback na cfg flagy (smtp.cc_supplier_on_send/_reminder
+ * → CC, approval.cc_supplier_on_approval/_reminder → BCC, legacy kind).
+ * Klíč `approvals` platí pro žádost i schvalovací upomínku; cfg fallback je
+ * rozlišuje přes $isApprovalReminder.
+ *
  * Dedup napříč to/cc/bcc s prioritou to > cc > bcc, stabilní pořadí
  * (kontakty dle sort_order, e-maily zakázky dle position), validace
  * filter_var. `resolved` nese provenanci pro UI modal („kontakt: doklady" /
- * „zakázka" / „hlavní e-mail").
+ * „zakázka" / „hlavní e-mail" / „kopie dodavateli").
  */
 final class RecipientResolver
 {
@@ -45,14 +53,23 @@ final class RecipientResolver
     public const USAGES = ['communication', 'documents', 'reminders', 'approvals'];
     public const RECIPIENT_KINDS = ['to', 'cc', 'bcc'];
 
-    public function __construct(private readonly Connection $db) {}
+    /** Platné hodnoty supplier.self_copy[typ] (+ klíče = TYPE_* konstanty). */
+    public const SELF_COPY_MODES = ['off', 'cc', 'bcc'];
+
+    public function __construct(
+        private readonly Connection $db,
+        private readonly Config $config,
+    ) {}
 
     /**
-     * @param array<string,mixed> $invoice řádek faktury (client_id, client_main_email, project_id)
+     * @param array<string,mixed> $invoice řádek faktury (client_id, client_main_email, project_id, supplier_id)
+     * @param bool $supplierCopy přidat kopii dodavateli dle supplier.self_copy/cfg
+     *                           (false jen pro zprávy, které kopii historicky nemají — payment thanks)
+     * @param bool $isApprovalReminder cfg fallback pro TYPE_APPROVALS: žádost vs. schvalovací upomínka
      * @return array{to: list<string>, cc: list<string>, bcc: list<string>,
      *               resolved: list<array{email:string, recipient:string, source:string, usage:?string, label:?string}>}
      */
-    public function resolve(string $type, array $invoice): array
+    public function resolve(string $type, array $invoice, bool $supplierCopy = true, bool $isApprovalReminder = false): array
     {
         if (!in_array($type, [self::TYPE_DOCUMENTS, self::TYPE_REMINDERS, self::TYPE_APPROVALS], true)) {
             throw new \InvalidArgumentException("Neznámý typ zprávy: {$type}");
@@ -103,6 +120,15 @@ final class RecipientResolver
             }
         }
 
+        // Kopie dodavateli (CC/BCC dle supplier.self_copy, fallback cfg) — projde
+        // společným dedupem: e-mail už přítomný v TO si nejsilnější roli ponechá.
+        if ($supplierCopy) {
+            $copy = $this->supplierCopy((int) ($invoice['supplier_id'] ?? 0), $type, $isApprovalReminder);
+            if ($copy !== null) {
+                $resolved[] = ['email' => $copy['email'], 'recipient' => $copy['recipient'], 'source' => 'supplier', 'usage' => null, 'label' => null];
+            }
+        }
+
         $out = $this->buckets($resolved);
 
         // Pojistka: žádný TO příjemce (např. kontakty jen s rolí cc/bcc — „kopie
@@ -118,6 +144,58 @@ final class RecipientResolver
             }
         }
         return $out;
+    }
+
+    /**
+     * Kopie odchozí zprávy na e-mail dodavatele (audit vlastní pošty).
+     *
+     * Priorita: supplier.self_copy[$type] ('off'|'cc'|'bcc') > cfg flag (legacy
+     * kind: documents/reminders → CC, approvals → BCC). Vrací null = neposílat
+     * (vypnuto, supplier bez platného e-mailu).
+     *
+     * Public i pro cesty mimo resolve() — SendEmailAction s uživatelsky
+     * editovanými příjemci resolver nevolá.
+     *
+     * @return array{email: string, recipient: 'cc'|'bcc'}|null
+     */
+    public function supplierCopy(int $supplierId, string $type, bool $isApprovalReminder = false): ?array
+    {
+        if ($supplierId <= 0) {
+            return null;
+        }
+        $stmt = $this->db->pdo()->prepare('SELECT email, self_copy FROM supplier WHERE id = ?');
+        $stmt->execute([$supplierId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        $email = trim((string) $row['email']);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return null;
+        }
+
+        $mode = null;
+        $selfCopy = $row['self_copy'] !== null ? json_decode((string) $row['self_copy'], true) : null;
+        if (is_array($selfCopy)
+            && isset($selfCopy[$type])
+            && in_array($selfCopy[$type], self::SELF_COPY_MODES, true)
+        ) {
+            $mode = (string) $selfCopy[$type];
+        }
+        if ($mode === null) {
+            // Cfg fallback — bool flagy z dob před per-supplier nastavením; kind
+            // zachovává jejich historické chování (send/reminder=CC, approval=BCC).
+            $enabled = match ($type) {
+                self::TYPE_DOCUMENTS => (bool) $this->config->get('smtp.cc_supplier_on_send', false),
+                self::TYPE_REMINDERS => (bool) $this->config->get('smtp.cc_supplier_on_reminder', false),
+                self::TYPE_APPROVALS => $isApprovalReminder
+                    ? (bool) $this->config->get('approval.cc_supplier_on_approval_reminder', true)
+                    : (bool) $this->config->get('approval.cc_supplier_on_approval', true),
+                default => false,
+            };
+            $mode = $enabled ? ($type === self::TYPE_APPROVALS ? 'bcc' : 'cc') : 'off';
+        }
+        return $mode === 'off' ? null : ['email' => $email, 'recipient' => $mode];
     }
 
     /**

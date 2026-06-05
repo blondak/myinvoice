@@ -69,7 +69,9 @@ final class PaymentThanksMailer
         }
 
         // Jednotný resolver (#86) — poděkování se váže k dokladu, účel `documents`.
-        $r = $this->recipients->resolve(RecipientResolver::TYPE_DOCUMENTS, $invoice);
+        // Bez kopie dodavateli (supplierCopy: false) — poděkování ji historicky
+        // nemá a dodavatel o úhradě ví (sám ji označil / přišla z banky).
+        $r = $this->recipients->resolve(RecipientResolver::TYPE_DOCUMENTS, $invoice, supplierCopy: false);
         $to = $r['to'];
         $cc = $r['cc'];
         $bcc = $r['bcc'];

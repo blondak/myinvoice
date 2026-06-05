@@ -5,6 +5,16 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Kopie odchozích e-mailů dodavateli — per dodavatel, s volbou CC/BCC.** Dosud globální cfg flagy (`cc_supplier_on_send`, `cc_supplier_on_reminder`, `cc_supplier_on_approval[_reminder]`) lze nově přenastavit v nastavení dodavatele zvlášť pro **odeslání dokladu**, **upomínky** a **schvalování výkazů** (žádost + schvalovací upomínka sdílí jednu volbu — stejné členění účelů jako kontakty klienta z #86): *Dle konfigurace* (default — cfg zůstává živý fallback, efektivní hodnota je ve volbě vidět) / *Neposílat* / *Kopie (CC)* / *Skrytá kopie (BCC)*. Kopie jde přes jednotný `RecipientResolver` — v modalu odeslání je vidět jako chip „kopie dodavateli" a lze ji pro konkrétní e-mail smazat; dedup ji nepřidá, pokud je e-mail dodavatele už mezi příjemci. Manuál § 18.5.4.
+
+### Changed
+
+- **Kopie dodavateli při ručním odeslání už není „tichá".** Dříve se CC dodavateli přidávalo serverem až po odeslání z modalu (uživatel ho neviděl a nemohl odebrat); nově je předvyplněné přímo v poli CC/BCC modalu a co uživatel v modalu vidí, to se odešle — beze změn na pozadí.
+
 ## [4.16.0] — 2026-06-05
 
 Daňové opravy reverse charge z EU (díky Pavlovi za podrobné hlášení s reálným dokladem): AI import pořízení zboží z JČS ([#116](https://github.com/radekhulan/myinvoice/issues/116)) a zařazení samovyměření do správného DPH období ([#117](https://github.com/radekhulan/myinvoice/issues/117)).

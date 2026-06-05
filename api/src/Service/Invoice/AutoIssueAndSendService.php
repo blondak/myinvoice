@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Invoice;
 
-use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
@@ -40,7 +39,6 @@ final class AutoIssueAndSendService
         private readonly InvoiceEmailVarsBuilder $varsBuilder,
         private readonly ActivityLogger $logger,
         private readonly StatsRecomputer $stats,
-        private readonly Config $config,
         private readonly PdfArchiveService $pdfArchive,
         private readonly RecipientResolver $recipients,
     ) {}
@@ -93,22 +91,12 @@ final class AutoIssueAndSendService
         // 2. PDF
         $pdfPath = $this->renderer->render($invoiceId, false, $userId);
 
-        // 3. Příjemci — jednotný resolver (#86), účel `documents`
+        // 3. Příjemci — jednotný resolver (#86), účel `documents`, včetně kopie
+        //    dodavateli (supplier.self_copy / cfg smtp.cc_supplier_on_send).
         $r = $this->recipients->resolve(RecipientResolver::TYPE_DOCUMENTS, $invoice);
         $to = $r['to'];
         $bcc = $r['bcc'];
         $cc = $r['cc'];
-        if ((bool) $this->config->get('smtp.cc_supplier_on_send', false)) {
-            $stmt = $this->db->pdo()->prepare('SELECT email FROM supplier WHERE id = ?');
-            $stmt->execute([(int) $invoice['supplier_id']]);
-            $supplierEmail = trim((string) $stmt->fetchColumn());
-            if ($supplierEmail !== ''
-                && filter_var($supplierEmail, FILTER_VALIDATE_EMAIL)
-                && !in_array($supplierEmail, $to, true)
-            ) {
-                $cc[] = $supplierEmail;
-            }
-        }
 
         if (empty($to)) {
             // Faktura je vystavená, ale nemá komu poslat — vrátit info, caller rozhodne co dál

@@ -72,7 +72,7 @@ Každý dodavatel má vlastní:
 - **Číselnou řadu varsymbolů** (každý dodavatel má samostatné `2605001`,
   `2605002`, …)
 - **Šablonu čísla faktury** — vlastní formát per typ dokladu (`{YY}{MM}{CCC}`,
-  `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 18.5.4
+  `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 18.5.3
 - **Výchozí nastavení** — splatnost, hodinová sazba, DPH, **výchozí režim cen
   s DPH / bez DPH** (*Ceny s DPH*, od v4.7.0 — předvyplní přepínač u nové
   faktury, viz [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim))
@@ -215,7 +215,35 @@ s chybou „Chybí counter".
   immutable `varsymbol`.
 - V editoru konceptu můžeš číslo přepsat ručně — viz [§ 11.2.5](11_Faktura_editor.md#1125-číslo-dokladu--ruční-override-volitelné).
 
-### 18.5.4 Pohoda kódy
+### 18.5.4 Kopie odchozích e-mailů dodavateli
+
+Sekce **Kopie odchozích e-mailů na e-mail dodavatele** v nastavení dodavatele.
+Zprávy klientům se mohou posílat v kopii i na e-mail dodavatele — audit vlastní
+odchozí pošty. Tři typy zpráv, každý s vlastní volbou:
+
+| Typ zprávy | Pokrývá |
+|---|---|
+| **Odeslání dokladu** | Ruční odeslání faktury/proformy/dobropisu + automatické odeslání po schválení výkazu |
+| **Upomínky** | Ruční i automatické upomínky po splatnosti (vč. proforma upomínek) |
+| **Schvalování výkazů** | Žádost o schválení výkazu **i** schvalovací upomínky |
+
+Volby per typ:
+
+| Volba | Co dělá |
+|---|---|
+| **Dle konfigurace** (default) | Přebírá globální nastavení ze `cfg.php` (`cc_supplier_on_send`, `cc_supplier_on_reminder`, `cc_supplier_on_approval[_reminder]`) — efektivní hodnota je vidět přímo ve volbě |
+| **Neposílat** | Kopie se neposílá, i kdyby ji cfg zapínala |
+| **Kopie (CC)** | Dodavatel viditelně v kopii |
+| **Skrytá kopie (BCC)** | Klient kopii nevidí (default chování cfg u schvalování) |
+
+> 🛈 Kopie prochází jednotným resolverem příjemců (#86) — v modalu odeslání ji
+> uvidíš jako chip **„kopie dodavateli“** a můžeš ji pro konkrétní e-mail ručně
+> smazat. Pokud je e-mail dodavatele už mezi příjemci (TO), podruhé se nepřidá.
+
+> 🛈 Děkovný e-mail za úhradu kopii dodavateli záměrně neposílá — o úhradě
+> dodavatel ví (sám ji označil, nebo přišla z banky).
+
+### 18.5.5 Pohoda kódy
 
 | Pole | Význam | Příklad |
 |---|---|---|

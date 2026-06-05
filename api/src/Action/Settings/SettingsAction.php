@@ -11,6 +11,7 @@ use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Mail\RecipientResolver;
 use MyInvoice\Service\Pdf\InvoicePdfRenderer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -236,6 +237,8 @@ final class SettingsAction
             'opr_jmeno', 'opr_prijmeni', 'opr_postaveni',
             // Děkovný e-mail za úhradu (issue #57)
             'payment_thanks_enabled', 'payment_thanks_auto_send', 'payment_thanks_default_checked', 'payment_thanks_attach_paid_pdf',
+            // Kopie odchozích e-mailů dodavateli (migrace 0102) — JSON, validace níže
+            'self_copy',
         ];
 
         // Validace tax fields
@@ -329,6 +332,31 @@ final class SettingsAction
         // ať přímý API caller neuloží nesmyslnou hodnotu.
         if (array_key_exists('reminder_days_after_due', $body)) {
             $body['reminder_days_after_due'] = max(1, min(365, (int) $body['reminder_days_after_due']));
+        }
+        // Kopie odchozích e-mailů dodavateli — JSON {typ: 'off'|'cc'|'bcc'},
+        // klíče = typy zpráv resolveru. Ukládají se jen explicitně zvolené typy;
+        // null/prázdný objekt → NULL = vše dle cfg (živý fallback).
+        if (array_key_exists('self_copy', $body)) {
+            $sc = $body['self_copy'];
+            if ($sc === null || $sc === [] || $sc === '') {
+                $body['self_copy'] = null;
+            } else {
+                if (!is_array($sc)) {
+                    return Json::error($response, 'validation_failed', 'self_copy musí být objekt {typ: off|cc|bcc} nebo null.', 400);
+                }
+                $validTypes = [RecipientResolver::TYPE_DOCUMENTS, RecipientResolver::TYPE_REMINDERS, RecipientResolver::TYPE_APPROVALS];
+                $clean = [];
+                foreach ($sc as $k => $v) {
+                    if (!in_array($k, $validTypes, true)) {
+                        return Json::error($response, 'validation_failed', "self_copy: neznámý typ zprávy '$k' (documents|reminders|approvals).", 400);
+                    }
+                    if (!in_array($v, RecipientResolver::SELF_COPY_MODES, true)) {
+                        return Json::error($response, 'validation_failed', "self_copy.$k: hodnota musí být off|cc|bcc.", 400);
+                    }
+                    $clean[$k] = $v;
+                }
+                $body['self_copy'] = $clean === [] ? null : json_encode($clean, JSON_UNESCAPED_UNICODE);
+            }
         }
         $sets = [];
         $params = [];
@@ -456,6 +484,17 @@ final class SettingsAction
         $row['payment_thanks_auto_send']      = (bool) ($row['payment_thanks_auto_send'] ?? false);
         $row['payment_thanks_default_checked']= (bool) ($row['payment_thanks_default_checked'] ?? false);
         $row['payment_thanks_attach_paid_pdf']= (bool) ($row['payment_thanks_attach_paid_pdf'] ?? false);
+        // Kopie odchozích e-mailů dodavateli (migrace 0102) — parsed objekt nebo null.
+        $sc = $row['self_copy'] !== null ? json_decode((string) $row['self_copy'], true) : null;
+        $row['self_copy'] = is_array($sc) && $sc !== [] ? $sc : null;
+        // Efektivní cfg fallback per typ — UI ho ukáže u volby „dle konfigurace".
+        // `approvals` má v cfg dva flagy (žádost/upomínka) — posíláme oba.
+        $row['cfg_self_copy_fallback'] = [
+            'documents'          => ((bool) $this->config->get('smtp.cc_supplier_on_send', false)) ? 'cc' : 'off',
+            'reminders'          => ((bool) $this->config->get('smtp.cc_supplier_on_reminder', false)) ? 'cc' : 'off',
+            'approvals'          => ((bool) $this->config->get('approval.cc_supplier_on_approval', true)) ? 'bcc' : 'off',
+            'approval_reminders' => ((bool) $this->config->get('approval.cc_supplier_on_approval_reminder', true)) ? 'bcc' : 'off',
+        ];
         // Bezpečnost: do API NIKDY neposílat žádná tajemství. Redakce vzorem `*_enc`
         // je odolná vůči nově přidaným šifrovaným sloupcům (původní explicitní výčet
         // nechával unikat idoklad/fakturoid/anthropic credentials).

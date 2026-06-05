@@ -111,9 +111,15 @@ return [
 
         // Při odeslání faktury klientovi přidá supplier.email (z Nastavení > Dodavatel)
         // do CC. Hlavní To = client_main_email + project_billing_emails (vždy).
+        //
+        // POZN.: Tohle je jen globální DEFAULT — per-supplier override (vč. volby
+        // CC vs. BCC vs. vypnuto) je v Nastavení > Dodavatel (supplier.self_copy,
+        // migrace 0102). Cfg flag platí, jen dokud supplier daný typ zprávy
+        // explicitně nepřenastaví.
         'cc_supplier_on_send'     => false,
         // Stejné CC pro upomínky (ruční i z cronu, vč. proforma_reminder).
         // Většinou nechcete sobě chodit kopie každé odeslané upomínky → default false.
+        // Per-supplier override: supplier.self_copy['reminders'].
         'cc_supplier_on_reminder' => false,
 
         // TLS validation
@@ -253,6 +259,9 @@ return [
         'token_ttl_days'        => 30,               // za kolik dní token vyprší (přesměrovat „odeslat znovu" v UI)
         'reminder_after_days'   => 5,                // cron: kolik dní bez reakce → poslat upomínku
         'max_reminders'         => 3,                // max počet upomínek na 1 token, pak přestat
+        // BCC dodavateli pro audit — jen globální DEFAULT; per-supplier override
+        // (CC/BCC/vypnuto, společný pro žádost i upomínku) je v Nastavení > Dodavatel
+        // (supplier.self_copy['approvals'], migrace 0102).
         'cc_supplier_on_approval'          => true,  // BCC dodavateli u první žádosti o schválení (audit)
         'cc_supplier_on_approval_reminder' => true,  // BCC dodavateli u schvalovacích upomínek (audit)
     ],

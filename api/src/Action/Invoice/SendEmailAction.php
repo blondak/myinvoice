@@ -6,7 +6,6 @@ namespace MyInvoice\Action\Invoice;
 
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
-use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceAttachmentRepository;
@@ -31,7 +30,6 @@ final class SendEmailAction
         private readonly InvoiceEmailVarsBuilder $varsBuilder,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
-        private readonly Config $config,
         private readonly PdfArchiveService $pdfArchive,
         private readonly InvoiceAttachmentRepository $attachments,
         private readonly RecipientResolver $recipients,
@@ -74,9 +72,11 @@ final class SendEmailAction
         }
 
         // Jednotný resolver (#86): kontakty klienta dle účelu `documents`,
-        // bez kontaktů legacy chování (main_email + e-maily zakázky). Když UI
-        // pošle explicitní `to` (uživatel editoval v modalu), je autoritativní
-        // a resolver cc/bcc se nepřidávají (uživatel viděl a upravil celý seznam).
+        // bez kontaktů legacy chování (main_email + e-maily zakázky), včetně
+        // kopie dodavateli (supplier.self_copy / cfg). Když UI pošle explicitní
+        // `to` (uživatel editoval v modalu), je autoritativní a nic z resolveru
+        // se nepřidává — modal mu předvyplnil i cc/bcc s kopií dodavateli,
+        // takže co poslal, je celý seznam, který viděl a schválil.
         $resolvedRecipients = [];
         if ($overrideTo !== null) {
             $to = $overrideTo;
@@ -89,19 +89,6 @@ final class SendEmailAction
         }
         if (empty($to)) {
             return Json::error($response, 'no_recipients', 'Žádný platný příjemce (chybí email klienta).', 400);
-        }
-
-        if ((bool) $this->config->get('smtp.cc_supplier_on_send', false)) {
-            $stmt = $this->db->pdo()->prepare('SELECT email FROM supplier WHERE id = ?');
-            $stmt->execute([(int) $invoice['supplier_id']]);
-            $supplierEmail = trim((string) $stmt->fetchColumn());
-            if ($supplierEmail !== ''
-                && filter_var($supplierEmail, FILTER_VALIDATE_EMAIL)
-                && !in_array($supplierEmail, $to, true)
-                && !in_array($supplierEmail, $cc, true)
-            ) {
-                $cc[] = $supplierEmail;
-            }
         }
 
         foreach ([...$to, ...$cc, ...$bcc] as $em) {
