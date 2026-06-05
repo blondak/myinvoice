@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Kopie dodavateli při ručním odeslání už není „tichá".** Dříve se CC dodavateli přidávalo serverem až po odeslání z modalu (uživatel ho neviděl a nemohl odebrat); nově je předvyplněné přímo v poli CC/BCC modalu a co uživatel v modalu vidí, to se odešle — beze změn na pozadí.
+- **Refaktoring parserů bankovních e-mailových avíz ([#118](https://github.com/radekhulan/myinvoice/pull/118), díky [@blondak](https://github.com/blondak)).** Sdílené helpery čtyř parserů (normalizace, regexy, částky, data, účty, symboly, měny) přesunuté do společného `AbstractBankEmailNoticeParser`; bank-specifická detekce a extrakce polí zůstávají per parser (−430/+253 řádků, chování beze změny — pokryto stávajícími testy). Sjednocené helpery převzaly nejrobustnější z původních variant: parseAmount nově u všech bank zvládá oba oddělovače tisíců i znaménko, „N/A" hodnoty se nulují.
 
 ### Fixed
 

@@ -6,6 +6,19 @@ namespace MyInvoice\Service\Bank\EmailNotice\Parser;
 
 use MyInvoice\Service\Bank\EmailNotice\EmailNoticeTextNormalizer;
 
+/**
+ * Společná vrstva parserů bankovních e-mailových avíz (PR #118, @blondak) —
+ * normalizace textu, regex match s pojmenovanými skupinami, parsování částek,
+ * dat, účtů, symbolů a měn. Bank-specifická detekce (supports) a extrakce
+ * polí (parse) zůstávají v konkrétních parserech.
+ *
+ * Helpery jsou sjednocené na nejrobustnější z původních per-bank variant
+ * (parseAmount/cleanNullable z UniCredit, parseDate/splitAccount/normalizeCurrency
+ * z Regex parseru) — chovají se proto v okrajích velkoryseji než původní
+ * úzké verze: parseAmount zvládá oba oddělovače tisíců i znaménko, parseDate
+ * má po výčtu formátů lenient fallback `new DateTimeImmutable`, cleanNullable
+ * nuluje i „N/A".
+ */
 abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInterface
 {
     protected EmailNoticeTextNormalizer $normalizer;
@@ -62,6 +75,13 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return $this->cleanNullable($m['value']);
     }
 
+    /**
+     * Částka z textu avíza: zahodí měnu/mezery/nbsp, zachová znaménko a podle
+     * POSLEDNÍHO oddělovače rozliší desetinnou čárku vs. tečku („1.234,56"
+     * i „1,234.56" → 1234.56). Pozor na ambiguitu „2.500" bez desetin —
+     * čte se jako 2.5 (desetinná tečka), ne 2500; CZ banky ale desetiny
+     * v avízech uvádějí vždy („2 500,00").
+     */
     protected function parseAmount(string $value): float
     {
         $value = preg_replace('/[^\d,.\-+]/u', '', trim($value)) ?? $value;
@@ -85,6 +105,12 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return $negative ? -$amount : $amount;
     }
 
+    /**
+     * Datum → 'Y-m-d'. Nejdřív explicitní CZ formáty (d.m.Y s/bez mezer a času,
+     * ATOM, RFC2822), pak lenient fallback `new DateTimeImmutable` — ten je
+     * záměrně poslední: u ambiguózních tvarů (05/04/2026) parsuje po americku,
+     * ale systémové parsery mu datum předají už vyfiltrované regexem na CZ tvar.
+     */
     protected function parseDate(string $value, string $label = 'validní datum platby'): string
     {
         $value = $this->compact($value);
@@ -112,6 +138,9 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
     }
 
     /**
+     * Rozdělí „číslo/kód banky" na [účet, banka]; nejdřív účet vytáhne
+     * z okolního textu (normalizeAccount), bez kódu banky vrací [hodnota, null].
+     *
      * @return array{0:?string,1:?string}
      */
     protected function splitAccount(string $value): array
@@ -135,6 +164,7 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return $value;
     }
 
+    /** VS/KS/SS: jen číslice bez leading nul (konzistentní s párováním GPC). */
     protected function normalizeSymbol(string $value): string
     {
         $digits = $this->digitsOnly($value);
@@ -156,6 +186,10 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return mb_substr($value, 0, 255);
     }
 
+    /**
+     * Whitelist odesílatelů providera (mezera/čárka/středník oddělené adresy);
+     * prázdný = povolit vše. Matchuje přesnou adresu i tvar „Jméno <adresa>".
+     */
     protected function senderAllowed(string $sender, string $whitelist): bool
     {
         $whitelist = trim($whitelist);
@@ -175,6 +209,9 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return false;
     }
 
+    /**
+     * Sjednotí měnu na ISO kód. Banky často píší symbol „Kč" / „€" místo „CZK" / „EUR".
+     */
     protected function normalizeCurrency(string $value): string
     {
         $v = trim($value);
@@ -206,6 +243,11 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return $letters !== '' ? mb_substr($letters, 0, 3, 'UTF-8') : $upper;
     }
 
+    /**
+     * Česká spořitelna nerozlišuje příjem/výdej znaménkem, ale řádkem
+     * „Směr platby: příchozí/odchozí". Odchozí platbu ulož se záporným znaménkem
+     * (konzistentní s GPC), ať se nepáruje proti pohledávkám.
+     */
     protected function applyDirection(float $amount, string $direction): float
     {
         $direction = mb_strtolower(trim($direction), 'UTF-8');
