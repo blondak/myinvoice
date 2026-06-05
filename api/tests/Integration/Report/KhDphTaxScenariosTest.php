@@ -332,6 +332,105 @@ final class KhDphTaxScenariosTest extends TestCase
     }
 
     /**
+     * Issue #117 — pořízení zboží z JČS s pozdě vystavenou fakturou: povinnost přiznat
+     * daň (ř. 3) vzniká k DUZP dle § 25 odst. 1 bez ohledu na držení dokladu a pozdní
+     * doklad neblokuje ani odpočet ř. 43 (§ 73 odst. 1 písm. b). Zahraniční RC se proto
+     * zařazuje dle tax_date, NE GREATEST(tax_date, issue_date).
+     *
+     * Scénář dle reálného dokladu (Stellantis DE): převzetí 23.4. → DUZP 15.5.,
+     * faktura vystavena až 4.6. → celé plnění patří do KVĚTNA, ne června.
+     *
+     * Tuzemský RC (CZ vendor) zůstává VĚDOMĚ na GREATEST — kontrolní regrese níže.
+     */
+    public function testEuAcquisitionAssignedByDuzpNotIssueDate(): void
+    {
+        $euVend = $this->client('EU dodavatel auto', $this->deId, 'DE205941503', vendor: true);
+        $czVend = $this->client('CZ RC dodavatel pozdní', $this->czId, 'CZ88888885', vendor: true);
+
+        $mayDuzp  = sprintf('%04d-05-15', self::YEAR);
+        $juneIss  = sprintf('%04d-06-04', self::YEAR);
+
+        // Pořízení zboží z JČS (kód 23, RC): DUZP 15.5., vystaveno 4.6. → KVĚTEN.
+        $this->purchase('2260306316', $euVend, '23', true, 'invoice', $juneIss, $mayDuzp, [[305312, 0, 21]]);
+        // Tuzemský RC (kód 5, flag): DUZP 15.5., vystaveno 4.6. → GREATEST → ČERVEN.
+        $this->purchase('P-2099-902', $czVend, '5', true, 'invoice', $juneIss, $mayDuzp, [[9000, 0, 21]]);
+
+        $sectionsFor = function (int $month): array {
+            $book = $this->book->build($this->supplierId, self::YEAR, $month);
+            $sec = [];
+            foreach ($book['sections'] as $s) $sec[$s['key']] = $s;
+            return $sec;
+        };
+
+        // ── KVĚTEN: pořízení z JČS (ř.3 + mirror ř.43), tuzemský RC tu NESMÍ být ──
+        $may = $sectionsFor(5);
+        $this->assertArrayHasKey('15.003', $may, 'pořízení z JČS patří do měsíce DUZP (§ 25)');
+        $this->assertEqualsWithDelta(305312, $may['15.003']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(64115.52, $may['15.003']['subtotal_vat'], 0.01, 'samovyměření 305312 × 21 %');
+        $this->assertArrayHasKey('43.043', $may, 'mirror odpočet ř.43 ve stejném období (§ 73/1/b)');
+        $this->assertEqualsWithDelta(305312, $may['43.043']['subtotal_base'], 0.01);
+        $this->assertArrayNotHasKey('15.010', $may, 'tuzemský RC s pozdním dokladem zůstává na GREATEST (červen)');
+
+        // ── ČERVEN: pořízení z JČS tu NESMÍ být (žádná duplicita), tuzemský RC ano ──
+        $june = $sectionsFor(6);
+        $this->assertArrayNotHasKey('15.003', $june, 'pořízení z JČS nesmí spadnout do měsíce vystavení');
+        $this->assertArrayHasKey('15.010', $june, 'tuzemský RC dle GREATEST patří do června');
+        $this->assertEqualsWithDelta(9000, $june['15.010']['subtotal_base'], 0.01);
+
+        // ── DPHDP3 květen: ř.3 + ř.43 + KH A.2 ──
+        $dpMay = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, 5, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('305312', (string) $dpMay->Veta1['p_zb23'], 'DPHDP3/05 ř.3 základ');
+        $this->assertSame('305312', (string) $dpMay->Veta4['odp_rezim'], 'DPHDP3/05 ř.43 mirror');
+
+        $khMay = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, 5)['xml']);
+        $this->assertCount(1, $khMay->DPHKH1->VetaA2, 'KH/05 A.2: pořízení z JČS');
+        $this->assertSame('305312.00', (string) $khMay->DPHKH1->VetaA2[0]['zakl_dane1']);
+
+        // ── DPHDP3 červen: ř.3 prázdný ──
+        $dpJune = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, 6, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('', (string) $dpJune->Veta1['p_zb23'], 'DPHDP3/06 ř.3 musí být prázdný');
+        $khJune = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, 6)['xml']);
+        $this->assertCount(0, $khJune->DPHKH1->VetaA2, 'KH/06 A.2 musí být prázdná');
+    }
+
+    /**
+     * Issue #116 — zahraniční RC doklad importovaný s řádkovou sazbou 0 % (převzatou
+     * z cizího dokladu): samovyměření se nesmí spočítat jako základ × 0 %. Ledger
+     * použije sazbu klasifikačního kódu (23 → 21 %) a efektivní sazba se propíše
+     * i do rate bucketů KH (A.2 sloupec 21 %).
+     */
+    public function testForeignRcZeroRateSelfAssessesViaClassificationRate(): void
+    {
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $euVend = $this->client('EU dodavatel 0%', $this->deId, 'DE222222222', vendor: true);
+
+        // Kód 23 (pořízení z JČS), RC flag, ale řádek má vat_rate_snapshot = 0
+        // (přesně tak to do 4.15 ukládal AI import — issue #116).
+        $this->purchase('P-2099-903', $euVend, '23', true, 'invoice', $d(10), $d(10), [[12546, 0, 0]]);
+
+        $dp = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml']))->DPHDP3;
+        // ř.3: základ + samovyměřená daň ze sazby klasifikace (12546 × 21 % = 2634.66 → 2635)
+        $this->assertSame('12546', (string) $dp->Veta1['p_zb23'], 'ř.3 základ i při 0% řádku');
+        $this->assertNotSame('', (string) $dp->Veta1['dan_pzb23'], 'ř.3 daň NESMÍ být prázdná');
+        $this->assertNotSame('0', (string) $dp->Veta1['dan_pzb23'], 'ř.3 daň NESMÍ být 0 (issue #116)');
+        // ř.43 mirror odpočet
+        $this->assertSame('12546', (string) $dp->Veta4['odp_rezim'], 'ř.43 mirror základ');
+
+        // KH A.2 — základ i daň v bucketu 21 % (efektivní sazba z klasifikace)
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(1, $kh->DPHKH1->VetaA2, 'A.2: doklad tam musí být');
+        $this->assertSame('12546.00', (string) $kh->DPHKH1->VetaA2[0]['zakl_dane1'], 'A.2 základ v 21% sloupci');
+        $this->assertSame('2634.66', (string) $kh->DPHKH1->VetaA2[0]['dan1'], 'A.2 samovyměřená daň 12546 × 21 %');
+
+        // Kniha DPH — sekce ř.3 se samovyměřenou daní
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        $sec = [];
+        foreach ($book['sections'] as $s) $sec[$s['key']] = $s;
+        $this->assertArrayHasKey('15.003', $sec);
+        $this->assertEqualsWithDelta(2634.66, $sec['15.003']['subtotal_vat'], 0.01, 'Kniha: samovyměření z classification rate');
+    }
+
+    /**
      * Regrese: faktura s vat_deduction='none' (bez nároku na odpočet — reprezentace
      * apod.) NESMÍ vstoupit do Knihy DPH, DPHDP3 (ř.40) ani KH. Plný nárok ano.
      */

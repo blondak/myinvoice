@@ -57,12 +57,12 @@ Limity:
 | **Naše interní číslo** | Volitelné. Pokud necháš prázdné, vygeneruje se automaticky podle **šablony** při přechodu na stav Přijatá. Výchozí šablona je `{PP}{YY}{MM}{CCC}` (např. `PF2602001`), prefix `{PP}` odpovídá daňovému typu (viz 10.2.4): **PF/PN** plný nárok (uznatelný/ne), **KU/KN** krácený, **NU/NN** bez nároku. Počítadlo je per měsíc (přeteče na 4+ místa nad 999 dokladů). Šablonu lze změnit v **Nastavení → Číslování faktur → Šablona pro přijatou fakturu** (např. legacy `PF-{YYYY}{MM}-{CCCC}` → `PF-202605-0001`). Při ručním zadání čísla systém hlídá kolize (nepovolí duplicitu) a auto-generátor obsazená čísla přeskakuje. |
 | **Typ dokladu** | Faktura / Doklad o úhradě / Dobropis / Záloha (pro filtrování v seznamu). |
 | **Datum vystavení** | Z faktury. |
-| **DUZP (datum uskutečnění zdanitelného plnění)** | Klíčové pro DPH období. Default = datum vystavení. |
+| **DUZP (datum uskutečnění zdanitelného plnění)** | Klíčové pro DPH období. Default = datum vystavení. U **reverse charge** se doklad zařazuje do DPH období právě podle DUZP (povinnost přiznat daň vzniká bez ohledu na doručení dokladu); u **pořízení zboží z EU** je DUZP dle § 25 ZDPH **15. den měsíce následujícího po dodání**, pokud doklad nebyl vystaven dříve — editor to připomene hintem. |
 | **Splatnost** | Z platebních podmínek dodavatele. |
 | **Datum přijetí** | Kdy jsi to fyzicky / e-mailem dostal. Default = dnes. |
 | **Měna faktury** | Měna, ve které je doklad vystaven (USD, EUR, CZK…). |
 | **Kurz k DUZP** | Pokud je měna ≠ CZK, **musíš zafixovat kurz**. Tlačítko „Načíst z ČNB" stáhne aktuální nebo poslední dostupný denní kurz. |
-| **Reverse charge** | Zaškrtni, pokud je doklad B2B s přenesenou daňovou povinností (B2B EU services). DPH na řádcích bude 0, ty si daň zdaníš sám ve výkazu DPH. |
+| **Reverse charge** | Zaškrtni, pokud je doklad B2B s přenesenou daňovou povinností (pořízení zboží z EU, služby z EU/3. země, tuzemský §92a). Položkám nastav **tuzemskou sazbu** (typicky 21 %) a odpovídající klasifikační kód — daň na dokladu zůstane 0 (dodavatel ji neúčtuje), samovyměření i zrcadlový odpočet dopočítají výkazy DPH. Viz [§ 10.2.6](#1026-reverse-charge-z-eu--pořízení-zboží-vs-služba). |
 
 ### 10.2.3 Položky
 
@@ -173,6 +173,41 @@ Systém automaticky vypočte:
 
 - **Ekvivalent v měně faktury** — pro spárování proti `amount_to_pay`
 - **Kurzový rozdíl** — v základní měně (CZK). Záporný = kurzová ztráta, kladný = zisk. Zatím se zaznamenává pro reporting; účetně se v fázi 6 (DPH výkazy) automaticky promítne do správných řádků.
+
+### 10.2.6 Reverse charge z EU — pořízení zboží vs. služba
+
+> Od v4.16 (issues #116, #117).
+
+Typický případ: nákup **zboží od EU dodavatele** (např. auto z Německa) — doklad
+je vystaven **bez DPH** (osvobozené intrakomunitární dodání) a daň si samovyměříš
+v ČR. Správné zaevidování:
+
+| Co | Zboží z EU (pořízení z JČS) | Služba z EU/3. země |
+|---|---|---|
+| **Sazba na řádcích** | tuzemská **21 %** (případně 12 %) | tuzemská **21 %** |
+| **Klasifikační kód** | **23** „Pořízení zboží z JČS" | **24** „Přijetí služby" |
+| **DPH přiznání** | ř. 3 (samovyměření) + ř. 43 (odpočet); u majetku navíc ř. 47 | ř. 5/12 + ř. 43 |
+| **Kontrolní hlášení** | sekce **A.2** | — |
+| **DUZP** | **§ 25**: 15. den měsíce po dodání, pokud doklad nebyl vystaven dříve | den uskutečnění služby |
+
+Klíčové principy:
+
+- **Sazba 0 % na řádku je chyba** — samovyměření by vyšlo nulové. Sazba na
+  řádku je *nominální* (daň na dokladu zůstává 0, částka k úhradě se nemění),
+  výkazy z ní dopočítají samovyměřenou daň i zrcadlový odpočet. Pojistka: pokud
+  řádek s RC klasifikací přesto sazbu nemá, výkazy použijí sazbu klasifikačního
+  kódu (21 %).
+- **Doklad se do DPH období zařadí podle DUZP** — povinnost přiznat daň vzniká
+  k DUZP bez ohledu na to, kdy faktura fyzicky dorazila (§ 25 odst. 1), a pozdní
+  doklad neblokuje ani odpočet (§ 73 odst. 1 písm. b — nárok lze prokázat jiným
+  způsobem, např. protokolem o převzetí + smlouvou + platbou). Pozdě vystavená
+  faktura za zboží převzaté v dubnu tak patří do **května** (DUZP 15. 5.), ne do
+  měsíce vystavení.
+- **Kurz ČNB se váže k DUZP** (§ 4 odst. 8 — den vzniku povinnosti přiznat daň).
+- **AI import tohle vše nastaví sám** — viz [§ 10.7](#107-ai-extrakce--kontrola-výsledků).
+
+> ⚠️ U **vybraných osobních automobilů** pohlídej limit odpočtu dle § 72
+> (strop základu 2 000 000 Kč / DPH 420 000 Kč) — aplikace ho nehlídá.
 
 ## 10.3 Detail přijaté faktury
 
@@ -364,6 +399,27 @@ Při AI importu se ověří **plátcovství dodavatele** (ARES/VIES, případně
 z dokladu „DIČ: Neplátce DPH"). U neplátce se automaticky nastaví **Bez nároku
 na odpočet**, vynulují sazby a doplní varování — aby se neoprávněný odpočet
 nedostal do přiznání. Detail viz [§ 10.2.4](#1024-daňová-uznatelnost-a-nárok-na-odpočet).
+
+### Reverse charge ze zahraničí — automatika
+
+> Od v4.16 (issue #116).
+
+Když extraktor detekuje **reverse charge** (zahraniční dodavatel + všechny řádky
+bez DPH), doklad automaticky daňově připraví:
+
+- AI klasifikuje **povahu plnění** (zboží / služba) přímo z dokladu (VIN a vozidlo
+  → zboží; SaaS, licence, API → služba).
+- Položky dostanou **tuzemskou sazbu 21 %** a klasifikační kód: **23** (zboží
+  z EU → ř. 3 + ř. 43, KH A.2), **24** (služba), **25** (zboží ze 3. země).
+  Částka k úhradě se nemění — daň zůstává na dokladu nulová, samovyměří se až
+  ve výkazech.
+- U **pořízení zboží z EU** se dopočítá zákonné **DUZP dle § 25** (15. den
+  měsíce po dodání, pokud doklad nebyl vystaven dříve) a k němu se naváže
+  **kurz ČNB** — pozdě vystavená faktura tak spadne do správného DPH období.
+- Do dokladu se zapíše **informační varování** s rekapitulací, co se nastavilo
+  — zkontroluj hlavně zboží vs. služba a případně změň kód (23 ↔ 24).
+
+Detail daňové logiky viz [§ 10.2.6](#1026-reverse-charge-z-eu--pořízení-zboží-vs-služba).
 
 ## 10.8 Audit log
 

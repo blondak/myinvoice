@@ -356,8 +356,9 @@ final class AiPdfExtractor
                 'unit_price_without_vat' => $price,
                 'vat_rate_id'            => $this->matchVatRateId($vatRates, $rate) ?? $defaultVatRateId,
                 'order_index'            => $idx,
-                // vat_classification_code nesetujeme — PurchaseInvoiceRepository::replaceItems()
-                // auto-derive based on rate + RC + vendor country (lookup z DB).
+                // vat_classification_code tady nesetujeme — PurchaseInvoiceRepository::replaceItems()
+                // auto-derive based on rate + RC + vendor country (lookup z DB). Výjimka:
+                // reverse charge doklady dostanou explicitní kód níže (issue #116).
             ];
         }
 
@@ -441,6 +442,65 @@ final class AiPdfExtractor
             ]);
         }
 
+        // Issue #116 — RC doklad přebíral 0% sazbu z cizího dokladu a auto-klasifikace
+        // dala '24' (služba): VatLedgerService pak samovyměřil 0 a pořízení zboží minulo
+        // ř. 3/43 i KH A.2. Nastavíme tuzemskou sazbu 21 % + explicitní klasifikaci dle
+        // povahy plnění (AI pole supply_nature): zboží z EU → '23', služba → '24',
+        // zboží ze 3. země → '25'. Totály dokladu zůstávají netto (InvoiceMath u RC daň
+        // na řádcích nuluje), samovyměření dopočítá až VatLedgerService z rate snapshotu.
+        // U pořízení zboží z JČS navíc dopočítáme zákonné DUZP dle § 25 — zahraniční
+        // doklad nese jen datum dodání, ale povinnost přiznat daň vzniká k 15. dni
+        // následujícího měsíce (nebo dřívějšímu vystavení); na DUZP visí zařazení do
+        // období (issue #117) i ČNB kurz (mutace $data['tax_date'] PŘED $payload
+        // a applyCnbRate je záměrná).
+        $rcClassification = null;
+        $rcWarning = null;
+        if ($reverseCharge && !$vendorNonPayer) {
+            $country = $this->vendorCountryInfo($vendorId);
+            $nature = strtolower(trim((string) ($data['supply_nature'] ?? '')));
+            $isGoods = $nature === 'goods';
+            $rcClassification = $country['is_eu']
+                ? ($isGoods ? '23' : '24')
+                : ($isGoods ? '25' : '24');
+            $rcRateId = $this->matchVatRateId($vatRates, 21.0);
+            foreach ($items as &$it) {
+                if ($rcRateId !== null) {
+                    $it['vat_rate_id'] = $rcRateId;
+                }
+                $it['vat_classification_code'] = $rcClassification;
+            }
+            unset($it);
+
+            $duzpNote = '';
+            if ($rcClassification === '23') {
+                $delivery = isset($data['tax_date']) && $data['tax_date'] ? (string) $data['tax_date'] : null;
+                $duzp = self::euAcquisitionTaxDate($delivery, (string) $data['issue_date']);
+                if ($duzp !== null && $duzp !== $delivery) {
+                    $data['tax_date'] = $duzp;
+                    $duzpNote = ' DUZP stanoveno dle § 25 ZDPH na ' . $duzp
+                        . ' (15. den měsíce následujícího po dodání, příp. dřívější datum'
+                        . ' vystavení dokladu); ČNB kurz se váže k tomuto datu.';
+                }
+            }
+
+            $rcLabels = [
+                '23' => 'pořízení zboží z EU — ř. 3 + ř. 43, KH A.2',
+                '24' => 'přijetí služby ze zahraničí',
+                '25' => 'dovoz zboží ze 3. země',
+            ];
+            $rcWarning = 'Reverse charge (' . $rcLabels[$rcClassification] . '): položkám byla'
+                . ' nastavena tuzemská sazba DPH 21 % a klasifikace ' . $rcClassification
+                . ' — daň se samovyměří až v DPH výkazech, částka k úhradě zůstává bez DPH.'
+                . $duzpNote
+                . ' Zkontrolujte povahu plnění (zboží = kód 23/25, služba = kód 24).';
+            $this->logger->info('AI extractor: reverse charge defaults applied', [
+                'vendor_id' => $vendorId,
+                'classification' => $rcClassification,
+                'supply_nature' => $nature !== '' ? $nature : null,
+                'tax_date' => $data['tax_date'] ?? null,
+            ]);
+        }
+
         $payload = [
             'vendor_id'             => $vendorId,
             'vendor_invoice_number' => $this->sanitizeVendorNumber((string) $data['vendor_invoice_number']),
@@ -453,6 +513,9 @@ final class AiPdfExtractor
             'exchange_rate'         => null,
             'exchange_rate_source'  => 'manual',
             'reverse_charge'        => $reverseCharge,
+            // Explicitní klasifikace RC dokladu (issue #116) — hlavička jako default,
+            // řádky mají tentýž kód nastavený výše.
+            'vat_classification_code' => $rcClassification,
             'prices_include_vat'    => $pricesIncludeVat,
             // Neplátce → bez nároku na odpočet (VatLedgerService řádky s 'none' vyloučí
             // z DPH přiznání ř.40 i z KH sekce B). Uživatel může v editoru vědomě přepsat.
@@ -532,6 +595,15 @@ final class AiPdfExtractor
         if ($vatRecapWarning !== null && $vatRecapWarning !== '') {
             try {
                 $this->repo->appendExtractionWarning($id, $supplierId, $vatRecapWarning);
+            } catch (\Throwable) {
+                // Varování je „nice to have" — faktura už je vytvořená správně.
+            }
+        }
+        // Info o automatice u reverse charge (sazba 21 %, klasifikace, DUZP § 25) —
+        // append až po setExtractionWarning() zápisech, aby ho nepřepsaly (issue #116).
+        if ($rcWarning !== null) {
+            try {
+                $this->repo->appendExtractionWarning($id, $supplierId, $rcWarning);
             } catch (\Throwable) {
                 // Varování je „nice to have" — faktura už je vytvořená správně.
             }
@@ -1208,17 +1280,69 @@ final class AiPdfExtractor
             $ratePercent = $vatRates[$rateId] ?? null;
             if ($ratePercent !== null && (float) $ratePercent > 0.0) return false;
         }
-        // Vendor country lookup
+        $country = $this->vendorCountryInfo($vendorId);
+        return $country['iso2'] !== '' && $country['iso2'] !== 'CZ';
+    }
+
+    /**
+     * Země dodavatele (iso2 + EU členství) — rozhoduje klasifikaci RC dokladu
+     * (pořízení z JČS vs. dovoz ze 3. země). Při selhání lookupu bezpečný default
+     * (prázdné iso2 → chová se jako CZ, žádná RC automatika).
+     *
+     * @return array{iso2:string, is_eu:bool}
+     */
+    private function vendorCountryInfo(int $vendorId): array
+    {
         try {
             $stmt = $this->db->pdo()->prepare(
-                'SELECT co.iso2 FROM clients c JOIN countries co ON co.id = c.country_id WHERE c.id = ?'
+                'SELECT co.iso2, COALESCE(co.is_eu, 0) AS is_eu
+                   FROM clients c JOIN countries co ON co.id = c.country_id
+                  WHERE c.id = ?'
             );
             $stmt->execute([$vendorId]);
-            $iso2 = (string) $stmt->fetchColumn();
-            return $iso2 !== '' && $iso2 !== 'CZ';
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row !== false && $row !== null) {
+                return [
+                    'iso2'  => strtoupper((string) $row['iso2']),
+                    'is_eu' => (bool) $row['is_eu'],
+                ];
+            }
         } catch (\Throwable) {
-            return false;
+            // fall through na bezpečný default
         }
+        return ['iso2' => '', 'is_eu' => false];
+    }
+
+    /**
+     * Zákonné DUZP pořízení zboží z JČS dle § 25 odst. 1 ZDPH: povinnost přiznat daň
+     * vzniká k 15. dni měsíce následujícího po měsíci pořízení; byl-li daňový doklad
+     * vystaven před tímto dnem, ke dni vystavení. Zahraniční doklad typicky nese jen
+     * datum dodání (Leistungsdatum / date of supply) — to NENÍ zákonné DUZP. Na
+     * korektním tax_date stojí zařazení do období ve VatLedgerService (issue #117)
+     * i ČNB kurz (§ 4 odst. 8 — kurz ke dni vzniku povinnosti přiznat daň).
+     *
+     * @param ?string $deliveryDate datum dodání/převzetí (z dokladu), YYYY-MM-DD
+     * @param string  $issueDate    datum vystavení dokladu, YYYY-MM-DD
+     * @return ?string DUZP (YYYY-MM-DD), nebo null když datum dodání chybí/nelze parsovat
+     */
+    public static function euAcquisitionTaxDate(?string $deliveryDate, string $issueDate): ?string
+    {
+        if ($deliveryDate === null || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $deliveryDate)) {
+            return null;
+        }
+        try {
+            $fifteenth = (new \DateTimeImmutable($deliveryDate))
+                ->modify('first day of next month')
+                ->format('Y-m') . '-15';
+        } catch (\Throwable) {
+            return null;
+        }
+        // Doklad vystavený před 15. dnem následujícího měsíce → DUZP = den vystavení.
+        // Lexikografické porovnání YYYY-MM-DD je korektní porovnání dat.
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $issueDate) && $issueDate < $fifteenth) {
+            return $issueDate;
+        }
+        return $fifteenth;
     }
 
     /**

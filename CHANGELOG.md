@@ -5,6 +5,20 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.16.0] — 2026-06-05
+
+Daňové opravy reverse charge z EU (díky Pavlovi za podrobné hlášení s reálným dokladem): AI import pořízení zboží z JČS ([#116](https://github.com/radekhulan/myinvoice/issues/116)) a zařazení samovyměření do správného DPH období ([#117](https://github.com/radekhulan/myinvoice/issues/117)).
+
+### Added
+
+- **AI import rozpozná povahu plnění (zboží vs. služba) u reverse charge ([#116](https://github.com/radekhulan/myinvoice/issues/116)).** U zahraničního dokladu bez DPH extraktor nově klasifikuje, zda jde o zboží (VIN/vozidlo/hardware) nebo službu (SaaS/licence), a podle toho nastaví položkám **tuzemskou sazbu 21 %** a klasifikační kód — **23** „Pořízení zboží z JČS" (ř. 3 + ř. 43, KH A.2), **24** „Přijetí služby", **25** „Dovoz zboží ze 3. země". Dříve řádky přebíraly 0 % z cizího dokladu a kód služby → samovyměřená daň vyšla nulová a doklad minul KH A.2. Částka k úhradě se nemění (daň na RC dokladu zůstává 0, samovyměření dopočítají výkazy); do dokladu se zapíše informační varování s rekapitulací automatiky.
+- **DUZP pořízení zboží z JČS dle § 25 ZDPH při AI importu.** Zahraniční doklad nese jen datum dodání — zákonné DUZP (15. den měsíce následujícího po dodání, příp. dřívější datum vystavení) se dopočítá automaticky a k němu se naváže i kurz ČNB (§ 4 odst. 8). Editor přijaté faktury u reverse charge zobrazuje nápovědu k DUZP.
+
+### Fixed
+
+- **Pořízení zboží z JČS s pozdě vystavenou fakturou patří do období DUZP ([#117](https://github.com/radekhulan/myinvoice/issues/117)).** Přijaté zahraniční reverse charge doklady (pořízení zboží z EU, služby z EU/3. země, dovoz) se v DPH přiznání, kontrolním hlášení, knize DPH i měsíčním exportu nově zařazují podle **DUZP**, ne podle pozdějšího z dat DUZP/vystavení — povinnost přiznat daň (ř. 3) vzniká k DUZP bez ohledu na držení dokladu (§ 25 odst. 1) a pozdní doklad neblokuje ani zrcadlový odpočet ř. 43 (§ 73 odst. 1 písm. b, potvrzeno SDEU C-895/19). Zboží převzaté v dubnu s fakturou vystavenou v červnu tak správně spadne do května. Tuzemská plnění (vč. tuzemského RC) zůstávají na pozdějším z dat (§ 73 odst. 1 písm. a).
+- **Samovyměření reverse charge u řádků se sazbou 0 %.** Pojistka ve výkazech: má-li RC řádek sazbu 0 % (typicky doklady importované před touto verzí), použije se pro samovyměření i rate bucket KH sazba klasifikačního kódu (21 %) — dosud takové doklady tiše vykazovaly základ s nulovou daní. Oprava se projeví i na už zaevidovaných dokladech (net dopad 0 — daň i odpočet se zvednou stejně).
+
 ## [4.15.0] — 2026-06-04
 
 Velká novinka: **e-mailové kontakty odběratele podle účelu** ([#86](https://github.com/radekhulan/myinvoice/issues/86), díky [@blondak](https://github.com/blondak) za výborný návrh) — komu chodí doklady, upomínky a schvalování výkazů, vč. rolí CC/BCC a účelů u e-mailů zakázky.

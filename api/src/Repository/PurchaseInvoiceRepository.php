@@ -656,6 +656,8 @@ final class PurchaseInvoiceRepository
      *
      * Pro pořízení zboží z EU ('23' místo služby '24') si user změní ručně —
      * default 0%+EU mapujeme na služby, což je častější CZ IT use case.
+     * AI import sem u RC dokladů nespadne: nastavuje explicitní kód (23/24/25 dle
+     * supply_nature) + tuzemskou sazbu 21 % už v AiPdfExtractoru (issue #116).
      */
     public static function defaultClassificationCode(
         float $rate,

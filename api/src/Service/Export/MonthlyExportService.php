@@ -383,15 +383,20 @@ final class MonthlyExportService
     /** @return list<array<string,mixed>> */
     private function findPurchaseInvoices(int $sid, string $month): array
     {
-        // Přijaté dle pozdějšího z (DUZP, vystavení) — § 73 ZDPH. Shodné s VatLedgerService.
+        // Přijaté dle pozdějšího z (DUZP, vystavení) — § 73/1/a ZDPH; zahraniční
+        // reverse charge dle DUZP (§ 25, § 73/1/b — issue #117). Shodné s VatLedgerService.
         // CASE místo GREATEST kvůli přenositelnosti (SQLite GREATEST nemá).
-        $dateExpr = 'CASE WHEN pi.tax_date IS NULL THEN pi.issue_date'
+        $dateExpr = 'CASE'
+            . " WHEN pi.reverse_charge = 1 AND COALESCE(co.iso2, 'CZ') <> 'CZ'"
+            . ' THEN COALESCE(pi.tax_date, pi.issue_date)'
+            . ' WHEN pi.tax_date IS NULL THEN pi.issue_date'
             . ' WHEN pi.issue_date IS NULL THEN pi.tax_date'
             . ' WHEN pi.tax_date >= pi.issue_date THEN pi.tax_date ELSE pi.issue_date END';
         $sql = "SELECT pi.id, pi.varsymbol, pi.vendor_invoice_number, pi.pdf_path,
                        c.company_name AS vendor_company_name
                   FROM purchase_invoices pi
                   JOIN clients c ON c.id = pi.vendor_id
+             LEFT JOIN countries co ON co.id = c.country_id
                  WHERE pi.supplier_id = ?
                    AND DATE_FORMAT($dateExpr, '%Y-%m') = ?
                    AND pi.status IN ('received', 'booked', 'paid')

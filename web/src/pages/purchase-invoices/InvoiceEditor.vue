@@ -963,6 +963,10 @@ function fieldErr(key: string): string | null {
             <input v-model="form.received_at" type="date" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
           </div>
         </div>
+        <!-- RC: DPH období se řídí DUZP (§ 25 / § 24), ne datem vystavení — issue #117 -->
+        <p v-if="form.reverse_charge" class="text-xs text-neutral-500 -mt-2">
+          {{ t('purchase_invoice.fields.tax_date_rc_hint') }}
+        </p>
 
         <!-- Currency + exchange rate -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

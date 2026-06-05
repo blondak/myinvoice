@@ -650,6 +650,70 @@ final class AiPdfExtractorUnitTest extends TestCase
         self::assertFalse(\MyInvoice\Service\Import\AiPdfExtractor::linesAreGrossSingleRate($items, $data, false));
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // euAcquisitionTaxDate — zákonné DUZP pořízení zboží z JČS dle § 25 odst. 1
+    // (issue #116/#117: doklad nese jen datum dodání, DUZP se musí dopočítat)
+    // ──────────────────────────────────────────────────────────────────────
+
+    public function testEuAcquisitionTaxDate_lateInvoice_fifteenthOfNextMonth(): void
+    {
+        // Stellantis case (issue #116): dodání 23.4., doklad vystaven až 4.6.
+        // → DUZP = 15.5. (15. den měsíce následujícího po pořízení).
+        self::assertSame(
+            '2026-05-15',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-04-23', '2026-06-04'),
+        );
+    }
+
+    public function testEuAcquisitionTaxDate_invoiceIssuedBeforeFifteenth_issueDateWins(): void
+    {
+        // Doklad vystavený PŘED 15. dnem následujícího měsíce → DUZP = den vystavení.
+        self::assertSame(
+            '2026-05-02',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-04-23', '2026-05-02'),
+        );
+        // Vystaveno už v měsíci dodání (běžný případ — faktura s dodávkou).
+        self::assertSame(
+            '2026-04-25',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-04-23', '2026-04-25'),
+        );
+    }
+
+    public function testEuAcquisitionTaxDate_invoiceOnFifteenth_staysFifteenth(): void
+    {
+        // Vystaveno přesně 15. dne → totéž datum (hranice § 25 „před tímto dnem").
+        self::assertSame(
+            '2026-05-15',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-04-23', '2026-05-15'),
+        );
+    }
+
+    public function testEuAcquisitionTaxDate_decemberDelivery_rollsToJanuary(): void
+    {
+        // Přelom roku: dodání v prosinci → 15. ledna následujícího roku.
+        self::assertSame(
+            '2027-01-15',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-12-23', '2027-02-01'),
+        );
+    }
+
+    public function testEuAcquisitionTaxDate_missingOrInvalidDelivery_null(): void
+    {
+        // Bez data dodání nelze § 25 dopočítat → null (tax_date zůstane, jak je).
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate(null, '2026-06-04'));
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('23.4.2026', '2026-06-04'));
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('', '2026-06-04'));
+    }
+
+    public function testEuAcquisitionTaxDate_invalidIssueDate_fallsBackToFifteenth(): void
+    {
+        // Nevalidní datum vystavení → konzervativně 15. den následujícího měsíce.
+        self::assertSame(
+            '2026-05-15',
+            \MyInvoice\Service\Import\AiPdfExtractor::euAcquisitionTaxDate('2026-04-23', ''),
+        );
+    }
+
     public function testLinesAreGross_noRecap_false(): void
     {
         $items = $this->grossEshopItems();

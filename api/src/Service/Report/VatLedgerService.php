@@ -12,8 +12,15 @@ use MyInvoice\Infrastructure\Database\Connection;
  *
  *   - filtr období (daňově korektní zařazení do měsíce):
  *       * vystavené → COALESCE(tax_date, issue_date) = DUZP (daň na výstupu k DUZP),
- *       * přijaté → GREATEST(DUZP, vystavení) — nárok na odpočet nejdřív, když plátce
- *         drží daňový doklad (§ 73 ZDPH); zpětné DUZP tak padne do měsíce vystavení.
+ *       * přijaté tuzemské → GREATEST(DUZP, vystavení) — nárok na odpočet nejdřív, když
+ *         plátce drží daňový doklad (§ 73 odst. 1 písm. a ZDPH); zpětné DUZP tak padne
+ *         do měsíce vystavení.
+ *       * přijaté zahraniční RC (reverse_charge + vendor mimo CZ) → COALESCE(DUZP,
+ *         vystavení) — povinnost přiznat daň vzniká k DUZP bez ohledu na držení dokladu
+ *         (pořízení zboží z JČS § 25 odst. 1, služby § 24) a pozdní doklad odpočet
+ *         neblokuje (§ 73 odst. 1 písm. b — „lze nárok prokázat jiným způsobem");
+ *         u dovozu ze 3. země (§ 23) je trigger propuštění do režimu = tax_date a
+ *         doklad (rozhodnutí CÚ) existuje od téhož dne. Issue #117.
  *     (Zobrazený sloupec tax_date dál nese skutečné DUZP, mění se jen příslušnost k období.)
  *   - filtr stavu: bez 'cancelled'; 'draft' jen pokud $includeDrafts (Kniha ano,
  *     DPH/KH ne); u vystavených navíc bez 'proforma', u přijatých bez 'advance'
@@ -21,7 +28,8 @@ use MyInvoice\Infrastructure\Database\Connection;
  *   - resolve klasifikačního kódu: řádek → hlavička → auto-default dle sazby + RC + směru
  *   - přepočet na CZK kurzem faktury
  *   - RC samovyměření (jen přijaté): když pii.total_vat=0 a (reverse_charge flag NEBO
- *     is_reverse_charge kódu) → daň = základ × sazba/100
+ *     is_reverse_charge kódu) → daň = základ × sazba/100; má-li řádek sazbu 0 %
+ *     (import z cizího dokladu), použije se sazba klasifikačního kódu (issue #116)
  *
  * Vrací per-(faktura, řádek) řádky; jednotlivé reporty si je projektují:
  *   - DPHDP3 / Kniha DPH: group by dphdp3_line
@@ -186,26 +194,48 @@ final class VatLedgerService
                -- doklad → ponechat (NULL <> 'advance' by jinak řádek vyřadilo).
                AND COALESCE(pi.document_kind, '') <> 'advance'
                AND pi.vat_deduction <> 'none'
-               -- Období odpočtu = pozdější z (DUZP, vystavení). Nárok na odpočet nelze
-               -- uplatnit dřív, než plátce drží daňový doklad (§ 73 odst. 2 ZDPH), takže
-               -- faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do
-               -- měsíce vystavení. (Zobrazený sloupec tax_date dál ukazuje skutečné DUZP.)
+               -- Období odpočtu (tuzemská plnění) = pozdější z (DUZP, vystavení). Nárok
+               -- na odpočet nelze uplatnit dřív, než plátce drží daňový doklad (§ 73
+               -- odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená
+               -- v pozdějším měsíci, spadá do měsíce vystavení. (Zobrazený sloupec
+               -- tax_date dál ukazuje skutečné DUZP.)
                --
-               -- Pozn.: striktně dle § 73 je rozhodující datum, kdy plátce doklad fyzicky
-               -- DRŽÍ (= received_at). Záměrně používáme issue_date jako proxy, protože
-               -- received_at importy (iDoklad/Fakturoid/ISDOC/AI) plní na den importu —
-               -- u zpětně importovaných dokladů by received_at naházel veškerý odpočet do
-               -- měsíce importu. issue_date (datum vystavení dodavatelem) je spolehlivé a
-               -- pro běžný případ ≈ datum přijetí. Pokud bude k dispozici důvěryhodné datum
-               -- přijetí, lze přejít na GREATEST(DUZP, received_at).
+               -- VÝJIMKA — zahraniční reverse charge (issue #117): u pořízení zboží z JČS
+               -- vzniká povinnost přiznat daň k DUZP bez ohledu na držení dokladu (§ 25
+               -- odst. 1 — 15. den měsíce po pořízení, nebo dřívější vystavení dokladu)
+               -- a pozdní doklad neblokuje ani odpočet (§ 73 odst. 1 písm. b — nárok lze
+               -- prokázat jiným způsobem; potvrzeno SDEU C-895/19). Totéž platí pro
+               -- přijetí služby ze zahraničí (§ 24 + § 73/1/b). U dovozu zboží ze
+               -- 3. země je trigger propuštění do celního režimu (§ 23) = tax_date a
+               -- doklad (rozhodnutí CÚ, § 73/1/c) existuje od téhož dne. Proto se
+               -- zahraniční RC zařazuje dle DUZP, ne GREATEST — jinak pozdě vystavená
+               -- faktura posune samovyměření (ř. 3) do špatného období (riziko doměrku).
+               -- PŘEDPOKLAD: tax_date nese zákonné DUZP (AI import ho u pořízení z JČS
+               -- dopočítává dle § 25 — viz AiPdfExtractor::euAcquisitionTaxDate()).
+               --
+               -- Tuzemský RC (kód 5) zůstává VĚDOMĚ na GREATEST — právně spadá též pod
+               -- § 73/1/b, ale dodavatel musí doklad vystavit do 15 dnů od DUZP, takže
+               -- rozdíl je vzácný; ponecháno konzervativně (viz issue #117 diskuse).
+               --
+               -- Pozn.: striktně dle § 73/1/a je rozhodující datum, kdy plátce doklad
+               -- fyzicky DRŽÍ (= received_at). Záměrně používáme issue_date jako proxy,
+               -- protože received_at importy (iDoklad/Fakturoid/ISDOC/AI) plní na den
+               -- importu — u zpětně importovaných dokladů by received_at naházel veškerý
+               -- odpočet do měsíce importu. issue_date (datum vystavení dodavatelem) je
+               -- spolehlivé a pro běžný případ ≈ datum přijetí. Pokud bude k dispozici
+               -- důvěryhodné datum přijetí, lze přejít na GREATEST(DUZP, received_at).
                -- CASE místo GREATEST kvůli přenositelnosti (SQLite v testech GREATEST nemá).
                AND CASE
+                       WHEN pi.reverse_charge = 1 AND COALESCE(co.iso2, 'CZ') <> 'CZ'
+                           THEN COALESCE(pi.tax_date, pi.issue_date)
                        WHEN pi.tax_date IS NULL THEN pi.issue_date
                        WHEN pi.issue_date IS NULL THEN pi.tax_date
                        WHEN pi.tax_date >= pi.issue_date THEN pi.tax_date
                        ELSE pi.issue_date
                    END BETWEEN ? AND ?
           ORDER BY CASE
+                       WHEN pi.reverse_charge = 1 AND COALESCE(co.iso2, 'CZ') <> 'CZ'
+                           THEN COALESCE(pi.tax_date, pi.issue_date)
                        WHEN pi.tax_date IS NULL THEN pi.issue_date
                        WHEN pi.issue_date IS NULL THEN pi.tax_date
                        WHEN pi.tax_date >= pi.issue_date THEN pi.tax_date
@@ -233,6 +263,14 @@ final class VatLedgerService
         $isRc = ($clsf['is_reverse_charge'] ?? false) || (bool) $r['rc_flag'];
 
         // RC samovyměření jen u přijatých plnění (vendor fakturuje bez DPH).
+        // Fallback sazby (issue #116): zahraniční doklad importovaný s řádkovou sazbou
+        // 0 % (převzatou z cizího dokladu) by samovyměřil 0. Když je řádek RC a sazbu
+        // nemá, vezmi tuzemskou sazbu z klasifikace (kódy 5/23/24/25 nesou 21.00) —
+        // efektivní sazba se propíše i do row['vat_rate'], protože KH (A.2/B.1) a
+        // DPHDP3 podle ní bucketují základ/daň do 21%/12% sloupců.
+        if ($source === 'purchase' && $isRc && $vatRate == 0.0 && (float) ($clsf['vat_rate'] ?? 0) > 0) {
+            $vatRate = (float) $clsf['vat_rate'];
+        }
         if ($source === 'purchase' && $vatRaw == 0.0 && $isRc && $vatRate > 0) {
             $vatRaw = round($baseRaw * $vatRate / 100, 2);
         }

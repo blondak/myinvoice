@@ -187,6 +187,7 @@
       "document_kind": "Typ dokladu",
       "issue_date": "Datum vystavení",
       "tax_date": "DUZP",
+      "tax_date_rc_hint": "U reverse charge se doklad zařazuje do DPH období podle DUZP (povinnost přiznat daň vzniká bez ohledu na doručení dokladu). U pořízení zboží z EU je DUZP dle § 25 ZDPH 15. den měsíce následujícího po dodání, pokud doklad nebyl vystaven dříve.",
       "due_date": "Splatnost",
       "received_at": "Datum přijetí",
       "currency": "Měna faktury",

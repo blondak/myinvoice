@@ -187,6 +187,7 @@
       "document_kind": "Document type",
       "issue_date": "Issue date",
       "tax_date": "Tax point date (DUZP)",
+      "tax_date_rc_hint": "Under reverse charge the document is assigned to the VAT period by the tax point date (the obligation to declare tax arises regardless of receiving the document). For EU goods acquisitions the tax point is, per § 25 of the Czech VAT Act, the 15th day of the month following delivery, unless the invoice was issued earlier.",
       "due_date": "Due date",
       "received_at": "Received on",
       "currency": "Invoice currency",
