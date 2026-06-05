@@ -252,8 +252,12 @@ Vhodné použití:
 
 1. **Backend (`RoleMiddleware`)** — `readonly` smí výhradně `GET` requesty; jakýkoli
    zápis (`POST` / `PUT` / `PATCH` / `DELETE`) je odmítnut s `403`. Exporty i daňové
-   výkazy jsou `GET`, proto k nim `readonly` má přístup. Admin endpointy
-   (uživatelé, nastavení, integrace…) mají navíc **kontrolu role přímo v akci**.
+   výkazy jsou `GET`, proto k nim `readonly` má přístup. Jediná výjimka z pravidla
+   „jen GET": **měsíční export** (Daně → Měsíční export) běží jako background job,
+   takže jeho spuštění/zrušení/smazání jsou technicky `POST`/`DELETE` — věcně jde
+   ale o čtení (sbalení existujících dokladů do ZIP), proto je povolen všem rolím.
+   Admin endpointy (uživatelé, nastavení, integrace…) mají navíc **kontrolu role
+   přímo v akci**.
 2. **API token (PAT)** — role uživatele se kontroluje **před** scope tokenu, takže
    `readonly` uživatel nemůže obejít omezení ani tokenem se scopem `read_write`.
 3. **UI** — frontend podle role **skrývá zápisová tlačítka** (Nový / Upravit /

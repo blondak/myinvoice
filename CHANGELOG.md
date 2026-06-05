@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Kopie dodavateli při ručním odeslání už není „tichá".** Dříve se CC dodavateli přidávalo serverem až po odeslání z modalu (uživatel ho neviděl a nemohl odebrat); nově je předvyplněné přímo v poli CC/BCC modalu a co uživatel v modalu vidí, to se odešle — beze změn na pozadí.
 
+### Fixed
+
+- **Měsíční export pro role accountant a readonly.** Stránka Daně → Měsíční export byla viditelná všem rolím, ale spuštění exportu vracelo „Pro tuto akci nemáš oprávnění" — workflow background jobu (start/zrušení/smazání) jede přes POST/DELETE, které RBAC middleware propouštěl jen adminovi, přestože export je věcně čtení (readonly = čtení + export). Endpointy měsíčního exportu jsou nově explicitně povolené všem rolím; akce si dál drží vlastní guard.
+
 ## [4.16.0] — 2026-06-05
 
 Daňové opravy reverse charge z EU (díky Pavlovi za podrobné hlášení s reálným dokladem): AI import pořízení zboží z JČS ([#116](https://github.com/radekhulan/myinvoice/issues/116)) a zařazení samovyměření do správného DPH období ([#117](https://github.com/radekhulan/myinvoice/issues/117)).

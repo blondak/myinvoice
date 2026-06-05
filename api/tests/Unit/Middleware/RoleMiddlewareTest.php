@@ -95,6 +95,45 @@ final class RoleMiddlewareTest extends TestCase
         self::assertSame(403, $response->getStatusCode());
     }
 
+    /**
+     * Měsíční export je „čtení" (readonly = čtení + export) — workflow background
+     * jobu (start/cancel/delete) musí projít pro všechny role, action má vlastní guard.
+     */
+    public function testAllRolesCanRunMonthlyExportWorkflow(): void
+    {
+        foreach (['readonly', 'accountant', 'admin'] as $role) {
+            foreach ([
+                ['POST', '/api/reports/monthly-export/start'],
+                ['POST', '/api/reports/monthly-export/jobs/42/cancel'],
+                ['DELETE', '/api/reports/monthly-export/jobs/42'],
+            ] as [$method, $path]) {
+                $response = $this->middleware()->process(
+                    $this->request($method, $path, $role),
+                    $this->okHandler(),
+                );
+                self::assertSame(204, $response->getStatusCode(), "$role $method $path");
+            }
+        }
+    }
+
+    public function testReadonlyCannotMutateOutsideMonthlyExport(): void
+    {
+        // Pojistka, že nová pravidla neotevřela víc, než měla — sousední
+        // reports endpointy i jiné POSTy zůstávají pro readonly zavřené.
+        foreach ([
+            ['POST', '/api/reports/monthly-export/jobs/42/restart'],   // neexistující sub-akce
+            ['DELETE', '/api/reports/submissions/42'],                 // mazání EPO archivu = mutace
+            ['POST', '/api/invoices/1/send'],
+            ['POST', '/api/clients'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'readonly'),
+                $this->okHandler(),
+            );
+            self::assertSame(403, $response->getStatusCode(), "readonly $method $path");
+        }
+    }
+
     private function middleware(): RoleMiddleware
     {
         return new RoleMiddleware(new ResponseFactory());
