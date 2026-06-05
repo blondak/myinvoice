@@ -5,21 +5,18 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Bank\EmailNotice\Parser;
 
 use MyInvoice\Service\Bank\EmailNotice\BankEmailNoticeMessage;
-use MyInvoice\Service\Bank\EmailNotice\EmailNoticeTextNormalizer;
 use MyInvoice\Service\Bank\EmailNotice\ParsedBankEmailNotice;
 
-final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
+final class CsobBankEmailNoticeParser extends AbstractBankEmailNoticeParser
 {
-    private EmailNoticeTextNormalizer $normalizer;
-
-    public function __construct(?EmailNoticeTextNormalizer $normalizer = null)
-    {
-        $this->normalizer = $normalizer ?? new EmailNoticeTextNormalizer();
-    }
-
     public function key(): string
     {
         return 'csob';
+    }
+
+    protected function parserLabel(): string
+    {
+        return 'ČSOB';
     }
 
     public function defaultProvider(): ?BankEmailNoticeProvider
@@ -55,7 +52,7 @@ final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
             return false;
         }
 
-        $text = $this->compact(mb_strtolower($this->normalizer->normalize($message->text), 'UTF-8'));
+        $text = $this->compact(mb_strtolower($this->normalizeText($message->text), 'UTF-8'));
         return str_contains($text, 'parametry platby')
             && (str_contains($text, 'vaše čsob') || str_contains($text, 'vase csob') || str_contains($text, 'čsob'))
             && (str_contains($text, 'částka') || str_contains($text, 'castka'));
@@ -63,7 +60,7 @@ final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
 
     public function parse(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): ParsedBankEmailNotice
     {
-        $text = $this->normalizer->normalize($message->text);
+        $text = $this->normalizeText($message->text);
 
         $recipientAccount = $this->required(
             $text,
@@ -105,7 +102,7 @@ final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
             variableSymbol: $this->normalizeSymbol((string) $variableSymbol),
             amount: $this->parseAmount((string) $amountCurrency['amount']),
             currency: strtoupper((string) $amountCurrency['currency']),
-            postedAt: $this->parseDate($postedAt),
+            postedAt: $this->parseDate($postedAt, 'validní datum účtování'),
             recipientAccount: $recipientAccount,
             counterpartyAccount: $cpAccount,
             counterpartyBank: $cpBank,
@@ -114,90 +111,4 @@ final class CsobBankEmailNoticeParser implements BankEmailNoticeParserInterface
         );
     }
 
-    /**
-     * @return array<string,string>|null
-     */
-    private function match(string $text, string $pattern): ?array
-    {
-        if (preg_match($pattern, $text, $m) !== 1) {
-            return null;
-        }
-        $out = [];
-        foreach ($m as $key => $value) {
-            if (is_string($key)) {
-                $out[$key] = trim((string) $value);
-            }
-        }
-        return $out;
-    }
-
-    private function required(string $text, string $pattern, string $label): string
-    {
-        $value = $this->optional($text, $pattern);
-        if ($value === null) {
-            throw new \RuntimeException("ČSOB parser nenašel {$label}.");
-        }
-        return $value;
-    }
-
-    private function optional(string $text, string $pattern): ?string
-    {
-        $m = $this->match($text, $pattern);
-        if ($m === null || !isset($m['value'])) {
-            return null;
-        }
-        return $this->cleanNullable($m['value']);
-    }
-
-    private function parseAmount(string $value): float
-    {
-        $value = str_replace(["\xc2\xa0", ' ', '+'], '', trim($value));
-        $value = str_replace(',', '.', $value);
-        return (float) $value;
-    }
-
-    private function parseDate(string $value): string
-    {
-        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
-        foreach (['d.m.Y', 'd. m. Y'] as $format) {
-            $dt = \DateTimeImmutable::createFromFormat($format, $value);
-            if ($dt instanceof \DateTimeImmutable) {
-                return $dt->format('Y-m-d');
-            }
-        }
-        throw new \RuntimeException('ČSOB parser nenašel validní datum účtování.');
-    }
-
-    /**
-     * @return array{0:?string,1:?string}
-     */
-    private function splitAccount(string $value): array
-    {
-        $value = trim($value);
-        if ($value === '') {
-            return [null, null];
-        }
-        if (preg_match('/^(?<account>[0-9\-]+)\/(?<bank>[0-9]{4})$/', $value, $m) === 1) {
-            return [$m['account'], $m['bank']];
-        }
-        return [$value, null];
-    }
-
-    private function normalizeSymbol(string $value): string
-    {
-        $digits = preg_replace('/\D+/', '', $value) ?? '';
-        $trimmed = ltrim($digits, '0');
-        return $trimmed !== '' ? $trimmed : $digits;
-    }
-
-    private function cleanNullable(string $value): ?string
-    {
-        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
-        return $value !== '' ? mb_substr($value, 0, 255) : null;
-    }
-
-    private function compact(string $value): string
-    {
-        return trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
-    }
 }

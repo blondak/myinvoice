@@ -5,21 +5,18 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Bank\EmailNotice\Parser;
 
 use MyInvoice\Service\Bank\EmailNotice\BankEmailNoticeMessage;
-use MyInvoice\Service\Bank\EmailNotice\EmailNoticeTextNormalizer;
 use MyInvoice\Service\Bank\EmailNotice\ParsedBankEmailNotice;
 
-final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInterface
+final class RaiffeisenbankEmailNoticeParser extends AbstractBankEmailNoticeParser
 {
-    private EmailNoticeTextNormalizer $normalizer;
-
-    public function __construct(?EmailNoticeTextNormalizer $normalizer = null)
-    {
-        $this->normalizer = $normalizer ?? new EmailNoticeTextNormalizer();
-    }
-
     public function key(): string
     {
         return 'raiffeisenbank';
+    }
+
+    protected function parserLabel(): string
+    {
+        return 'Raiffeisenbank';
     }
 
     public function defaultProvider(): ?BankEmailNoticeProvider
@@ -50,7 +47,7 @@ final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInte
         if (!str_contains($subject, 'pohyb na účtě') && !str_contains($subject, 'pohyb na ucte')) {
             return false;
         }
-        $text = mb_strtolower($this->normalizer->normalize($message->text));
+        $text = mb_strtolower($this->normalizeText($message->text));
         return str_contains($text, 'variabilní symbol')
             && str_contains($text, 'částka v měně účtu')
             && str_contains($text, 'na účet');
@@ -58,7 +55,7 @@ final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInte
 
     public function parse(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): ParsedBankEmailNotice
     {
-        $text = $this->normalizer->normalize($message->text);
+        $text = $this->normalizeText($message->text);
 
         $postedAt = $this->required($text, '/Datum\s+a\s+čas\s*(?<value>\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\s+\d{1,2}:\d{2})/iu', 'datum');
         $recipientAccount = $this->required($text, '/Na\s+účet\s*(?<value>[0-9\-]+\/[0-9]{4})/iu', 'cílový účet');
@@ -87,78 +84,4 @@ final class RaiffeisenbankEmailNoticeParser implements BankEmailNoticeParserInte
         );
     }
 
-    /**
-     * @return array<string,string>|null
-     */
-    private function match(string $text, string $pattern): ?array
-    {
-        if (preg_match($pattern, $text, $m) !== 1) {
-            return null;
-        }
-        $out = [];
-        foreach ($m as $key => $value) {
-            if (is_string($key)) {
-                $out[$key] = trim((string) $value);
-            }
-        }
-        return $out;
-    }
-
-    private function required(string $text, string $pattern, string $label): string
-    {
-        $value = $this->optional($text, $pattern);
-        if ($value === null) {
-            throw new \RuntimeException("Raiffeisenbank parser nenašel {$label}.");
-        }
-        return $value;
-    }
-
-    private function optional(string $text, string $pattern): ?string
-    {
-        $m = $this->match($text, $pattern);
-        if ($m === null || !isset($m['value'])) {
-            return null;
-        }
-        return $this->cleanNullable($m['value']);
-    }
-
-    private function parseAmount(string $value): float
-    {
-        $value = str_replace(["\xc2\xa0", ' ', '+', '.'], '', trim($value));
-        $value = str_replace(',', '.', $value);
-        return (float) $value;
-    }
-
-    private function parseDate(string $value): string
-    {
-        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
-        foreach (['d. m. Y H:i', 'd.m.Y H:i'] as $format) {
-            $dt = \DateTimeImmutable::createFromFormat($format, $value);
-            if ($dt instanceof \DateTimeImmutable) {
-                return $dt->format('Y-m-d');
-            }
-        }
-        throw new \RuntimeException('Raiffeisenbank parser nenašel validní datum platby.');
-    }
-
-    /**
-     * @return array{0:?string,1:?string}
-     */
-    private function splitAccount(string $value): array
-    {
-        $value = trim($value);
-        if ($value === '') {
-            return [null, null];
-        }
-        if (preg_match('/^(?<account>[0-9\-]+)\/(?<bank>[0-9]{4})$/', $value, $m) === 1) {
-            return [$m['account'], $m['bank']];
-        }
-        return [$value, null];
-    }
-
-    private function cleanNullable(string $value): ?string
-    {
-        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
-        return $value !== '' ? mb_substr($value, 0, 255) : null;
-    }
 }
