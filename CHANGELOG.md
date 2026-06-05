@@ -5,15 +5,19 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.18.0] — 2026-06-05
 
 ### Added
+
+- **Kategorie tržby na šabloně opakované fakturace (#119).** Šablona může mít pevně zvolenou kategorii tržby, která přebíjí dosavadní dynamický fallback (výchozí kategorie zakázky → zákazníka) — hodí se pro stabilní zařazení domén, hostingu, licencí a paušálů, kde změna defaultu zakázky/zákazníka nemá tiše měnit kategorii budoucích faktur. Bez výběru (default, všechny existující šablony) zůstává chování beze změny. Kategorie se při generování ukládá na fakturu jako snapshot — pozdější změna šablony už vygenerované doklady nemění. Volba je v editoru šablony v sekci Faktura a na detailu šablony; API `/api/recurring` přijímá a vrací `revenue_category_id`. Manuál § 15.2.2.
 
 - **DPH konstanty v číselníku daňových konstant — už ne natvrdo v kódu.** Limit kontrolního hlášení 10 000 Kč (A.4/B.2 vs sumace A.5/B.3), základní a snížená sazba DPH jsou nově roční konstanty v `Nastavení → Číselníky → Daňové konstanty` — ve zvýrazněné skupině **„DPH a výkazy"** na začátku, protože na rozdíl od ostatních (DPFO/OSVČ) platí pro všechny plátce. Z nich se odvozuje: limit KH (generátor KH i sloupec KH v Knize DPH), práh rozřazení sazeb do sloupců výkazů (dřív 8× natvrdo `20.5` — DPH přiznání, KH, Kniha DPH, Pohoda export), sazba samovyměření u RC importů (AI extraktor) a auto-klasifikace přijatých dokladů. Výkazy berou konstanty **roku vykazovaného období**, takže budoucí změna limitu/sazby nerozbije zpětně generované výkazy; starší uložené overridy se automaticky doplní o nové klíče z defaultů. Manuál § 26.
 
 - **Kniha DPH: sloupec KH ukazuje efektivní sekci kontrolního hlášení.** A.4/A.5 a B.2/B.3 nejsou vlastnost klasifikačního kódu, ale dokladu — rozhoduje celková hodnota dokladu vč. DPH (limit 10 000 Kč) a DIČ protistrany. Kniha dosud tiskla statickou hodnotu z číselníku (kód 40 → „B.2" u všech přijatých), nově počítá sekci per doklad stejnou logikou jako generátor KH: drobný doklad pod limit ukáže B.3 (sumace), doklad bez DIČ protistrany jde do sumace i nad limit — shodně se sestavou POHODA.
 
 ### Fixed
+
+- **Registry parserů bankovních avíz už není v cfg.sample.php.** Výčet parser tříd si uživatelé kopírovali do cfg.php, kde by zatuhlé class names po případném budoucím přejmenování shodily aplikaci. Registry žije v kódu (baseline defaults) a nové parsery se objeví s update aplikace bez zásahu do cfg; v sample zůstal jen zakomentovaný příklad override (vypnutí slotu / vlastní parser). Existující cfg.php s plným výčtem fungují beze změny.
 
 - **Sample data jsou daňově smysluplná.** Generátor testovacích dat dosud vyráběl daňové nesmysly: US dodavatelům (Anthropic, GitHub) účtoval českou 21% DPH bez reverse charge, tuzemským klientům nasazoval RC a EU klientovi s DIČ českou DPH; doklady neměly žádnou DPH klasifikaci. Nově: US dodavatelé služeb = reverse charge + kód 24 (dovoz služby — ř.12 + zrcadlový odpočet ř.43, v Knize DPH pár „43 ř.012/43 ř.043"), tuzemští dodavatelé kód 40/41 s mixem sazeb 21/12 % (v KH vznikají B.2 i B.3), EU klienti (SK/DE) reverse charge + kód 22 (služby do JČS, ř.21 + SHV), tuzemští klienti běžná DPH (A.4/A.5). Dobropisy dědí klasifikaci originálu. Sample tak pokrývá všechny hlavní scénáře DPH výkazů.
 
