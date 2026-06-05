@@ -215,7 +215,7 @@ pro kontrolu proti seznamu faktur i pro účetní.
 
 | Filtr | Pravidlo |
 |---|---|
-| **Období** | **Vystavené** se řadí podle **DUZP** (`COALESCE(tax_date, issue_date)`) — daň na výstupu vzniká k datu plnění. **Přijaté tuzemské** se řadí podle **pozdějšího z dat DUZP / vystavení** — nárok na odpočet nelze uplatnit dříve, než plátce drží daňový doklad (§ 73 odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do měsíce vystavení. **Přijaté zahraniční reverse charge** (příznak RC + dodavatel mimo CZ — pořízení zboží z JČS, služby z EU/3. země, dovoz) se řadí **podle DUZP** *(od v4.16)* — povinnost přiznat daň (ř. 3–13) vzniká k DUZP bez ohledu na to, kdy doklad dorazil (§ 25 odst. 1, § 24), a pozdní doklad neblokuje ani zrcadlový odpočet ř. 43 (§ 73 odst. 1 písm. b — nárok lze prokázat jiným způsobem). Tuzemský RC (kód 5) zůstává konzervativně na pozdějším z dat. (Zobrazené *Datum plnění* dál nese skutečné DUZP, mění se jen příslušnost k období.) Doklad bez vyplněného DUZP nevypadne. |
+| **Období** | **Vystavené** se řadí podle **DUZP** (`COALESCE(tax_date, issue_date)`) — daň na výstupu vzniká k datu plnění. **Přijaté tuzemské** se řadí podle **pozdějšího z dat DUZP / vystavení** — nárok na odpočet nelze uplatnit dříve, než plátce drží daňový doklad (§ 73 odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do měsíce vystavení. **Přijaté zahraniční reverse charge** (příznak RC + dodavatel mimo CZ — pořízení zboží z JČS, služby z EU/3. země, dovoz) se řadí **podle DUZP** *(od v4.16.0)* — povinnost přiznat daň (ř. 3–13) vzniká k DUZP bez ohledu na to, kdy doklad dorazil (§ 25 odst. 1, § 24), a pozdní doklad neblokuje ani zrcadlový odpočet ř. 43 (§ 73 odst. 1 písm. b — nárok lze prokázat jiným způsobem). Tuzemský RC (kód 5) zůstává konzervativně na pozdějším z dat. (Zobrazené *Datum plnění* dál nese skutečné DUZP, mění se jen příslušnost k období.) Doklad bez vyplněného DUZP nevypadne. |
 | **Stav** | Vylučují se `draft` a `cancelled`. U vystavených navíc `proforma` (zálohová faktura není daňový doklad). |
 | **Klasifikace** | Řádek se zařadí podle `vat_classification_code` (item-level override → header → auto-default podle sazby + RC + směru). Řádek bez výsledného kódu se do přiznání nedostane. |
 
@@ -422,7 +422,7 @@ U každé části se hned ukáže počet dostupných dokladů; prázdné části
 
 **Zařazení do období je daňově korektní a shodné s výkazy DPH** (přiznání, kontrolní
 hlášení, kniha DPH): vystavené dle DUZP, přijaté tuzemské dle pozdějšího z dat
-DUZP / vystavení, přijaté zahraniční reverse charge dle DUZP *(od v4.16)*,
+DUZP / vystavení, přijaté zahraniční reverse charge dle DUZP *(od v4.16.0)*,
 výpisy dle data výpisu.
 
 #### Běh na pozadí

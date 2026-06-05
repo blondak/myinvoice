@@ -176,7 +176,7 @@ Systém automaticky vypočte:
 
 ### 10.2.6 Reverse charge z EU — pořízení zboží vs. služba
 
-> Od v4.16 (issues #116, #117).
+> Od v4.16.0 (issues #116, #117).
 
 Typický případ: nákup **zboží od EU dodavatele** (např. auto z Německa) — doklad
 je vystaven **bez DPH** (osvobozené intrakomunitární dodání) a daň si samovyměříš
@@ -402,7 +402,7 @@ nedostal do přiznání. Detail viz [§ 10.2.4](#1024-daňová-uznatelnost-a-ná
 
 ### Reverse charge ze zahraničí — automatika
 
-> Od v4.16 (issue #116).
+> Od v4.16.0 (issue #116).
 
 Když extraktor detekuje **reverse charge** (zahraniční dodavatel + všechny řádky
 bez DPH), doklad automaticky daňově připraví:
