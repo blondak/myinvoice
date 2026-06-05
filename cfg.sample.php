@@ -281,18 +281,17 @@ return [
         'header' => 'X-Forwarded-For',               // hlavička se skutečnou klient IP (přepíše REMOTE_ADDR za trusted proxy)
     ],
 
-    // Registry parserů bankovních e-mailových avíz. Klíč pole je konfigurační
-    // slot pro override; skutečný parser_type dodává parser metodou key().
-    // Hodnotou je class name služby, kterou DI container vytvoří a ověří proti
-    // BankEmailNoticeParserInterface. Hodnota null/false daný slot vypne.
-    'bank_email' => [
-        'notice_parsers' => [
-            'regex' => \MyInvoice\Service\Bank\EmailNotice\Parser\RegexBankEmailNoticeParser::class,
-            'raiffeisenbank' => \MyInvoice\Service\Bank\EmailNotice\Parser\RaiffeisenbankEmailNoticeParser::class,
-            'unicredit' => \MyInvoice\Service\Bank\EmailNotice\Parser\UnicreditBankEmailNoticeParser::class,
-            'csob' => \MyInvoice\Service\Bank\EmailNotice\Parser\CsobBankEmailNoticeParser::class,
-        ],
-    ],
+    // Parsery bankovních e-mailových avíz se registrují automaticky z kódu
+    // (baseline defaults v Config) — v cfg NIC nenastavuj, nové parsery se
+    // objeví s update aplikace. Override jen pro speciální případy: hodnota
+    // null/false slot vypne, class name vlastní služby (implementující
+    // BankEmailNoticeParserInterface) slot nahradí.
+    // 'bank_email' => [
+    //     'notice_parsers' => [
+    //         'csob' => null,                          // vypnutí vestavěného parseru
+    //         'mybank' => \My\Custom\BankParser::class, // vlastní parser
+    //     ],
+    // ],
 
     // Auto-import bankovních výpisů (GPC/ABO) z monitorovaného adresáře.
     // Manuální upload přes UI funguje vždy bez ohledu na tuto sekci.
