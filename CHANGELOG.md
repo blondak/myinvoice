@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.2] — 2026-06-06
+
+### Added
+
+- **Národní daňové číslo klienta — SK DIČ / IČ DPH, Steuernummer, NIP, Adószám ([#120](https://github.com/radekhulan/myinvoice/issues/120), díky @mikolashodan za podnět).** Slovenské subjekty mají tři čísla — IČO, **DIČ** (bez prefixu, má ho i neplátce DPH) a **IČ DPH** (`SK` + číslo, jen registrovaní k DPH) — a tamní praxe je vyžaduje na faktuře všechna. V kartě klienta se po výběru státu Slovensko pole DIČ přejmenuje na **IČ DPH** a přibude samostatné pole **DIČ** (tlačítko VIES ho předvyplní automaticky oseknutím prefixu). Faktura pak tiskne `IČO → DIČ → IČ DPH`; u neplátce jen IČO + DIČ. Řešeno obecně pro země s národním daňovým číslem vedle VAT ID: DE/AT **Steuernummer**, PL **NIP**, HU **Adószám** — pole se zobrazí s nativním labelem a stejně se tiskne (vystavené i přijaté doklady). Starší faktury SK klientů doplní DIČ automaticky odvozením z IČ DPH. Pro fakturu do jiné země EU je legislativně povinné jen VAT ID (čl. 226 směrnice 2006/112/ES) — národní čísla jsou lokální konvence. Migrace 0105 (`clients.tax_number`), API `/api/v1/clients` přijímá a vrací `tax_number`. Manuál § 7.2.1a a § 12.2.
+
+### Fixed
+
+- **Detaily plátce DPH u zahraničního klienta ověřují přes VIES ([#120](https://github.com/radekhulan/myinvoice/issues/120)).** Tlačítko **Detaily plátce DPH** posílalo každé DIČ do českého registru plátců (CRPDPH/MFČR), takže u slovenského či jiného zahraničního DIČ vždy nepravdivě hlásilo „Subjekt není evidován v registru plátců DPH". DIČ s jiným prefixem než CZ se nově ověřuje přes evropský **VIES** — panel zobrazí stav registrace k DPH, ověřené VAT ID, název a adresu subjektu. Česká DIČ jdou dál do CRPDPH (zveřejněné účty + nespolehlivý plátce).
+
+- **Chyby ARES/VIES lookupu se zobrazují u příslušného pole ([#120](https://github.com/radekhulan/myinvoice/issues/120)).** Hlášky „Subjekt nebyl v ARES nalezen" a „VIES lookup selhal" ve formuláři klienta padaly do obecného chybového boxu až dole u tlačítka Uložit — u delšího formuláře mimo viditelnou část obrazovky, takže uživatel nevěděl, proč se nic nenačetlo. Nově se chyba ukazuje červeně přímo pod polem IČO resp. DIČ, vedle stávajících upozornění na duplicitu.
+
 ## [4.18.1] — 2026-06-06
 
 ### Fixed

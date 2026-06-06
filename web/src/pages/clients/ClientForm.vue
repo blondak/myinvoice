@@ -172,7 +172,11 @@ const submitting = ref(false)
 const error = ref('')
 const errors = ref<Record<string, string[]>>({})
 const aresLoading = ref(false)
+// Chyby lookupů patří k příslušnému poli, ne do globálního `error` u tlačítka
+// Uložit dole na stránce — tam je uživatel u dlouhého formuláře nevidí (#120).
+const aresError = ref('')
 const viesLoading = ref(false)
+const viesError = ref('')
 const viesResult = ref<import('@/api/clients').ViesLookupResult | null>(null)
 const duplicateIc = ref<{ id: number; name: string } | null>(null)
 const duplicateDic = ref<{ id: number; name: string } | null>(null)
@@ -284,11 +288,11 @@ function sanitize(c: Client): Partial<ClientPayload> {
 async function loadFromAres() {
   if (!form.value.ic) return
   aresLoading.value = true
-  error.value = ''
+  aresError.value = ''
   try {
     const result = await clientsApi.lookupAres(form.value.ic)
     if (!result.found || !result.data) {
-      error.value = t('supplier.ares_not_found')
+      aresError.value = t('supplier.ares_not_found')
       return
     }
     const d = result.data
@@ -302,7 +306,7 @@ async function loadFromAres() {
     checkDuplicateIc()
     checkDuplicateDic()
   } catch (e: any) {
-    error.value = e?.response?.data?.error?.message || t('supplier.ares_failed')
+    aresError.value = e?.response?.data?.error?.message || t('supplier.ares_failed')
   } finally {
     aresLoading.value = false
   }
@@ -333,6 +337,7 @@ async function checkDuplicateDic() {
 async function checkVies() {
   if (!form.value.dic) return
   viesLoading.value = true
+  viesError.value = ''
   viesResult.value = null
   try {
     const result = await clientsApi.lookupVies(form.value.dic)
@@ -358,7 +363,7 @@ async function checkVies() {
       }
     }
   } catch (e: any) {
-    error.value = e?.response?.data?.error?.message || t('client.vies_lookup_failed')
+    viesError.value = e?.response?.data?.error?.message || t('client.vies_lookup_failed')
   } finally {
     viesLoading.value = false
   }
@@ -436,6 +441,8 @@ async function submit() {
                   {{ aresLoading ? '…' : 'ARES' }}
                 </button>
               </div>
+              <!-- Chyba ARES lookupu přímo u pole (#120) — ne v globálním erroru dole -->
+              <p v-if="aresError" class="text-xs text-danger-500 mt-1">✗ {{ aresError }}</p>
               <p v-if="duplicateIc" class="text-xs text-warning-600 mt-1">
                 ⚠ {{ t('client.duplicate_ic') }} <strong>{{ duplicateIc.name }}</strong>
                 <RouterLink :to="`/clients/${duplicateIc.id}`" class="text-primary-700 hover:underline ml-1">{{ t('client.open_existing') }} →</RouterLink>
@@ -453,6 +460,8 @@ async function submit() {
                   {{ viesLoading ? '…' : 'VIES' }}
                 </button>
               </div>
+              <!-- Chyba VIES lookupu přímo u pole (#120) -->
+              <p v-if="viesError" class="text-xs text-danger-500 mt-1">✗ {{ viesError }}</p>
               <p v-if="duplicateDic" class="text-xs text-warning-600 mt-1">
                 ⚠ {{ t('client.duplicate_dic') }} <strong>{{ duplicateDic.name }}</strong>
                 <RouterLink :to="`/clients/${duplicateDic.id}`" class="text-primary-700 hover:underline ml-1">{{ t('client.open_existing') }} →</RouterLink>

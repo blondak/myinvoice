@@ -57,7 +57,8 @@ Doporučený postup pro českého klienta:
 | Firma / jméno | Název na faktuře |
 | Křestní jméno + Příjmení | Jen pro fyzické osoby (volitelné) |
 | IČO | České IČO (8 cifer); slovenské také funguje s ARES SK |
-| DIČ | Daňové ID; ČR „CZ12345678", SK „SK1234567890", EU různě |
+| DIČ | Daňové ID s prefixem země; ČR „CZ12345678", SK „SK1234567890", EU různě. U slovenského klienta se pole jmenuje **IČ DPH** (viz § 7.2.1a) |
+| Národní daňové číslo *(od v4.18.2)* | Zobrazí se jen u zemí, kde existuje vedle VAT ID: SK **DIČ**, DE/AT **Steuernummer**, PL **NIP**, HU **Adószám**. Tiskne se na fakturu mezi IČO a DIČ/IČ DPH |
 | Ulice / Město / PSČ / Stát | Adresa pro fakturu |
 | Hlavní e-mail | **Povinný** — pro odesílání faktur a upomínek |
 | Telefon | Volitelný |
@@ -67,6 +68,29 @@ Doporučený postup pro českého klienta:
 | Reverse charge | Zatrhni pro EU B2B klienty s DIČ — DPH 0 % + text „Daň přiznává odběratel" |
 | Splatnost | Preset **7 dnů / 14 dnů / Měsíc / Vlastní**, nebo **Použít výchozí** = dědit z dodavatele. „Měsíc" = kalendářní měsíc (1. 2. → 1. 3., 31. 1. → 28. 2.), ne fixních 30 dní |
 | Poznámka | Interní text — nezobrazí se na faktuře |
+
+### 7.2.1a Slovenský klient a národní daňová čísla *(od v4.18.2)*
+
+Slovenské subjekty mají **tři** identifikační čísla — IČO, **DIČ** (bez prefixu,
+přiděluje ho finanční úřad každému podnikateli včetně neplátců) a **IČ DPH**
+(`SK` + číslo, vzniká až registrací k DPH). Slovenská praxe vyžaduje na
+faktuře všechna tři. Po výběru státu **Slovensko**:
+
+- pole DIČ se přejmenuje na **IČ DPH** (patří sem hodnota s prefixem, např.
+  `SK2022638992`) a tlačítko **VIES** po úspěšném ověření předvyplní DIČ
+  automaticky (= totéž číslo bez prefixu),
+- přibude samostatné pole **DIČ** (bez prefixu — vyplň i u neplátce).
+
+Na faktuře se pak tiskne `IČO → DIČ → IČ DPH`; u neplátce (bez IČ DPH) jen
+`IČO → DIČ`. Stejné pole funguje i pro Německo/Rakousko (**Steuernummer**),
+Polsko (**NIP**) a Maďarsko (**Adószám**) — s odpovídajícím labelem. Pro
+fakturu do jiné země EU je přitom legislativně povinné jen VAT ID
+(čl. 226 směrnice 2006/112/ES); národní čísla jsou lokální konvence.
+
+Tlačítko **Detaily plátce DPH** u zahraničního DIČ (s jiným prefixem než CZ)
+nově ověřuje přes evropský **VIES** — zobrazí stav registrace k DPH, název
+a adresu subjektu. Český registr plátců DPH (zveřejněné účty, nespolehlivý
+plátce) se používá dál jen pro česká DIČ.
 
 ### 7.2.2 E-mailové kontakty podle účelu *(od v4.15.0)*
 
