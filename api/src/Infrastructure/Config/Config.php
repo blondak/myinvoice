@@ -88,6 +88,13 @@ final class Config
             $merged = self::applyDataDirOverrides($merged, $dataDir);
         }
 
+        // Poslední krok: relativní cesty v cfg ukotvi k rootu aplikace.
+        // Pod cron/Task Scheduler je CWD procesu jinde (System32, $HOME, …),
+        // takže např. 'output_dir' => 'storage/backup' by vyrobilo adresář
+        // mimo aplikaci. Po applyDataDirOverrides je to pro přepsané klíče
+        // no-op (data-dir cesty jsou absolutní).
+        $merged = self::anchorRelativePaths($merged, $rootDir);
+
         return new self($merged, $dataDir);
     }
 
@@ -364,6 +371,64 @@ final class Config
             'float'  => (float) $raw,
             default  => $raw,
         };
+    }
+
+    /**
+     * Cfg klíče (dot notation) nesoucí cestu na filesystem. Pokud uživatel
+     * zadá relativní hodnotu (např. 'storage/backup'), ukotví se k rootu
+     * aplikace — jinak by se resolvovala proti CWD procesu, které je pod
+     * cron/Task Scheduler jinde a soubory by končily mimo aplikaci (reálně
+     * se stalo s cron.backup.output_dir z cfg.sample.php).
+     *
+     * Superset mapy v applyDataDirOverrides() + purchase_invoice.inbox_dir
+     * (ta pod data dir nepatří — je to uživatelův vstupní adresář).
+     * Záměrně NEobsahuje db.dump_tool: jméno binárky bez cesty se hledá v PATH.
+     */
+    private const PATH_KEYS = [
+        'logging.path',
+        'storage.invoices_dir',
+        'storage.uploads_dir',
+        'storage.backup_dir',
+        'storage.sessions_dir',
+        'storage.cache_dir',
+        'cron.backup.output_dir',
+        'purchase_invoice.archive_storage',
+        'purchase_invoice.inbox_dir',
+        'invoice.import_archive_storage',
+        'smtp.dkim.private_key_path',
+        'smtp.dkim.public_key_path',
+        'smtp.dkim.dns_doc_path',
+    ];
+
+    private static function anchorRelativePaths(array $data, string $rootDir): array
+    {
+        $root = rtrim($rootDir, '/\\');
+        foreach (self::PATH_KEYS as $key) {
+            $value = self::getByPath($data, $key);
+            if (!is_string($value) || $value === '' || self::isAbsolutePath($value)) {
+                continue;
+            }
+            $data = self::setByPath($data, $key, $root . DIRECTORY_SEPARATOR . $value);
+        }
+        return $data;
+    }
+
+    /** Windows drive (C:\ i C:/), UNC (\\server\share) i POSIX (/var) tvar. */
+    private static function isAbsolutePath(string $path): bool
+    {
+        return (bool) preg_match('~^(?:[A-Za-z]:[\\\\/]|[\\\\/])~', $path);
+    }
+
+    private static function getByPath(array $data, string $path): mixed
+    {
+        $value = $data;
+        foreach (explode('.', $path) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                return null;
+            }
+            $value = $value[$segment];
+        }
+        return $value;
     }
 
     private static function setByPath(array $data, string $path, mixed $value): array

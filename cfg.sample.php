@@ -325,7 +325,7 @@ return [
         'backup' => [
             'daily_retention_days'   => 30,          // drž denní mysqldump zálohy N dnů
             'monthly_retention_days' => 365,         // drž 1. v měsíci jako "monthly" zálohu N dnů
-            'output_dir'             => 'storage/backup',
+            'output_dir'             => __DIR__ . '/storage/backup', // absolutní cesta! (relativní by se ukotvila k rootu aplikace, ne k CWD cronu)
         ],
     ],
 ];
