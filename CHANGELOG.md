@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.4] — 2026-06-06
+
+### Added
+
+- **Volitelné šifrování ZIP záloh heslem.** Nový klíč `cron.backup.password` v `cfg.php`: pokud je nastavený, všechny tři typy záloh (`cron-backup` = DB dump, `cron-backup-pdf` = PDF dokladů, `cron-backup-documents` = sekce Dokumenty) se šifrují **AES-256** — chrání zálohy at-rest i při kopírování na vzdálené úložiště. Prázdné heslo (default) = beze změny chování. Rozbalení šifrovaného archivu vyžaduje 7-Zip / WinRAR / `unzip -P` (vestavěný Průzkumník Windows AES-256 neumí); šifruje se obsah souborů, názvy uvnitř archivu zůstávají čitelné. Pokud je heslo nastavené a PHP ext-zip AES nepodporuje (libzip < 1.2), záloha se **záměrně nevytvoří** a úloha skončí chybou viditelnou v Plánovaných úlohách — tichá nešifrovaná záloha by byla horší než chybějící. Stav šifrování je v JSON reportu běhu (`cron_runs`). Manuál § 2.4.1 a § 27.
+
 ## [4.18.3] — 2026-06-06
 
 ### Fixed
