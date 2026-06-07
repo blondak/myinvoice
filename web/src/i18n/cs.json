@@ -567,6 +567,8 @@
     "form_title_edit": "Upravit šablonu",
     "section_periodicity": "Periodicita",
     "section_invoice_meta": "Faktura",
+    "section_notes": "Poznámky",
+    "notes_placeholders_hint": "Podporují placeholdery období (viz nápověda u položek) — vyhodnotí se při generování každé faktury.",
     "section_automation": "Automatizace",
     "generated_invoices": "Vygenerované faktury",
     "amount": "Částka",

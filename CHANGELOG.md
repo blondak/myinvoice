@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.0] — 2026-06-08
+
+### Added
+
+- **Poznámky nad/pod položkami u pravidelné fakturace ([#123](https://github.com/radekhulan/myinvoice/issues/123), díky @jssystemcz za podnět).** Šablona pravidelné fakturace teď nabízí stejná dvě pole jako běžná faktura — **Poznámka nad položkami** a **Poznámka pod položkami** (sekce „Poznámky" v editoru šablony, stejná editace jako u vydané faktury). Text se přenáší na každou vygenerovanou fakturu a tiskne se nad, resp. pod tabulkou položek — ideální na opakované informace typu období poskytované služby, podmínky pronájmu nebo doplňující sdělení pro zákazníka. Obě pole podporují **placeholdery období** (`{YYYY}`, `{MM}`, `{DATE±…}`, `{BOM}`/`{EOM}` …) — vyhodnotí se při každém generování vůči DUZP (u proformy vůči datu vystavení), takže např. „Vyúčtování za období {BOM} – {EOM}" se na faktuře propíše jako konkrétní rozsah měsíce. Manuál § 12.2.2a.
+
 ## [4.18.6] — 2026-06-07
 
 ### Changed

@@ -965,6 +965,21 @@ async function submit() {
         </div>
       </div>
 
+      <!-- Poznámky nad/pod položkami — stejná editace jako u vydané faktury;
+           generátor je přenáší na fakturu a vyhodnocuje v nich placeholdery období. -->
+      <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm space-y-4">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('recurring.section_notes') }}</h3>
+        <div>
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.note_above') }}</label>
+          <textarea v-model="form.note_above_items" rows="2" class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.note_below') }}</label>
+          <textarea v-model="form.note_below_items" rows="2" class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"></textarea>
+        </div>
+        <p class="text-xs text-neutral-500">{{ t('recurring.notes_placeholders_hint') }}</p>
+      </div>
+
       <!-- Automation -->
       <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm space-y-3">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('recurring.section_automation') }}</h3>

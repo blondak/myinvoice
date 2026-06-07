@@ -567,6 +567,8 @@
     "form_title_edit": "Edit template",
     "section_periodicity": "Periodicity",
     "section_invoice_meta": "Invoice",
+    "section_notes": "Notes",
+    "notes_placeholders_hint": "Period placeholders are supported (see the items help) — evaluated when each invoice is generated.",
     "section_automation": "Automation",
     "generated_invoices": "Generated invoices",
     "amount": "Amount",

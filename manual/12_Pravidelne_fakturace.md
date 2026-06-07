@@ -71,6 +71,17 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
       31.5.2026. Měsíc v popiscích položek se synchronizuje k DUZP, takže
       „Hosting 05/2026" zůstane „05/2026" i když je vystavena 1.6.
 
+### 12.2.2a Sekce „Poznámky"
+
+Stejná dvě pole jako u běžné faktury — **Poznámka nad položkami** a
+**Poznámka pod položkami**. Text se 1:1 přenáší na každou vygenerovanou
+fakturu (tiskne se nad, resp. pod tabulkou položek). Hodí se na opakované
+informace typu období poskytované služby, podmínky pronájmu nebo doplňující
+sdělení pro zákazníka. Obě pole podporují **placeholdery období** (viz
+§ 12.2.3) — vyhodnotí se při každém generování vůči DUZP (u proformy vůči
+datu vystavení), takže např. „Vyúčtování za období {BOM} – {EOM}" se na
+faktuře propíše jako konkrétní rozsah měsíce.
+
 ### 12.2.3 Položky
 
 Položky šablony se 1:1 kopírují na každou vygenerovanou fakturu (popis, mn.,
