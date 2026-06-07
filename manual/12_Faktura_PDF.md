@@ -37,7 +37,7 @@ Závisí na stavu faktury:
 Vygenerované PDF obsahuje:
 
 1. **Hlavičku** — logo dodavatele, jméno, adresa, IČO, DIČ, kontakt
-2. **Adresát** — klient (firma + adresa + IČO + DIČ). U zemí s národním daňovým číslem *(od v4.18.2)* se tiskne navíc s nativním labelem — slovenský klient má `IČO → DIČ → IČ DPH` (u neplátce jen IČO + DIČ), německý/rakouský Steuernummer, polský NIP, maďarský Adószám (viz [§ 7.2.1a](07_Klienti.md#721a-slovenský-klient-a-národní-daňová-čísla-od-v4182))
+2. **Adresát** — klient (firma + adresa + IČO + DIČ). U zemí s národním daňovým číslem se tiskne navíc s nativním labelem — slovenský klient má `IČO → DIČ → IČ DPH` (u neplátce jen IČO + DIČ), německý/rakouský Steuernummer, polský NIP, maďarský Adószám (viz [§ 7.2.1a](07_Klienti.md#721a-slovensky-klient-a-narodni-danova-cisla))
 3. **Číslo faktury** + **typ** (Faktura / Proforma / Dobropis / Storno)
 4. **Data** — vystaveno, DUZP, splatnost
 5. **Bankovní spojení** — číslo účtu / IBAN, BIC, banka, variabilní symbol

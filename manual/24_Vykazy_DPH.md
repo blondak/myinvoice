@@ -54,7 +54,7 @@ odmítne nebo bude generovat formálně neúplný výkaz.
 > a oddíl C se automaticky vynechají (s upozorněním v náhledu). Kontrolní
 > hlášení IO nepodává; služby do EU vykazuje v souhrnném hlášení.
 
-### Sídlo / adresa (od v4.0.6)
+### Sídlo / adresa
 
 EPO rozděluje uliční adresu na tři samostatné atributy (`ulice` + `c_pop` + `c_orient`).
 Naše DB tyto sloupce drží separátně (`supplier.street`, `street_number_pop`,
@@ -83,7 +83,7 @@ Naše DB tyto sloupce drží separátně (`supplier.street`, `street_number_pop`
 
 PO (právnické osoby) tyto pole nevyplňují — místo nich se použije `zkrobchjm` z firmy.
 
-### Oprávněná osoba k podpisu (od v4.0.6) — POVINNÉ pro PO
+### Oprávněná osoba k podpisu — POVINNÉ pro PO
 
 Pole `opr_*` identifikují fyzickou osobu, která je u právnické osoby oprávněná
 přiznání podepsat (typicky jednatel, předseda představenstva).
@@ -164,7 +164,7 @@ osoba` — přiznání se pak generuje s `typ_platce='I'`.
 musí mít `vat_classification_code` (1/2 pro sales 21/12 %, 40/41 pro purchase,
 23 pro EU pořízení zboží, 5 pro tuzemský RC, atd.). Auto-defaulter to dělá při
 vytvoření faktury — pro starší / importovaná data můžeš spustit backfill v
-`Daně → DPH přiznání → topbar tlačítko **Přemapovat klasifikace**` (od v4.0.5).
+`Daně → DPH přiznání → topbar tlačítko **Přemapovat klasifikace**`.
 
 **„Aplikace generuje `typ_platce='P'`, ale jsem čtvrtletní plátce"**
 → V Daňovém nastavení změň `vat_period` na `quarterly`. Pak v UI DPH přiznání
@@ -224,7 +224,7 @@ pro kontrolu proti seznamu faktur i pro účetní.
 
 | Filtr | Pravidlo |
 |---|---|
-| **Období** | **Vystavené** se řadí podle **DUZP** (`COALESCE(tax_date, issue_date)`) — daň na výstupu vzniká k datu plnění. **Přijaté tuzemské** se řadí podle **pozdějšího z dat DUZP / vystavení** — nárok na odpočet nelze uplatnit dříve, než plátce drží daňový doklad (§ 73 odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do měsíce vystavení. **Přijaté zahraniční reverse charge** (příznak RC + dodavatel mimo CZ — pořízení zboží z JČS, služby z EU/3. země, dovoz) se řadí **podle DUZP** *(od v4.16.0)* — povinnost přiznat daň (ř. 3–13) vzniká k DUZP bez ohledu na to, kdy doklad dorazil (§ 25 odst. 1, § 24), a pozdní doklad neblokuje ani zrcadlový odpočet ř. 43 (§ 73 odst. 1 písm. b — nárok lze prokázat jiným způsobem). Tuzemský RC (kód 5) zůstává konzervativně na pozdějším z dat. (Zobrazené *Datum plnění* dál nese skutečné DUZP, mění se jen příslušnost k období.) Doklad bez vyplněného DUZP nevypadne. |
+| **Období** | **Vystavené** se řadí podle **DUZP** (`COALESCE(tax_date, issue_date)`) — daň na výstupu vzniká k datu plnění. **Přijaté tuzemské** se řadí podle **pozdějšího z dat DUZP / vystavení** — nárok na odpočet nelze uplatnit dříve, než plátce drží daňový doklad (§ 73 odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do měsíce vystavení. **Přijaté zahraniční reverse charge** (příznak RC + dodavatel mimo CZ — pořízení zboží z JČS, služby z EU/3. země, dovoz) se řadí **podle DUZP** — povinnost přiznat daň (ř. 3–13) vzniká k DUZP bez ohledu na to, kdy doklad dorazil (§ 25 odst. 1, § 24), a pozdní doklad neblokuje ani zrcadlový odpočet ř. 43 (§ 73 odst. 1 písm. b — nárok lze prokázat jiným způsobem). Tuzemský RC (kód 5) zůstává konzervativně na pozdějším z dat. (Zobrazené *Datum plnění* dál nese skutečné DUZP, mění se jen příslušnost k období.) Doklad bez vyplněného DUZP nevypadne. |
 | **Stav** | Vylučují se `draft` a `cancelled`. U vystavených navíc `proforma` (zálohová faktura není daňový doklad). |
 | **Klasifikace** | Řádek se zařadí podle `vat_classification_code` (item-level override → header → auto-default podle sazby + RC + směru). Řádek bez výsledného kódu se do přiznání nedostane. |
 
@@ -302,7 +302,7 @@ V editoru faktury (vystavené i přijaté) je sekce **Klasifikace** s VAT picker
 - Nechat prázdné → auto-default
 - Vybrat konkrétní kód → manual override (např. specifický kód pro export)
 
-### Reverse charge v cizí měně (od v4.1.0)
+### Reverse charge v cizí měně
 
 Pro RC plnění (typicky `reverse_charge=true` na fakturě, kódy 5 / 23 / 24)
 v cizí měně:
@@ -317,7 +317,7 @@ Příklad: faktura z DE, 1 000 € @ kurz 25, vat_classification_code='23' →
 ř. 3 (`p_zb23=25000`, `dan_pzb23=5250`) + ř. 43 (`odp_rezim=25000`,
 `odp_rez_nar=5250`) + KH sekce A.2.
 
-### Pořízení dlouhodobého majetku (od v4.1.0)
+### Pořízení dlouhodobého majetku
 
 Checkbox **„Pořízení dlouhodobého majetku"** v editoru přijaté faktury označí
 doklad za majetek vymezený v § 4 odst. 4 písm. c) (vozidlo, stroj). Pro
@@ -337,7 +337,7 @@ je samostatná sekce **47.047** se sumací.
 KH se podává **vždy měsíčně** s sekcemi:
 
 - **A.1** — Plnění v režimu přenesené daňové povinnosti (dodavatel)
-- **A.2** — Pořízení zboží z jiného členského státu EU (od v4.1.0). Vyžaduje
+- **A.2** — Pořízení zboží z jiného členského státu EU. Vyžaduje
   klasifikační kód `23` na řádcích faktury; pro EU vendora + RC + 21 % se
   přiřadí automaticky. Atributy: `k_stat`, `vatid_dod`, `c_evid_dd`, `dppd`,
   `zakl_dane1/dan1`, `zakl_dane2/dan2`. Daň je samovyměřená — Kniha DPH ji
@@ -400,8 +400,8 @@ jen pro vnitřní přehled a archivaci. Žurnál seskupený podle řádků DPH p
 - `43.012` + `43.043` — Dovoz služby ze 3. země (ř.12 přiznání DPH +
   ř.43 nárok na odpočet z téhož plnění)
 - `43.003` + `43.043` — RC pořízení zboží z EU (ř.3 výstup + ř.43 mirror
-  odpočet, od v4.1.0)
-- `47.047` — Hodnota pořízeného majetku (§ 4 odst. 4 písm. c, od v4.1.0).
+  odpočet)
+- `47.047` — Hodnota pořízeného majetku (§ 4 odst. 4 písm. c).
   Doplňující údaj k ř. 40-45 — informativní řádek, nepřičítá se do celkového
   součtu odpočtu (jinak by se daň majetku duplikovala).
 - a další řádky podle klasifikací v `vat_classifications`
@@ -431,7 +431,7 @@ U každé části se hned ukáže počet dostupných dokladů; prázdné části
 
 **Zařazení do období je daňově korektní a shodné s výkazy DPH** (přiznání, kontrolní
 hlášení, kniha DPH): vystavené dle DUZP, přijaté tuzemské dle pozdějšího z dat
-DUZP / vystavení, přijaté zahraniční reverse charge dle DUZP *(od v4.16.0)*,
+DUZP / vystavení, přijaté zahraniční reverse charge dle DUZP,
 výpisy dle data výpisu.
 
 #### Běh na pozadí

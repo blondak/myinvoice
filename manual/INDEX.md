@@ -1,8 +1,6 @@
 # MyInvoice.cz — uživatelský manuál
 
-[🌐 MyInvoice.cz](https://myinvoice.cz/) · [⭐ GitHub](https://github.com/radekhulan/myinvoice) · [📦 GHCR Docker](https://github.com/radekhulan/myinvoice/pkgs/container/myinvoice)
-
-> Verze: 4.0.0 · Datum: 2026-05-22 · Vyvíjí [MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)
+[🌐 MyInvoice.cz](https://myinvoice.cz/) [⭐ GitHub](https://github.com/radekhulan/myinvoice) [📦 GHCR Docker](https://github.com/radekhulan/myinvoice/pkgs/container/myinvoice) [🏢 MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)
 
 Vítej v manuálu k fakturačnímu systému **MyInvoice.cz**. Manuál pokrývá vše, co
 v aplikaci uděláš — od prvního přihlášení, přes vystavení faktury a její
@@ -31,7 +29,7 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 7. [Klienti](07_Klienti.md)
 8. [Zakázky (vč. schvalování výkazů zákazníkem)](08_Zakazky.md)
 9. [Faktury — seznam a hromadné akce](09_Faktury.md)
-10. [Přijaté faktury (nákupy)](10_Prijate_faktury.md) — nové ve v3.5.0
+10. [Přijaté faktury (nákupy)](10_Prijate_faktury.md)
 11. [Faktura — editor, výkaz víceprací a schvalování zákazníkem](11_Faktura_editor.md)
 12. [Faktura — PDF, QR platba, odeslání e-mailem](12_Faktura_PDF.md)
 
@@ -56,12 +54,12 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 ### Pokročilé
 
 22. [REST API (automatizace a integrace)](22_API.md)
-23. [CRM dashboard (revenue/costs/profit/aging/DSO)](23_CRM.md) — **nové ve v4.0.0**
-24. [Výkazy DPH (DPHDP3 + KH + SH)](24_Vykazy_DPH.md) — **nové ve v4.0.0**
-25. [Daň z příjmů (DPFO / DPPO)](25_Dan_z_prijmu.md) — **nové ve v4.0.0** (MVP foundation)
-26. [Daňový optimalizátor (OSVČ)](26_Danovy_optimalizator.md) — **nové**
-27. [Dokumenty (úložiště souborů, ZFO, párování)](27_Dokumenty.md) — **nové**
-28. [Elektronické podpisy](28_Elektronicke_podpisy.md) — **nové**
+23. [CRM dashboard (revenue/costs/profit/aging/DSO)](23_CRM.md)
+24. [Výkazy DPH (DPHDP3 + KH + SH)](24_Vykazy_DPH.md)
+25. [Daň z příjmů (DPFO / DPPO)](25_Dan_z_prijmu.md)
+26. [Daňový optimalizátor (OSVČ)](26_Danovy_optimalizator.md)
+27. [Dokumenty (úložiště souborů, ZFO, párování)](27_Dokumenty.md)
+28. [Elektronické podpisy](28_Elektronicke_podpisy.md)
 
 ### Reference
 

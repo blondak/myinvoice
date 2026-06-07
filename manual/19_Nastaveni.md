@@ -143,9 +143,14 @@ Seznam šablon:
 
 | Kód | Použití |
 |---|---|
-| `invoice_new` | Odeslání nové faktury klientovi |
+| `invoice_send` | Odeslání faktury klientovi |
 | `invoice_reminder` | Upomínka po splatnosti |
+| `proforma_reminder` | Připomínka nezaplacené zálohové faktury |
+| `invoice_payment_thanks` | Poděkování za úhradu (viz § 18.5.5) — má i variantu pro zálohu |
+| `invoice_approval` | Žádost o schválení výkazu víceprací zákazníkem |
+| `recurring_draft_reminder` | Připomínka otevřeného konceptu pravidelné fakturace |
 | `password_reset` | Reset hesla (system) |
+| `login_otp` | Ověřovací kód pro přihlášení (system) |
 | `welcome` | Uvítací e-mail novému uživateli |
 | `test` | Pro Test odeslání (debug) |
 

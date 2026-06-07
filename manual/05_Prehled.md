@@ -54,10 +54,21 @@ Pod grafy je tabulka:
 
 Klik na číslo faktury otevře [Detail faktury](12_Faktura_PDF.md).
 
-## 5.6 Rychlé akce (vpravo nahoře)
+## 5.6 Rychlé vytváření (horní lišta)
 
-- **+ Nová faktura** — otevře [Editor faktury](11_Faktura_editor.md), prázdný koncept
-- **+ Nový klient** — otevře modal pro založení klienta (s ARES lookupem)
+Nové doklady a záznamy zakládáš z tlačítka **+ Vytvořit** v horní liště
+(vpravo, vedle jména uživatele). Rozbalovací menu nabízí:
+
+- **Vydaná faktura** — otevře [Editor faktury](11_Faktura_editor.md), prázdný koncept
+- **Zálohová faktura** — editor rovnou v režimu proforma
+- **Pravidelná fakturace** — nová [šablona](15_Pravidelne_fakturace.md)
+- **Klient** — modal pro založení klienta (s ARES lookupem)
+- **Dodavatel** — nový dodavatel (firma)
+- **Přijatá faktura** — nová [přijatá faktura](10_Prijate_faktury.md)
+
+Stejné zkratky najdeš i v postranním menu jako nenápadné **„+"** u příslušné
+položky (objeví se po najetí myší). Rychlé vytváření je dostupné jen pro
+uživatele s právem zápisu.
 
 ## 5.7 Aktualizace dat
 

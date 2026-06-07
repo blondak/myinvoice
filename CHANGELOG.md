@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.18.5] — 2026-06-07
+
+### Changed
+
+- **Nový vzhled HTML manuálu.** Manuál na `/manual` přebírá design language aplikace: stejné barevné tokeny (indigo brand, teplé neutrály), topbar s přepínačem **Světlý / Tmavý / Podle systému** (volba sdílená s aplikací — manuál se otevře ve stejném režimu), postranní menu s barevnými pilulkami skupin jako menu aplikace, čísla kapitol, úvodní rozcestník s odkazy (MyInvoice.cz · GitHub · GHCR Docker · MyWebdesign.cz) a kartami kapitol, stránkování **Předchozí / Další** na konci kapitol, vyhledávání a mobilní drawer ve stylu aplikace. Vzhled je v samostatném `manual/manual.css` — sdílí ho i prezentační web myinvoice.cz (kopíruje `rebuild-manual.ps1`). Světlé screenshoty se v tmavém režimu automaticky převádí do tmavé podoby (detekce jasu + inverze s přesným namapováním pozadí na barvu formulářů aplikace); tmavých screenshotů se úprava nedotkne.
+- **Manuál popisuje jen aktuální stav.** Z kapitol zmizely historické poznámky „nové ve verzi X" a zmínky o integraci forku — historie patří do changelogu. Audit proti changelogu doplnil chybějící popisy: děkovný e-mail za úhradu (§ 18.5.5), kompletní seznam e-mailových šablon (§ 19.4), aktuální podoba rychlého vytváření v horní liště (§ 5.6) a ukotvení relativních cest v `cfg.php` (§ 2.4.1).
+
+### Fixed
+
+- **Daňové konstanty pro rok mimo tabulku.** Konstanty (paušály, slevy, sazby pro daňový optimalizátor, DPFO a další výpočty) padaly pro neznámý rok na natvrdo zadrátovaný rok 2026. Nově neznámý rok spadne na **nejbližší předchozí známý** — budoucí roky tak dostanou poslední ověřené hodnoty i poté, co do tabulky přibudou novější ročníky; rok před začátkem tabulky dostane nejstarší známý. Stejné chování má i DB vrstva s per-rok přepisy.
+- **Sjednocená tlačítka vytvoření** — „Nový účet" (Systém → Bankovní účty, sekce měnových účtů) a „Nový podpisový profil" (Elektronické podpisy) měly outline styl; nově plné primární tlačítko s „+" jako ostatní akce vytvoření.
+
 ## [4.18.4] — 2026-06-06
 
 ### Added

@@ -20,7 +20,7 @@ Tabulka ukazuje:
 | Stát | 2-písmenný kód (CZ, SK, DE, …) |
 | Měna | Výchozí měna pro nové faktury |
 | Hlavní e-mail | Kontakt pro odesílání faktur |
-| Plátce DPH | Badge **Ano / Ne** (od v4.7.0) — zda je subjekt plátce DPH. Užitečné hlavně u **dodavatelů**: u neplátce nemá přijatá faktura nárok na odpočet (viz [§ 10.2.4](10_Prijate_faktury.md#1024-daňová-uznatelnost-a-nárok-na-odpočet)). Příznak se plní z ARES (CZ) / VIES (EU). |
+| Plátce DPH | Badge **Ano / Ne** — zda je subjekt plátce DPH. Užitečné hlavně u **dodavatelů**: u neplátce nemá přijatá faktura nárok na odpočet (viz [§ 10.2.4](10_Prijate_faktury.md#1024-daňová-uznatelnost-a-nárok-na-odpočet)). Příznak se plní z ARES (CZ) / VIES (EU). |
 | Obrat letos | Suma vystavených faktur v aktuálním roce, v měně klienta |
 
 Nad tabulkou je vyhledávač (jméno / IČO) a filtr stavu (`Aktivní` / `Archivovaní`).
@@ -58,7 +58,7 @@ Doporučený postup pro českého klienta:
 | Křestní jméno + Příjmení | Jen pro fyzické osoby (volitelné) |
 | IČO | České IČO (8 cifer); slovenské také funguje s ARES SK |
 | DIČ | Daňové ID s prefixem země; ČR „CZ12345678", SK „SK1234567890", EU různě. U slovenského klienta se pole jmenuje **IČ DPH** (viz § 7.2.1a) |
-| Národní daňové číslo *(od v4.18.2)* | Zobrazí se jen u zemí, kde existuje vedle VAT ID: SK **DIČ**, DE/AT **Steuernummer**, PL **NIP**, HU **Adószám**. Tiskne se na fakturu mezi IČO a DIČ/IČ DPH |
+| Národní daňové číslo | Zobrazí se jen u zemí, kde existuje vedle VAT ID: SK **DIČ**, DE/AT **Steuernummer**, PL **NIP**, HU **Adószám**. Tiskne se na fakturu mezi IČO a DIČ/IČ DPH |
 | Ulice / Město / PSČ / Stát | Adresa pro fakturu |
 | Hlavní e-mail | **Povinný** — pro odesílání faktur a upomínek |
 | Telefon | Volitelný |
@@ -69,7 +69,7 @@ Doporučený postup pro českého klienta:
 | Splatnost | Preset **7 dnů / 14 dnů / Měsíc / Vlastní**, nebo **Použít výchozí** = dědit z dodavatele. „Měsíc" = kalendářní měsíc (1. 2. → 1. 3., 31. 1. → 28. 2.), ne fixních 30 dní |
 | Poznámka | Interní text — nezobrazí se na faktuře |
 
-### 7.2.1a Slovenský klient a národní daňová čísla *(od v4.18.2)*
+### 7.2.1a Slovenský klient a národní daňová čísla
 
 Slovenské subjekty mají **tři** identifikační čísla — IČO, **DIČ** (bez prefixu,
 přiděluje ho finanční úřad každému podnikateli včetně neplátců) a **IČ DPH**
@@ -92,7 +92,7 @@ nově ověřuje přes evropský **VIES** — zobrazí stav registrace k DPH, ná
 a adresu subjektu. Český registr plátců DPH (zveřejněné účty, nespolehlivý
 plátce) se používá dál jen pro česká DIČ.
 
-### 7.2.2 E-mailové kontakty podle účelu *(od v4.15.0)*
+### 7.2.2 E-mailové kontakty podle účelu
 
 U firemních odběratelů je běžné, že různé typy zpráv mají chodit na různé
 adresy — faktury na účtárnu, upomínky na odpovědnou osobu, schvalování

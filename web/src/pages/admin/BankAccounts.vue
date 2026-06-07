@@ -608,8 +608,8 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
             <p class="text-xs text-neutral-500 mt-0.5">{{ t('bank_accounts.currencies_subtitle') }}</p>
           </div>
           <button type="button" @click="startNewCurrencyAccount()"
-            class="cursor-pointer shrink-0 self-start sm:self-auto whitespace-nowrap h-9 px-3 bg-surface border border-neutral-300 rounded-md text-sm hover:bg-neutral-50">
-            {{ t('bank_accounts.new_account') }}
+            class="cursor-pointer shrink-0 self-start sm:self-auto whitespace-nowrap inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
+            + {{ t('bank_accounts.new_account') }}
           </button>
         </header>
 

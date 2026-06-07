@@ -1,7 +1,5 @@
 # 10. Přijaté faktury (nákupy)
 
-> Přidáno v3.5.0 jako součást fáze 1 integrace forku myinvoiceDph (Martin Říha).
-
 **Přijaté faktury** jsou doklady, které **dostáváš od svých dodavatelů** — peníze
 odcházejí z firmy. Oproti vystaveným fakturám:
 
@@ -38,10 +36,10 @@ Nad formulářem je **drag & drop zóna**. Pokud máš PDF od dodavatele:
 - Přetáhni PDF do zóny (nebo klikni a vyber soubor).
 - Systém prohledá PDF zda obsahuje **embedded ISDOC** přílohu:
   - **Pokud ano** (fakturační software jako Money S3, Pohoda, Stormware, sám MyInvoice) → pole formuláře se předvyplní strukturovanými daty.
-  - **Pokud ne** (běžné PDF bez přílohy) → ve fázi 1 musíš vyplnit ručně. Ve fázi 2c (plánováno) doplníme AI extrakci přes Anthropic Claude — viz `source/09-fork-integration-plan.md`.
+  - **Pokud ne** (běžné PDF bez přílohy) → můžeš použít **AI extrakci přes Anthropic Claude** (viz [§ 10.7](#107-ai-extrakce--kontrola-výsledků)), nebo pole vyplnit ručně.
 - Originál PDF se po prvním uložení faktury automaticky **archivuje** mimo webroot a v detailu si ho můžeš kdykoli stáhnout zpět.
 
-> 💡 *Od v4.9.0:* doklad jde nahrát **už při zakládání nové faktury** (po přetažení se ukáže kartička „soubor připraven, nahraje se po uložení") i **z detailu** faktury, která zatím doklad nemá — dřív to šlo jen v editaci. Kromě PDF lze přetáhnout i **fotku** (JPG/PNG/WEBP/HEIC), systém ji převede na PDF.
+> 💡 Doklad jde nahrát **už při zakládání nové faktury** (po přetažení se ukáže kartička „soubor připraven, nahraje se po uložení") i **z detailu** faktury, která zatím doklad nemá. Kromě PDF lze přetáhnout i **fotku** (JPG/PNG/WEBP/HEIC), systém ji převede na PDF.
 
 Limity:
 - Max 20 MiB per soubor
@@ -77,7 +75,7 @@ Tlačítkem **+ Přidat položku** přidej řádek. Per řádek:
 
 Souhrn dole se přepočítá automaticky po každé změně.
 
-> 💡 **Ceny „s DPH" (brutto režim)** *(od v4.7.0)* — přepínačem **Ceny zadávám
+> 💡 **Ceny „s DPH" (brutto režim)** — přepínačem **Ceny zadávám
 > s DPH** (u DPH v hlavičce) lze zadat položky **včetně DPH** (typicky účtenka /
 > paragon), takže celková částka sedí na haléř. DPH se pak počítá „shora"
 > koeficientovou metodou (§37 ZDP). Zadání ceny do sloupce „Celkem s DPH" respektuje
@@ -115,8 +113,6 @@ Oba příznaky jsou vidět i v **detailu** přijaté faktury (box Měna/DPH).
 
 #### Rekapitulace DPH dle dokladu (§ 73 ZDPH)
 
-> Přidáno ve v4.9.0.
-
 Pod položkami je box **Rekapitulace DPH** se základem a daní **za každou sazbu**. Hodnoty se dopočítají ze řádků, ale pokud doklad dodavatele uvádí kvůli zaokrouhlení jiný **základ** nebo **DPH**, můžeš je **přepsat** přesně podle dokladu. Důvod je daňový: nárok na odpočet je svázaný s **částkou daně uvedenou na dokladu** (§ 73 odst. 6 ZDPH), proto je primární shoda s dokladem, ne náš přepočet.
 
 - Přepsat lze základ i DPH, samostatně pro každou sazbu. Ručně upravené pole je zvýrazněné; odkaz **Spočítat automaticky** vrátí vypočtenou hodnotu.
@@ -125,8 +121,6 @@ Pod položkami je box **Rekapitulace DPH** se základem a daní **za každou saz
 - Box se nezobrazuje u **reverse-charge** (na dokladu zahraničního dodavatele není česká DPH).
 
 #### Dodavatel neplátce DPH → bez nároku na odpočet
-
-> Přidáno v4.7.0.
 
 Pokud je dodavatel **neplátce DPH**, na jeho dokladu žádná DPH není a **není co
 odpočítat** — uplatnit odpočet by byla daňová chyba (neoprávněný odpočet v ř. 40
@@ -150,7 +144,7 @@ přiznání / sekci B kontrolního hlášení). MyInvoice proto plátcovství do
 Plátcovství dodavatele je vidět i ve **výpisu klientů/dodavatelů** jako badge
 *Plátce DPH* (viz [§ 7.1](07_Klienti.md#71-seznam-klientů)).
 
-> 🛠️ **Zpětná oprava existujících dodavatelů** — po upgradu na v4.7.0 jednorázově
+> 🛠️ **Zpětná oprava existujících dodavatelů** — jednorázově
 > spusť `php api/bin/backfill-vendor-vat-payer.php`. Skript podle ARES/VIES doplní příznak
 > plátcovství a u neplátců opraví už zaevidované přijaté faktury (zakáže odpočet,
 > sazby na 0 %, **celková částka beze změny**). Výchozí běh je **dry-run** (jen
@@ -172,11 +166,9 @@ V tomto bloku zadáš:
 Systém automaticky vypočte:
 
 - **Ekvivalent v měně faktury** — pro spárování proti `amount_to_pay`
-- **Kurzový rozdíl** — v základní měně (CZK). Záporný = kurzová ztráta, kladný = zisk. Zatím se zaznamenává pro reporting; účetně se v fázi 6 (DPH výkazy) automaticky promítne do správných řádků.
+- **Kurzový rozdíl** — v základní měně (CZK). Záporný = kurzová ztráta, kladný = zisk. Zaznamenává se pro reporting a účetně se automaticky promítne do správných řádků DPH výkazů.
 
 ### 10.2.6 Reverse charge z EU — pořízení zboží vs. služba
-
-> Od v4.16.0 (issues #116, #117).
 
 Typický případ: nákup **zboží od EU dodavatele** (např. auto z Německa) — doklad
 je vystaven **bez DPH** (osvobozené intrakomunitární dodání) a daň si samovyměříš
@@ -224,8 +216,6 @@ Po uložení / přechodu na detail:
 
 ### 10.3.1 Propojení zálohy s vyúčtovací fakturou (proti dvojímu započtení)
 
-> Přidáno v4.3.11.
-
 Když ti dodavatel pošle nejdřív **zálohovou fakturu** (typ dokladu *Záloha* / proforma)
 a po zaplacení samostatnou **vyúčtovací (finální) fakturu**, máš v systému dva doklady
 na tentýž náklad. Bez propojení by se náklad počítal **dvakrát** (Náklady, CRM, daň
@@ -241,7 +231,7 @@ z příjmů). Proto je lze spárovat.
   fakturu se zároveň doplní odečet zálohy (`advance_paid_amount`), pokud byl nulový.
 - V detailu **zálohy** vidíš reverzně, kterou fakturou je vyúčtována. Nevyúčtovanou
   zálohu lze spárovat i **odtud** — tlačítkem **Spárovat s fakturou** (nabídne
-  nepropojené vyúčtovací faktury téhož dodavatele). *(Obousměrné párování přidáno ve v4.8.0; tlačítka se zobrazí jen když existuje vhodný protějšek.)*
+  nepropojené vyúčtovací faktury téhož dodavatele). *(Tlačítka se zobrazí jen když existuje vhodný protějšek.)*
 
 Jedna záloha může být navázaná **jen na jednu** finální fakturu.
 
@@ -278,7 +268,7 @@ V seznamu Přijaté faktury klikni **📥 Nascanovat inbox**:
 - Systém rekurzivně projde nakonfigurovaný adresář.
 - Pro každý soubor spočte SHA-256 — pokud už existuje faktura se stejným otiskem, soubor přeskočí.
 - Z PDF s embedded ISDOC rozpozná data dodavatele a obsah.
-- Plain PDF (bez ISDOC) jsou ve fázi 1 přeskakovány (s důvodem „AI extrakce dorazí v fázi 2c").
+- Plain PDF (bez ISDOC) jsou při scanu inboxu přeskakovány; takový doklad nahraj přes formulář, kde lze použít AI extrakci.
 
 Modal po skončení zobrazí přehled: vytvořeno / přeskočeno / chyby + per-soubor detail.
 
@@ -393,16 +383,12 @@ php api/bin/recheck-ai-extracted-invoices.php --threshold=0.05
 
 ### Dodavatel neplátce DPH
 
-> Přidáno v4.7.0.
-
 Při AI importu se ověří **plátcovství dodavatele** (ARES/VIES, případně signál
 z dokladu „DIČ: Neplátce DPH"). U neplátce se automaticky nastaví **Bez nároku
 na odpočet**, vynulují sazby a doplní varování — aby se neoprávněný odpočet
 nedostal do přiznání. Detail viz [§ 10.2.4](#1024-daňová-uznatelnost-a-nárok-na-odpočet).
 
 ### Reverse charge ze zahraničí — automatika
-
-> Od v4.16.0 (issue #116).
 
 Když extraktor detekuje **reverse charge** (zahraniční dodavatel + všechny řádky
 bez DPH), doklad automaticky daňově připraví:
@@ -444,18 +430,3 @@ Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 Všechny operace jsou dostupné i přes REST API (`/api/v1/purchase-invoices/*`) —
 viz [Swagger UI](/api/docs) nebo [Redoc](/api/reference). PAT token musí mít scope
 `read_write` pro mutace.
-
-## 10.10 Status integrace forku
-
-Všechny fáze plánu jsou **dokončeny**:
-
-- ✅ **Fáze 1** (v3.5.0) — základní CRUD přijatých faktur, PDF upload + inbox scan
-- ✅ **Fáze 2a** (v3.6.0) — iDoklad API import (OAuth + jobs + dobropisy + attachments)
-- ✅ **Fáze 2b** — Fakturoid import (BasicAuth + subjects + invoices + expenses)
-- ✅ **Fáze 2c** — AI extrakce z PDF (Anthropic Claude vision, BYOK)
-- ✅ **Fáze 3** (v3.7.0) — bank matching CSV + auto-match (vystavené + přijaté)
-- ✅ **Fáze 5** — CRM dashboard (revenue/costs/profit/aging/DSO/concentration/churn)
-- ✅ **Fáze 6** (v4.0.0) — VAT klasifikace + tax settings + DPHDP3/KH/SH/DPFO/DPPO XML
-  výkazy + Naše PDF + ISDOC/Pohoda export přijatých
-
-Detail viz `source/09-fork-integration-plan.md`.

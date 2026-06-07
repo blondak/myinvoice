@@ -64,7 +64,7 @@ UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE email = 'tvuj@email.
 
 ### Varování `secret_encryption_key` (špatná délka klíče)
 
-Od v3.1.0 backend vrací v `GET /api/health` pole `warnings[]` a admin vidí
+Backend vrací v `GET /api/health` pole `warnings[]` a admin vidí
 upozornění i v UI (**Systém → Aktualizace**), pokud je problém s
 `app.secret_encryption_key` (typicky omyl: 24B místo 32B).
 

@@ -609,8 +609,8 @@ async function testPdfOutputSetting(setting: PdfSignatureOutputSetting) {
             <p class="text-xs text-neutral-500 mt-1">{{ t('settings.signing_profiles_hint') }}</p>
           </div>
           <button @click="startCreateSigningProfile" type="button"
-            class="cursor-pointer h-9 px-3 text-sm bg-surface border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50">
-            {{ t('settings.signing_profiles_new') }}
+            class="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
+            + {{ t('settings.signing_profiles_new') }}
           </button>
         </div>
 

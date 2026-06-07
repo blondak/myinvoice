@@ -41,7 +41,10 @@ final class TaxConstantsTest extends TestCase
     {
         self::assertContains(2025, TaxConstants::availableYears());
         self::assertContains(2026, TaxConstants::availableYears());
-        // Neznámý rok → fallback na 2026 (nejnovější).
+        // Neznámý budoucí rok → nejbližší předchozí známý (ne natvrdo zadrátovaný).
+        self::assertSame(2026, TaxConstants::forYear(2027)['year']);
         self::assertSame(2026, TaxConstants::forYear(9999)['year']);
+        // Rok před začátkem tabulky → nejstarší známý.
+        self::assertSame(2025, TaxConstants::forYear(2024)['year']);
     }
 }

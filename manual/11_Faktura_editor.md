@@ -75,8 +75,6 @@ V hlavičce konceptu je pole **Číslo faktury** (resp. „Číslo zálohové fa
 
 ### 11.2.6 Ceny „s DPH" vs „bez DPH" (brutto / netto režim)
 
-> Přidáno v4.7.0.
-
 Přepínač **Ceny zadávám s DPH / bez DPH** (v hlavičce u DPH) určuje, jak se na
 faktuře počítá daň:
 
@@ -348,8 +346,6 @@ Workflow:
    zaplacené zálohy** (záporná položka „Odpočet zálohy 92605001").
 
 ### 11.8.1 Zpětné propojení už existujících dokladů
-
-> Přidáno ve v4.8.0.
 
 Pokud už máš v systému **oba doklady samostatně** (typicky po importu) — zálohovou
 i daňovou fakturu — lze je spárovat zpětně, z **kterékoli** strany:

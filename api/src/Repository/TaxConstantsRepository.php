@@ -22,13 +22,41 @@ final class TaxConstantsRepository
      * Efektivní konstanty pro rok: DB override má přednost per klíč, chybějící
      * klíče doplní default z kódu (override uložený starší verzí aplikace nezná
      * později přidané konstanty — bez merge by je "ztratil").
+     *
+     * Rok neznámý kódu ani DB (typicky nový rok před release/zkopírováním
+     * číselníku) spadne na nejbližší předchozí známý rok VČETNĚ jeho DB
+     * override — admin úprava aktuálního roku se tak propíše i do dalšího
+     * roku, dokud nedostane vlastní řádek.
      * @return array<string,mixed>
      */
     public function forYear(int $year): array
     {
-        $default = TaxConstants::forYear($year);
         $override = $this->override($year);
-        return $override !== null ? array_replace($default, $override) : $default;
+        if ($override !== null) {
+            return array_replace(TaxConstants::forYear($year), $override);
+        }
+        if (in_array($year, TaxConstants::availableYears(), true)) {
+            return TaxConstants::forYear($year);
+        }
+        $fallback = $this->nearestKnownYear($year);
+        $default = TaxConstants::forYear($fallback);
+        $fallbackOverride = $this->override($fallback);
+        return $fallbackOverride !== null ? array_replace($default, $fallbackOverride) : $default;
+    }
+
+    /**
+     * Nejbližší předchozí rok známý kódu nebo DB; před začátkem historie
+     * nejstarší známý (zrcadlí fallback {@see TaxConstants::forYear()}).
+     */
+    private function nearestKnownYear(int $year): int
+    {
+        $dbYears = array_map(
+            'intval',
+            $this->db->pdo()->query('SELECT year FROM tax_constants')->fetchAll(\PDO::FETCH_COLUMN)
+        );
+        $known = array_unique([...TaxConstants::availableYears(), ...$dbYears]);
+        $below = array_filter($known, static fn (int $y): bool => $y < $year);
+        return $below !== [] ? max($below) : min($known);
     }
 
     /** Limit KH pro rozdělení A.4/A.5 a B.2/B.3 (nad → jednotlivě, do → sumace). */

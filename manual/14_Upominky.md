@@ -28,9 +28,9 @@ Otevři [Detail faktury](12_Faktura_PDF.md) → tlačítko **Upomínka**.
 
 Po kliknutí:
 
-- E-mail jde na: kontakty klienta s účelem **Upomínky** *(od v4.15.0, viz
+- E-mail jde na: kontakty klienta s účelem **Upomínky** *(viz
   [§ 7.2.2](07_Klienti.md))*; bez nich kontakty **Doklady**; bez kontaktů
-  dosavadní `klient.hlavni_email + zakazka.fakturacni_emaily[]`. Příjemce
+  na `klient.hlavni_email + zakazka.fakturacni_emaily[]`. Příjemce
   vidíš v potvrzovacím dialogu vč. zdroje.
 - Šablona: `invoice_reminder` (CZ / EN podle jazyka klienta)
 - Status faktury → `reminded`

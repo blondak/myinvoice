@@ -74,7 +74,7 @@ Každý dodavatel má vlastní:
 - **Šablonu čísla faktury** — vlastní formát per typ dokladu (`{YY}{MM}{CCC}`,
   `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 18.5.3
 - **Výchozí nastavení** — splatnost, hodinová sazba, DPH, **výchozí režim cen
-  s DPH / bez DPH** (*Ceny s DPH*, od v4.7.0 — předvyplní přepínač u nové
+  s DPH / bez DPH** (*Ceny s DPH* — předvyplní přepínač u nové
   faktury, viz [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim))
 - **E-mailové šablony** (faktura nová / upomínka / reset hesla)
 - **Pohoda kódy** pro export
@@ -110,7 +110,7 @@ NOVÝCH fakturách. Vystavené mají vlastní snapshot.
 | From: jméno | `display_name` dodavatele (fallback `company_name`) — místo „myinvoice@server" |
 | Reply-To | `email` dodavatele — odpovědi klientů jdou rovnou na firemní mail |
 
-**Vlastní branding emailů + PDF (od v2.1.0)** — **Systém → Dodavatelé →
+**Vlastní branding emailů + PDF** — **Systém → Dodavatelé →
 detail dodavatele → sekce „Branding emailů"**. Nahraď default „M" logo
 MyInvoice vlastním logem firmy a navol akcent barvu. Když je branding
 **zapnutý**, použije se logo i akcent barva jak v **e-mailech**, tak v
@@ -243,7 +243,29 @@ Volby per typ:
 > 🛈 Děkovný e-mail za úhradu kopii dodavateli záměrně neposílá — o úhradě
 > dodavatel ví (sám ji označil, nebo přišla z banky).
 
-### 18.5.5 Pohoda kódy
+### 18.5.5 Poděkování za úhradu
+
+Sekce **Poděkování za úhradu** v nastavení dodavatele zapíná krátký děkovný
+e-mail, který se zákazníkovi pošle po zaplacení faktury. Funkce je **ve
+výchozím stavu vypnutá**.
+
+| Volba | Co dělá |
+|---|---|
+| **Posílat poděkování za úhradu** | Hlavní vypínač funkce. Bez něj se zbylé volby neuplatní. |
+| **Automaticky při spárování platby z banky** | Jakmile se platba spáruje z bankovního výpisu nebo e-mailového avíza a faktura se označí jako zaplacená, pošle se poděkování samo. |
+| **Předzaškrtnout při ručním označení jako zaplacené** | V modalu ručního označení faktury jako zaplacené bude checkbox „Odeslat zákazníkovi poděkování" předem zaškrtnutý (jinak prázdný). |
+| **Přiložit PDF faktury (se stavem Uhrazeno)** | K e-mailu se připojí PDF faktury orazítkované jako uhrazené. |
+
+Text e-mailu upravíš v šabloně `invoice_payment_thanks` (**Systém →
+E-mail šablony**) — má samostatnou variantu pro běžnou fakturu i pro
+zaplacenou zálohu (proformu). Poděkování jde poslat i **ručně** v detailu
+nebo hromadně v seznamu faktur při označování plateb.
+
+> 🛈 Poděkování je **idempotentní** — odešle se k jedné faktuře jen jednou.
+> Neposílá se u storna ani u faktury bez e-mailu příjemce; selhání e-mailu
+> nikdy nezablokuje samotné označení platby. Vše se zapisuje do activity logu.
+
+### 18.5.6 Pohoda kódy
 
 | Pole | Význam | Příklad |
 |---|---|---|

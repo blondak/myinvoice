@@ -52,14 +52,14 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
 - **Sleva z celé faktury** — procentuální sleva (0–100 %), kterou zdědí každá
   vygenerovaná faktura. Na faktuře se projeví jako záporná položka „Sleva X %"
   (po sazbách DPH) — viz § 11.4.1.
-- **Kategorie tržby** *(od v4.18.0)* — pevná kategorie tržby pro všechny
+- **Kategorie tržby** — pevná kategorie tržby pro všechny
   faktury z této šablony (typicky domény, hosting, licence, paušály). Bez
   výběru (*dle zakázky / zákazníka*) se při generování použije výchozí
   kategorie zakázky, případně zákazníka — tedy hodnota platná **v okamžiku
   vystavení**; pevná kategorie šablony naproti tomu drží zařazení stabilní
   i při pozdější změně těchto defaultů. Kategorie se na fakturu ukládá jako
   snapshot — změna šablony už vygenerované faktury nemění.
-- **Ceny s DPH / bez DPH** *(od v4.7.0)* — režim, ve kterém jsou zadané ceny
+- **Ceny s DPH / bez DPH** — režim, ve kterém jsou zadané ceny
   položek šablony. „s DPH" (brutto) počítá daň „shora" koeficientem a propisuje
   se na každou vygenerovanou fakturu — viz [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim).
 - **DUZP** *(plátci DPH)* — režim, kterým se počítá datum uskutečnění
@@ -89,7 +89,7 @@ cena/j, sazba DPH). Sazba se bere podle vybraného `vat_rate_id` ze šablony.
 > založené dřív s nominální sazbou — generátor sazbu při vystavení sám sjednotí
 > na 0 %.
 
-**Placeholdery období** *(od v4.14.0)* — do popisu položky (a do poznámek nad/pod
+**Placeholdery období** — do popisu položky (a do poznámek nad/pod
 položkami šablony) lze vložit tokeny, které se při **každém vygenerování** faktury
 nahradí podle **DUZP** (u proformy podle data vystavení). Šablona se nikdy nemění,
 do faktury jde vyhodnocený text. Inline přehled je přímo v editoru šablony

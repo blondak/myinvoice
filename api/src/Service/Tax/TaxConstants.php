@@ -22,11 +22,19 @@ namespace MyInvoice\Service\Tax;
 final class TaxConstants
 {
     /**
-     * @return array<string, mixed> konstanty pro daný rok
+     * Konstanty pro daný rok; neznámý rok spadne na nejbližší předchozí známý
+     * (budoucí roky tak dostanou poslední ověřené hodnoty, ne natvrdo zadrátovaný
+     * rok), rok před začátkem tabulky na nejstarší známý.
+     * @return array<string, mixed>
      */
     public static function forYear(int $year): array
     {
-        return self::TABLE[$year] ?? self::TABLE[2026];
+        if (isset(self::TABLE[$year])) {
+            return self::TABLE[$year];
+        }
+        $known = self::availableYears();
+        $below = array_filter($known, static fn (int $y): bool => $y < $year);
+        return self::TABLE[$below !== [] ? max($below) : min($known)];
     }
 
     public static function availableYears(): array

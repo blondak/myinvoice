@@ -234,8 +234,8 @@ docker run --rm -v myinvoice_app-storage:/old:ro -v myinvoice_app-data:/new alpi
 
 ## 21.6 Aktualizace v UI — nativní instalace
 
-Pro nativní deployment (sdílený hosting / VPS bez Dockeru) UI v této
-verzi (v3.0.0) zatím **neimplementuje** automatický download release
+Pro nativní deployment (sdílený hosting / VPS bez Dockeru) UI
+zatím **neimplementuje** automatický download release
 tarballu — pouze ti ukáže copy-paste příkazy:
 
 ```bash
