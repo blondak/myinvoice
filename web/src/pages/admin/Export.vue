@@ -103,7 +103,7 @@ const monthLabel = (m: string): string => {
 </script>
 
 <template>
-  <div class="max-w-3xl space-y-4">
+  <div class="max-w-5xl space-y-4">
     <div>
       <h1 class="text-2xl font-semibold">{{ t('export.title') }}</h1>
       <p class="text-sm text-neutral-500 mt-0.5">{{ t('export.subtitle') }}</p>
