@@ -11,6 +11,7 @@ use MyInvoice\Repository\EmailTemplateRepository;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\Signing\Email\EmailSigningService;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Mailer as SymfonyMailer;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Address;
@@ -176,6 +177,17 @@ final class Mailer
             $email->attachFromPath($att['path'], $att['name'], $att['contentType']);
         }
 
+        // POZOR (Bcc + DKIM/S/MIME): obálku (MAIL FROM + RCPT TO) musíme zachytit
+        // z PŮVODNÍHO $email TEĎ, dokud má ještě Bcc hlavičku. Symfony `DkimSigner`
+        // i finální send totiž obálku jinak odvozují z `getPreparedHeaders()`, které
+        // Bcc záměrně odstraňují (RFC — Bcc nesmí být ve viditelných hlavičkách).
+        // Bez explicitní obálky se Bcc příjemci tiše ztratí z RCPT TO (potvrzeno
+        // logem hMailServeru: BCC self-kopie nikdy nedorazila). `Envelope::create`
+        // čte To+Cc+Bcc z `getHeaders()` — sender+recipients snapshotneme eagerně do
+        // konkrétní obálky, protože podpis níže $email nahradí novou instancí.
+        $snapshot = Envelope::create($email);
+        $envelope = new Envelope($snapshot->getSender(), $snapshot->getRecipients());
+
         if ($this->emailSigning !== null) {
             $email = $this->emailSigning->signIfEnabled($email, $code, $supplier, $userId);
         }
@@ -200,7 +212,7 @@ final class Mailer
         // POZOR: high-level `Symfony\Component\Mailer\Mailer::send()` vrací void
         // (od 5.x). Pro získání SentMessage s debug transcriptem musíme volat
         // transport->send() napřímo. Stejný transport instance jako $this->mailer().
-        $sent = $this->transport()->send($email);
+        $sent = $this->transport()->send($email, $envelope);
         $debug = $sent !== null ? $sent->getDebug() : '';
         $smtpResponse = $this->extractLastServerResponse($debug);
 
