@@ -157,6 +157,31 @@ return [
         'max_retries'    => 3,                       // počet retry pokud SMTP odmítne (4xx soft-fail)
         'retry_delay_s'  => 60,                      // pauza mezi retry
     ],
+
+    // Analýza logů poštovního serveru (Admin → E-maily → SMTP log analýza).
+    // Přečte logy MTA a ukáže, kam co bylo doručeno a kde nastal problém
+    // (odložená/odmítnutá doručení). Formátově nezávislé — `connector` vybírá
+    // parser pro konkrétní server; zatím je podporován 'hmailserver'.
+    // Přidání dalšího serveru = nová třída SmtpLogConnectorInterface + zápis
+    // do SmtpLogAnalyzer::CONNECTORS, cfg se nemění.
+    'smtp_log' => [
+        'enabled'   => false,                        // true = záložka v Admin → E-maily je aktivní
+        // Parser pro konkrétní poštovní server. Podporováno:
+        //   'hmailserver' — hMailServer (Windows MTA), soubory hmailserver_*.log
+        //   'mailenable'  — MailEnable (Windows MTA), sada SMTP-Activity-*.log
+        //                   (NE SMTP-Debug ani W3C ex* — ty se ignorují)
+        // Vyber jeden dle serveru, kterým aplikace odesílá poštu. Architektura je
+        // pluggable — další server = nová třída SmtpLogConnectorInterface zapsaná
+        // do SmtpLogAnalyzer::CONNECTORS; tento klíč pak jen přepneš.
+        'connector' => 'hmailserver',
+        // Glob vzor k log souborům (absolutní cesta). Hvězdička pokryje rotaci po dnech.
+        // hMailServer typicky: C:\Program Files (x86)\hMailServer\Logs\hmailserver_*.log
+        'path'      => 'C:\\Program Files (x86)\\hMailServer\\Logs\\hmailserver_*.log',
+        'max_files' => 60,                           // strop počtu souborů (nejnovější dle data)
+        'max_bytes' => 20971520,                     // strop velikosti čteného souboru (20 MB; větší se čte od konce)
+        'window_events' => 5000,                     // bez filtru data parsuj od nejnovějšího jen dokud nepřekročíš tolik událostí (výkon u velkých serverů; starší se doberou filtrem data)
+    ],
+
     'ares' => [
         'api'       => 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty',
         'cache_ttl' => 86400,                        // 24h cache odpovědí ARES (per IČO)

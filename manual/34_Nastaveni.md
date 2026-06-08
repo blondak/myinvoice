@@ -225,7 +225,88 @@ Aktuální konfigurace už není jeden certifikát dodavatele, ale sada
 podpisových profilů a mapování pro jednotlivé výstupy. Detailní postup je v
 [kapitole 28. Elektronické podpisy](36_Elektronicke_podpisy.md).
 
-## 34.7 Tipy
+## 34.7 SMTP log analýza
+
+**Systém → E-maily → záložka SMTP log analýza** (čtvrtá záložka vedle
+Odeslaných e-mailů, Šablon a Elektronických podpisů). Přístup pouze pro **admin**.
+
+Zatímco *Odeslané e-maily* ukazují, co se aplikace pokusila poslat (z pohledu
+aplikace), tahle záložka ukazuje, **co se reálně stalo na poštovním serveru** —
+kam byla zpráva doručena a kde nastal problém. Čte přímo logy MTA (poštovního
+serveru) a převádí je na přehledný seznam událostí. Jen čte; nic neodesílá ani
+nemění.
+
+### 34.7.1 Co uvidíš
+
+- **Souhrnné karty** — počty doručovacích pokusů, doručeno / odloženo /
+  odmítnuto a počet přijatých podání.
+- **Cílové servery s problémy** — rychlé dlaždice serverů, kam se nedaří
+  doručovat (klik nastaví filtr na daný server).
+- **Tabulka událostí** s filtry (fulltext, typ, stav, rozsah dat). Každý řádek
+  nese čas, stav, *od → komu*, cílový server + IP, předmět (pokud ho log nese)
+  a doslovnou odpověď serveru.
+- **Odkaz na fakturu** — pokud událost patří k e-mailu, který aplikace sama
+  odeslala, doplní se klikací odkaz na příslušnou fakturu. Páruje se přes
+  příjemce a čas odeslání (z interního auditu odeslané pošty); u serverů, které
+  logují předmět, pomůže i číslo faktury v předmětu. Pošta, kterou neposlala
+  aplikace (např. jiný systém na stejném serveru), se k faktuře neváže.
+
+Druhy událostí (sloupec *typ*):
+
+| Typ | Význam |
+|---|---|
+| **podání** | Zpráva vstoupila na server (klient/aplikace → MTA). Tady je vidět obálka tak, jak byla podána — pozná se tu např. chybějící příjemce. |
+| **doručení** | Pokus o doručení na cílový MX. Nese výsledný stav a odpověď. |
+| **událost** | Informativní/chybový záznam vázaný na zprávu (odložení, relay na smart host). |
+
+Stavy:
+
+| Stav | Význam |
+|---|---|
+| **Doručeno** | Cílový server zprávu přijal (2xx po DATA). |
+| **Zařazeno** | Přijato k doručení (podání), zatím neodesláno dál. |
+| **Odloženo** | Dočasné selhání (4xx) — greylisting, plná schránka, rDNS. Server to zkusí znovu. |
+| **Odmítnuto** | Trvalé odmítnutí (5xx) — antispam politika, neexistující schránka, neověřený odesílatel. |
+| **Chyba** | Neúplný dialog / chyba spojení. |
+
+> 🛈 **Box „SMTP analýza" v detailu faktury.** Když je analýza zapnutá, najdeš
+> u každé odeslané faktury (sekce pod historií PDF a aktivitou, jen pro admina)
+> rozbalovací box, který na kliknutí dohledá v logu doručení právě této faktury —
+> prohledá **den odeslání a následující den** pro její příjemce a ukáže per-příjemce
+> stav (doručeno / odloženo / odmítnuto) i jednotlivé pokusy s odpovědí serveru.
+
+### 34.7.2 Typické použití
+
+- **„Došlo to klientovi?"** — fulltext na e-mail příjemce → uvidíš poslední stav
+  doručení a odpověď jeho serveru.
+- **Diagnostika odložení** — `450 4.7.1 cannot find your hostname` značí chybějící
+  PTR/rDNS záznam tvé odchozí IP; `452 inbox out of storage` = plná schránka příjemce.
+- **Diagnostika odmítnutí** — `541/554 antispam policy`, `550 unauthenticated`
+  ukazují na problém s reputací / SPF / DKIM / DMARC.
+
+### 34.7.3 Nastavení
+
+Konfigurace je v `cfg.php` (vzor v `cfg.sample.php`) v sekci `smtp_log`:
+
+| Klíč | Význam |
+|---|---|
+| `enabled` | `true` = záložka je aktivní. |
+| `connector` | Parser pro konkrétní server: `hmailserver` nebo `mailenable`. |
+| `path` | Glob vzor k log souborům (absolutní cesta). Hvězdička pokryje denní rotaci. |
+| `max_files` | Strop počtu souborů (nejnovější dle data). |
+| `max_bytes` | Strop velikosti čteného souboru; větší se čtou od konce. |
+
+Příklady cest:
+
+- **hMailServer** — `C:\Program Files (x86)\hMailServer\Logs\hmailserver_*.log`
+- **MailEnable** — `C:\Program Files\Mail Enable\Logging\SMTP\SMTP-Activity-*.log`
+  (čte se sada *SMTP-Activity*; *SMTP-Debug* a W3C `ex*` se ignorují)
+
+> 🛈 Podpora dalších serverů (Postfix, Exim…) je připravená architektonicky —
+> stačí doplnit nový konektor; konfigurace zůstává stejná, jen se změní
+> `connector`.
+
+## 34.8 Tipy
 
 - **Test šablony** vždy před produkčním nasazením — typo v Twig syntaxi by
   rozbilo odesílání všem klientům.

@@ -121,7 +121,7 @@
     "dashboard": "Dashboard", "invoices": "Issued invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Sales", "purchase_stats": "Costs", "bank": "Bank", "system": "System", "section_taxes": "Taxes",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users", "emails": "Emails",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Issued exports", "imports": "Imports", "imports_issued": "Imports (issued)", "imports_purchase": "Imports (purchase)", "ai_import": "AI import", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_dph_book": "VAT ledger", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "reports_submissions": "Submission archive", "reports_monthly_export": "Bulk export", "tax_optimizer": "Tax optimizer", "email_templates": "Email templates", "sent_emails": "Sent emails", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "electronic_signatures": "Electronic signatures", "signing_profiles": "Signing profiles", "bank_accounts": "Bank accounts", "bank_email_notices": "Bank notices", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Issued exports", "imports": "Imports", "imports_issued": "Imports (issued)", "imports_purchase": "Imports (purchase)", "ai_import": "AI import", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_dph_book": "VAT ledger", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "reports_submissions": "Submission archive", "reports_monthly_export": "Bulk export", "tax_optimizer": "Tax optimizer", "email_templates": "Email templates", "sent_emails": "Sent emails", "smtp_logs": "SMTP log analysis", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "electronic_signatures": "Electronic signatures", "signing_profiles": "Signing profiles", "bank_accounts": "Bank accounts", "bank_email_notices": "Bank notices", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "section_documents": "Documents", "documents": "Documents",
     "purchase_invoices": "Received invoices", "purchase_export": "Received exports", "vendors": "Vendors",
@@ -994,6 +994,13 @@
     },
     "note": "Note",
     "activity": "Activity",
+    "smtp_log": {
+      "title": "SMTP analysis",
+      "hint": "What the mail server did with this sent invoice — on the send day and the next day, for this invoice's recipients.",
+      "not_sent": "This invoice has not been e-mailed yet.",
+      "no_log": "not found in log",
+      "no_events": "Nothing found in the server log for these recipients on that day."
+    },
     "classification": {
       "title": "Classification",
       "vat_classification": "VAT classification (VAT return)",
@@ -2488,6 +2495,59 @@
       "recurring_reminder_sent": "Recurring draft reminder",
       "test": "Test e-mail",
       "test_reminder": "Test reminder"
+    }
+  },
+  "smtp_logs": {
+    "title": "SMTP log analysis",
+    "subtitle": "What actually happened on the mail server — where mail was delivered and where it failed (deferred or rejected deliveries). Read from the MTA logs per cfg settings. Admin only.",
+    "connector": "Connector",
+    "disabled_title": "Log analysis is not enabled",
+    "disabled_hint": "Enable it in cfg.php under the smtp_log section (enabled, connector, path to log files).",
+    "supported": "Supported servers",
+    "cards": {
+      "deliveries": "Delivery attempts",
+      "submissions": "Submissions received"
+    },
+    "problem_hosts": "Target servers with problems",
+    "search_ph": "Search recipient, sender, server, IP, response text…",
+    "all_kinds": "All (kind)",
+    "all_statuses": "All statuses",
+    "refresh": "Refresh",
+    "total": "{n} events · page {p} / {tp}",
+    "no_records": "No events match the filter.",
+    "inbound": "inbound (submission)",
+    "invoice": "Invoice",
+    "scanned": "Files scanned: {n}",
+    "truncated_note": "some files were truncated to the size limit (tail is read)",
+    "configured_path": "Configured path",
+    "reason_unreadable_hint": "{n} files match the pattern but none can be read — check permissions (the IIS app pool account needs read access to the directory).",
+    "window_limited": "showing {n} of {total} files (most recent activity) — use the date filter for older",
+    "reason": {
+      "no_files": "No log file matches the configured path pattern.",
+      "dir_unreadable": "The log directory does not exist, or the app (IIS app pool account) cannot access it — check the path and folder permissions.",
+      "unreadable": "Log files exist but the app cannot read them (permissions).",
+      "no_matching_files": "Files were found but none match the selected connector.",
+      "connector_unknown": "Unknown connector in settings (smtp_log.connector)."
+    },
+    "col": {
+      "time": "Time",
+      "status": "Status",
+      "flow": "From → To",
+      "target": "Target server",
+      "response": "Server response"
+    },
+    "kind": {
+      "submission": "submission",
+      "delivery": "delivery",
+      "notice": "notice"
+    },
+    "status": {
+      "delivered": "Delivered",
+      "queued": "Queued",
+      "deferred": "Deferred",
+      "rejected": "Rejected",
+      "error": "Error",
+      "info": "Info"
     }
   },
   "cron_jobs": {

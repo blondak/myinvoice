@@ -11,6 +11,7 @@ import {
   type PdfSignatureDocumentSelectionSource,
   type SigningProfile,
 } from '@/api/settings'
+import { adminApi, type InvoiceSmtpLog } from '@/api/admin'
 import { apiErrorMessage } from '@/api/errors'
 import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass } from '@/composables/useFormat'
 import { useAuthStore } from '@/stores/auth'
@@ -79,6 +80,31 @@ const activity = ref<Array<{ id: number; user_email: string | null; user_name: s
 const activityOpen = ref(false)
 const pdfHistory = ref<Array<{ id: number; filename: string; size_bytes: number; sha256: string; was_sent: boolean; sent_to: string[] | null; reason: string; archived_at: string }>>([])
 const pdfHistoryOpen = ref(false)
+
+// SMTP analýza (box jen pro admina, když je log analýza zapnutá; lazy-load na rozbalení)
+const smtpEnabled = ref(false)
+const smtpOpen = ref(false)
+const smtpData = ref<InvoiceSmtpLog | null>(null)
+const smtpLoading = ref(false)
+function toggleSmtp() {
+  smtpOpen.value = !smtpOpen.value
+  if (smtpOpen.value && smtpData.value === null && invoice.value && !smtpLoading.value) {
+    smtpLoading.value = true
+    adminApi.invoiceSmtpLog(invoice.value.id)
+      .then(d => { smtpData.value = d })
+      .catch(() => { smtpData.value = { enabled: true, sent: false, connector: null, sends: [], recipients: [], events: [] } })
+      .finally(() => { smtpLoading.value = false })
+  }
+}
+const smtpStatusBadge: Record<string, string> = {
+  delivered: 'bg-success-50 text-success-700',
+  queued: 'bg-primary-100 text-primary-700',
+  deferred: 'bg-warning-50 text-warning-600',
+  rejected: 'bg-danger-100 text-danger-700',
+  error: 'bg-danger-50 text-danger-600',
+  info: 'bg-neutral-100 text-neutral-600',
+}
+function smtpBadge(s: string | null): string { return s ? (smtpStatusBadge[s] ?? 'bg-neutral-100 text-neutral-600') : 'bg-neutral-100 text-neutral-600' }
 const attachments = ref<InvoiceAttachment[]>([])
 const attachmentsBusy = ref(false)
 const attachmentsDragOver = ref(false)
@@ -132,6 +158,12 @@ async function load() {
   invoicesApi.listPdfs(Number(route.params.id))
     .then(items => { pdfHistory.value = items })
     .catch(() => {})
+  // SMTP analýza — jen pro admina; levný probe, zda je log analýza zapnutá.
+  if (isAdmin.value) {
+    adminApi.smtpLogStatus()
+      .then(s => { smtpEnabled.value = s.enabled })
+      .catch(() => { smtpEnabled.value = false })
+  }
   invoicesApi.listAttachments(Number(route.params.id))
     .then(items => { attachments.value = items })
     .catch(() => {})
@@ -1936,6 +1968,58 @@ async function updateApprovalStatus() {
             <div v-if="a.payload" class="text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</div>
           </li>
         </ul>
+      </div>
+    </div>
+
+    <!-- SMTP analýza (admin + zapnutá log analýza; lazy-load na rozbalení) -->
+    <div v-if="invoice && isAdmin && smtpEnabled" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+      <button type="button" @click="toggleSmtp"
+        class="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-neutral-50 cursor-pointer"
+        :class="smtpOpen ? 'border-b border-neutral-200' : ''">
+        <span class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.smtp_log.title') }}</h3>
+          <span v-if="smtpData?.sent" class="text-xs text-neutral-400">{{ smtpData.events.length }}</span>
+        </span>
+        <svg class="w-4 h-4 text-neutral-400 transition-transform" :class="smtpOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div v-show="smtpOpen" class="px-5 py-4">
+        <div v-if="smtpLoading" class="text-sm text-neutral-500 py-4 text-center">{{ t('common.loading') }}</div>
+
+        <template v-else-if="smtpData">
+          <p v-if="!smtpData.sent" class="text-sm text-neutral-500">{{ t('invoice.smtp_log.not_sent') }}</p>
+
+          <template v-else>
+            <p class="text-xs text-neutral-400 mb-3">{{ t('invoice.smtp_log.hint') }}<span v-if="smtpData.connector"> · {{ smtpData.connector.label }}</span></p>
+
+            <!-- Per-příjemce souhrn -->
+            <div class="flex flex-wrap gap-2 mb-4">
+              <div v-for="r in smtpData.recipients" :key="r.recipient"
+                   class="text-xs px-2.5 py-1.5 rounded-md border border-neutral-200 flex items-center gap-2">
+                <span class="font-mono text-neutral-700 break-all">{{ r.recipient }}</span>
+                <span v-if="r.last_status" class="px-1.5 py-0.5 rounded font-medium" :class="smtpBadge(r.last_status)">{{ t(`smtp_logs.status.${r.last_status}`) }}</span>
+                <span v-else class="text-neutral-400">{{ t('invoice.smtp_log.no_log') }}</span>
+                <span v-if="r.deferred" class="text-warning-600" :title="t('smtp_logs.status.deferred')">⏳{{ r.deferred }}</span>
+                <span v-if="r.rejected" class="text-danger-600" :title="t('smtp_logs.status.rejected')">⛔{{ r.rejected }}</span>
+              </div>
+            </div>
+
+            <!-- Události z logu -->
+            <div v-if="smtpData.events.length" class="border border-neutral-200 rounded-md overflow-hidden">
+              <div v-for="(e, i) in smtpData.events" :key="i"
+                   class="px-3 py-2 text-xs flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 border-b border-neutral-100 last:border-0"
+                   :class="e.status === 'rejected' || e.status === 'error' ? 'bg-danger-50/40' : (e.status === 'deferred' ? 'bg-warning-50/30' : '')">
+                <span class="font-mono text-neutral-400 whitespace-nowrap">{{ e.ts.slice(0, 19) }}</span>
+                <span class="px-1.5 py-0.5 rounded font-medium self-start" :class="smtpBadge(e.status)">{{ t(`smtp_logs.status.${e.status}`) }}</span>
+                <span class="text-neutral-700 break-all">{{ e.recipients.join(', ') }}</span>
+                <span v-if="e.remote_host" class="font-mono text-neutral-400 break-all">{{ e.remote_host }}</span>
+                <span class="text-neutral-500 break-words sm:ml-auto sm:text-right">{{ e.response || '—' }}</span>
+              </div>
+            </div>
+            <p v-else class="text-sm text-neutral-500">{{ t('invoice.smtp_log.no_events') }}</p>
+          </template>
+        </template>
       </div>
     </div>
 

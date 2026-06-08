@@ -121,7 +121,7 @@
     "dashboard": "Přehled", "invoices": "Vydané faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Tržby", "purchase_stats": "Náklady", "bank": "Banka", "system": "Systém", "section_taxes": "Daně",
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé", "emails": "E-maily",
-    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Export vystavených", "imports": "Importy", "imports_issued": "Import vystavených", "imports_purchase": "Import přijatých", "ai_import": "AI import", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_dph_book": "Kniha DPH", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "reports_submissions": "Archiv podání", "reports_monthly_export": "Hromadný export", "tax_optimizer": "Daňový optimalizátor", "email_templates": "E-mail šablony", "sent_emails": "Odeslané e-maily", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "electronic_signatures": "Elektronické podpisy", "signing_profiles": "Podpisové profily", "bank_accounts": "Bankovní účty", "bank_email_notices": "Bankovní avíza", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
+    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Export vystavených", "imports": "Importy", "imports_issued": "Import vystavených", "imports_purchase": "Import přijatých", "ai_import": "AI import", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_dph_book": "Kniha DPH", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "reports_submissions": "Archiv podání", "reports_monthly_export": "Hromadný export", "tax_optimizer": "Daňový optimalizátor", "email_templates": "E-mail šablony", "sent_emails": "Odeslané e-maily", "smtp_logs": "SMTP log analýza", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "electronic_signatures": "Elektronické podpisy", "signing_profiles": "Podpisové profily", "bank_accounts": "Bankovní účty", "bank_email_notices": "Bankovní avíza", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
     "section_documents": "Dokumenty", "documents": "Dokumenty",
     "purchase_invoices": "Přijaté faktury", "purchase_export": "Export přijatých", "vendors": "Dodavatelé",
@@ -994,6 +994,13 @@
     },
     "note": "Poznámka",
     "activity": "Aktivita",
+    "smtp_log": {
+      "title": "SMTP analýza",
+      "hint": "Co poštovní server udělal s odeslanou fakturou — den odeslání a následující den, pro příjemce této faktury.",
+      "not_sent": "Faktura zatím nebyla e-mailem odeslána.",
+      "no_log": "v logu nenalezeno",
+      "no_events": "V logu serveru se k těmto příjemcům za daný den nic nenašlo."
+    },
     "classification": {
       "title": "Klasifikace",
       "vat_classification": "VAT klasifikace (DPH přiznání)",
@@ -2488,6 +2495,59 @@
       "recurring_reminder_sent": "Koncept pravidelné faktury",
       "test": "Testovací e-mail",
       "test_reminder": "Testovací upomínka"
+    }
+  },
+  "smtp_logs": {
+    "title": "SMTP log analýza",
+    "subtitle": "Co se reálně stalo na poštovním serveru — kam byla pošta doručena a kde nastal problém (odložená či odmítnutá doručení). Čte se z logů MTA dle nastavení cfg. Přístup pouze pro admin.",
+    "connector": "Konektor",
+    "disabled_title": "Analýza logů není zapnutá",
+    "disabled_hint": "Zapni ji v cfg.php v sekci smtp_log (enabled, connector, path k log souborům).",
+    "supported": "Podporované servery",
+    "cards": {
+      "deliveries": "Doručovací pokusy",
+      "submissions": "Přijatá podání"
+    },
+    "problem_hosts": "Cílové servery s problémy",
+    "search_ph": "Hledat příjemce, odesílatele, server, IP, text odpovědi…",
+    "all_kinds": "Vše (typ)",
+    "all_statuses": "Všechny stavy",
+    "refresh": "Obnovit",
+    "total": "Celkem {n} událostí · strana {p} / {tp}",
+    "no_records": "Žádné události neodpovídají filtru.",
+    "inbound": "příchozí (podání)",
+    "invoice": "Faktura",
+    "scanned": "Naskenováno souborů: {n}",
+    "truncated_note": "některé soubory byly zkráceny na limit velikosti (čte se konec)",
+    "configured_path": "Nastavená cesta",
+    "reason_unreadable_hint": "Vzoru odpovídá {n} souborů, ale žádný nelze přečíst — zkontroluj oprávnění (účet IIS app poolu musí mít na adresář read).",
+    "window_limited": "zobrazeno {n} z {total} souborů (poslední dění) — pro starší použij filtr data",
+    "reason": {
+      "no_files": "Zadanému vzoru cesty neodpovídá žádný log soubor.",
+      "dir_unreadable": "Adresář s logy neexistuje, nebo k němu aplikace (účet IIS app poolu) nemá přístup — zkontroluj cestu a oprávnění složky.",
+      "unreadable": "Log soubory existují, ale aplikace je nemůže přečíst (oprávnění).",
+      "no_matching_files": "Soubory se našly, ale žádný neodpovídá vybranému konektoru.",
+      "connector_unknown": "Neznámý konektor v nastavení (smtp_log.connector)."
+    },
+    "col": {
+      "time": "Čas",
+      "status": "Stav",
+      "flow": "Od → Komu",
+      "target": "Cílový server",
+      "response": "Odpověď serveru"
+    },
+    "kind": {
+      "submission": "podání",
+      "delivery": "doručení",
+      "notice": "událost"
+    },
+    "status": {
+      "delivered": "Doručeno",
+      "queued": "Zařazeno",
+      "deferred": "Odloženo",
+      "rejected": "Odmítnuto",
+      "error": "Chyba",
+      "info": "Info"
     }
   },
   "cron_jobs": {

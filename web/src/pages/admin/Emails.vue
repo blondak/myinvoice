@@ -5,13 +5,14 @@ import { useI18n } from 'vue-i18n'
 import SentEmails from './SentEmails.vue'
 import EmailTemplates from './EmailTemplates.vue'
 import ElectronicSignatures from './ElectronicSignatures.vue'
+import SmtpLogAnalysis from './SmtpLogAnalysis.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-type Tab = 'sent' | 'templates' | 'signatures'
-const VALID: Tab[] = ['sent', 'templates', 'signatures']
+type Tab = 'sent' | 'templates' | 'signatures' | 'logs'
+const VALID: Tab[] = ['sent', 'templates', 'signatures', 'logs']
 
 function initialTab(): Tab {
   const q = String(route.query.tab || '')
@@ -37,12 +38,14 @@ watch(tab, (v) => {
           : 'border-transparent text-neutral-600 hover:text-neutral-900'">
         {{ tt === 'sent' ? t('nav.sent_emails')
           : tt === 'templates' ? t('nav.email_templates')
-          : t('nav.electronic_signatures') }}
+          : tt === 'signatures' ? t('nav.electronic_signatures')
+          : t('nav.smtp_logs') }}
       </button>
     </div>
 
     <SentEmails v-if="tab === 'sent'" />
     <EmailTemplates v-else-if="tab === 'templates'" />
-    <ElectronicSignatures v-else />
+    <ElectronicSignatures v-else-if="tab === 'signatures'" />
+    <SmtpLogAnalysis v-else />
   </div>
 </template>
