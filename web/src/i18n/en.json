@@ -2530,6 +2530,7 @@
     "search_ph": "Search recipient, sender, server, IP, response text…",
     "all_kinds": "All (kind)",
     "all_statuses": "All statuses",
+    "filter_by_status": "Filter by status (click to toggle)",
     "refresh": "Refresh",
     "total": "{n} events · page {p} / {tp}",
     "no_records": "No events match the filter.",
@@ -2565,6 +2566,7 @@
       "deferred": "Deferred",
       "rejected": "Rejected",
       "error": "Error",
+      "rejected_error": "Rejected + errors",
       "info": "Info"
     }
   },

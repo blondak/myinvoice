@@ -93,6 +93,11 @@ const problemHosts = computed(() => {
 })
 
 function shortId(id: string): string { return id.length > 10 ? id.slice(0, 8) : id }
+
+// Klik na souhrnnou kartu naplní (resp. přepne) filtr stavu dole.
+function toggleStatus(s: string) {
+  filter.value.status = filter.value.status === s ? '' : s
+}
 </script>
 
 <template>
@@ -129,18 +134,24 @@ function shortId(id: string): string { return id.length > 10 ? id.slice(0, 8) : 
           <div class="text-xs text-neutral-500">{{ t('smtp_logs.cards.deliveries') }}</div>
           <div class="text-xl font-semibold">{{ summary.deliveries }}</div>
         </div>
-        <div class="bg-surface border border-success-200 rounded-lg shadow-sm p-3">
+        <button type="button" @click="toggleStatus('delivered')" :title="t('smtp_logs.filter_by_status')"
+          class="text-left bg-surface border rounded-lg shadow-sm p-3 cursor-pointer transition hover:shadow"
+          :class="filter.status === 'delivered' ? 'border-success-500 ring-2 ring-success-500/30' : 'border-success-200'">
           <div class="text-xs text-success-700">{{ t('smtp_logs.status.delivered') }}</div>
           <div class="text-xl font-semibold text-success-700">{{ summary.by_status.delivered ?? 0 }}</div>
-        </div>
-        <div class="bg-surface border border-warning-200 rounded-lg shadow-sm p-3">
+        </button>
+        <button type="button" @click="toggleStatus('deferred')" :title="t('smtp_logs.filter_by_status')"
+          class="text-left bg-surface border rounded-lg shadow-sm p-3 cursor-pointer transition hover:shadow"
+          :class="filter.status === 'deferred' ? 'border-warning-500 ring-2 ring-warning-500/30' : 'border-warning-200'">
           <div class="text-xs text-warning-600">{{ t('smtp_logs.status.deferred') }}</div>
           <div class="text-xl font-semibold text-warning-600">{{ summary.by_status.deferred ?? 0 }}</div>
-        </div>
-        <div class="bg-surface border border-danger-200 rounded-lg shadow-sm p-3">
+        </button>
+        <button type="button" @click="toggleStatus('rejected_error')" :title="t('smtp_logs.filter_by_status')"
+          class="text-left bg-surface border rounded-lg shadow-sm p-3 cursor-pointer transition hover:shadow"
+          :class="filter.status === 'rejected_error' ? 'border-danger-500 ring-2 ring-danger-500/30' : 'border-danger-200'">
           <div class="text-xs text-danger-700">{{ t('smtp_logs.status.rejected') }}</div>
           <div class="text-xl font-semibold text-danger-700">{{ (summary.by_status.rejected ?? 0) + (summary.by_status.error ?? 0) }}</div>
-        </div>
+        </button>
         <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-3">
           <div class="text-xs text-neutral-500">{{ t('smtp_logs.cards.submissions') }}</div>
           <div class="text-xl font-semibold">{{ summary.submissions }}</div>
@@ -178,6 +189,7 @@ function shortId(id: string): string { return id.length > 10 ? id.slice(0, 8) : 
           <option value="deferred">{{ t('smtp_logs.status.deferred') }}</option>
           <option value="rejected">{{ t('smtp_logs.status.rejected') }}</option>
           <option value="error">{{ t('smtp_logs.status.error') }}</option>
+          <option value="rejected_error">{{ t('smtp_logs.status.rejected_error') }}</option>
         </select>
         <input v-model="filter.date_from" type="date" class="h-9 px-2 border border-neutral-300 rounded-md bg-surface text-sm" />
         <span class="text-neutral-400 text-sm">–</span>

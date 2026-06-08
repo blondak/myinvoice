@@ -2530,6 +2530,7 @@
     "search_ph": "Hledat příjemce, odesílatele, server, IP, text odpovědi…",
     "all_kinds": "Vše (typ)",
     "all_statuses": "Všechny stavy",
+    "filter_by_status": "Filtrovat podle stavu (klikni pro zapnutí/vypnutí)",
     "refresh": "Obnovit",
     "total": "Celkem {n} událostí · strana {p} / {tp}",
     "no_records": "Žádné události neodpovídají filtru.",
@@ -2565,6 +2566,7 @@
       "deferred": "Odloženo",
       "rejected": "Odmítnuto",
       "error": "Chyba",
+      "rejected_error": "Odmítnuté + chyby",
       "info": "Info"
     }
   },

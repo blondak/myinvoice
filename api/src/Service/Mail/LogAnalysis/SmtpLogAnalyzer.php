@@ -691,7 +691,12 @@ final class SmtpLogAnalyzer
             $day = substr($e->ts, 0, 10);
             if ($from !== '' && $day < $from) return false;
             if ($to !== '' && $day > $to) return false;
-            if ($status !== '' && $e->status !== $status) return false;
+            // 'rejected_error' = složený filtr karty „Odmítnuto" (rejected + error).
+            if ($status === 'rejected_error') {
+                if ($e->status !== SmtpLogEvent::STATUS_REJECTED && $e->status !== SmtpLogEvent::STATUS_ERROR) return false;
+            } elseif ($status !== '' && $e->status !== $status) {
+                return false;
+            }
             if ($kind !== '' && $e->kind !== $kind) return false;
             if ($search !== '') {
                 $hay = mb_strtolower(implode(' ', [
