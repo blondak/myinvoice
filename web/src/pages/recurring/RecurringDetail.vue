@@ -306,6 +306,12 @@ async function removeAction() {
         </div>
       </div>
 
+      <!-- Poznámka nad položkami -->
+      <div v-if="tpl.note_above_items" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('invoice.note_above') }}</h3>
+        <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ tpl.note_above_items }}</p>
+      </div>
+
       <!-- Položky šablony -->
       <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-neutral-200">
@@ -351,6 +357,12 @@ async function removeAction() {
             </div>
           </dl>
         </div>
+      </div>
+
+      <!-- Poznámka pod položkami -->
+      <div v-if="tpl.note_below_items" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('invoice.note_below') }}</h3>
+        <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ tpl.note_below_items }}</p>
       </div>
 
       <!-- Vygenerované faktury -->

@@ -1372,6 +1372,12 @@ async function updateApprovalStatus() {
       </div>
     </div>
 
+    <!-- Poznámka nad položkami -->
+    <div v-if="invoice.note_above_items" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('invoice.note') }}</h3>
+      <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ invoice.note_above_items }}</p>
+    </div>
+
     <!-- Položky -->
     <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <div class="px-5 py-3 border-b border-neutral-200">
