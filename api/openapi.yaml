@@ -3018,9 +3018,14 @@ paths:
   /api/v1/crm/action-items:
     get:
       tags: [CRM]
-      summary: Daily TODO (overdue, recurring due, tax deadlines, churn)
+      summary: Daily TODO (overdue, bank unmatched, recurring due, payables, purchase drafts, tax/SHV deadlines, churn)
+      description: |
+        Vrací položky `items[]` (typ `type`: `overdue_invoices`, `bank_unmatched`,
+        `recurring_due`, `overdue_payables`, `purchase_drafts`, `tax_deadline`,
+        `shv_deadline`, `churn_risk`), každá s `severity`, `title`, `hint`, `link`
+        a volitelně `count`/`days`. Plus `total` a `dismissed_count`.
       parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
-      responses: { '200': { description: 'items + total' } }
+      responses: { '200': { description: 'items + total + dismissed_count' } }
 
   /api/v1/crm/cash-flow-forecast:
     get:
@@ -4875,6 +4880,22 @@ components:
         unpaid_upcoming:
           type: array
           items: { $ref: '#/components/schemas/Invoice' }
+        draft_invoices:
+          type: array
+          description: "Rozpracované (status=draft) vystavené faktury pro widget Výkazy práce na Přehledu — firma + zakázka + odkaz na editaci. Max 24, řazeno dle updated_at DESC."
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              varsymbol: { type: string, nullable: true }
+              invoice_type: { type: string }
+              client_id: { type: integer }
+              client_company_name: { type: string }
+              project_id: { type: integer, nullable: true }
+              project_name: { type: string, nullable: true, description: "Název zakázky (NULL = bez zakázky)." }
+              currency: { type: string }
+              issue_date: { type: string, format: date }
+              total_with_vat: { type: number }
         top_clients_ytd:
           type: array
           description: "Top 12 klientů YTD per měna."

@@ -8,7 +8,7 @@ import { crmApi, type CrmKpi, type CrmOverview, type CrmMonthlyRow, type TopClie
   type AgingBucket, type DsoResult, type PunctualityResult, type ConcentrationResult,
   type VendorConcentrationResult,
   type ExpenseCategoryRow, type RevenueCategoryRow, type ChurnRiskClient,
-  type ActionItemsResult, type CashFlowResult, type LateRiskClient,
+  type CashFlowResult, type LateRiskClient,
   type ReminderEffectiveness, type PaymentTimeHistogram, type CrmYearlyRow } from '@/api/crm'
 import { formatMoney } from '@/composables/useFormat'
 import { apiErrorMessage } from '@/api/errors'
@@ -36,39 +36,12 @@ const dpo = ref<DsoResult | null>(null)
 const expenses = ref<ExpenseCategoryRow[]>([])
 const revenues = ref<RevenueCategoryRow[]>([])
 const churn = ref<ChurnRiskClient[]>([])
-const actionItems = ref<ActionItemsResult | null>(null)
 const cashFlow = ref<CashFlowResult | null>(null)
 const lateRisk = ref<LateRiskClient[]>([])
 const reminderEff = ref<ReminderEffectiveness | null>(null)
 const paymentHist = ref<PaymentTimeHistogram | null>(null)
 const loading = ref(true)
 const recomputing = ref(false)
-const openMenuIdx = ref<number | null>(null)
-
-function toggleMenu(idx: number) {
-  openMenuIdx.value = openMenuIdx.value === idx ? null : idx
-}
-
-async function dismissItem(itemType: string, mode: 'day' | 'week' | 'forever' | 'historical') {
-  try {
-    await crmApi.dismissActionItem(itemType, mode)
-    openMenuIdx.value = null
-    actionItems.value = await crmApi.actionItems()
-    toast.success(t('crm.action_items.dismissed'))
-  } catch (e) {
-    toast.error(apiErrorMessage(e))
-  }
-}
-
-async function restoreAllDismissed() {
-  try {
-    const r = await crmApi.restoreAllActionItems()
-    actionItems.value = await crmApi.actionItems()
-    toast.success(t('crm.action_items.restored_n', { n: r.restored }))
-  } catch (e) {
-    toast.error(apiErrorMessage(e))
-  }
-}
 
 // Filters
 const periodMonths = ref(12)
@@ -94,7 +67,7 @@ async function loadAll() {
     // U „Vše" neposíláme měnu (cur=undefined) → endpointy vrátí všechny měny a
     // agregaci do CZK uděláme klientsky přes *_czk pole.
     const cur = (currencyFilter.value && currencyFilter.value !== ALL_CURRENCIES) ? currencyFilter.value : undefined
-    const [ov, mo, yr, tc, tv, ar, ap, d, p, conc, vc, dp, exp, rev, ch, ai, cf, lr, re, ph, m24] = await Promise.all([
+    const [ov, mo, yr, tc, tv, ar, ap, d, p, conc, vc, dp, exp, rev, ch, cf, lr, re, ph, m24] = await Promise.all([
       crmApi.overview(),
       crmApi.monthly(periodMonths.value, cur),
       crmApi.yearly(cur),
@@ -110,7 +83,6 @@ async function loadAll() {
       crmApi.expenseBreakdown(periodMonths.value, cur),
       crmApi.revenueBreakdown(periodMonths.value, cur),
       crmApi.churnRisk(60, 10),
-      crmApi.actionItems(),
       crmApi.cashFlowForecast(4, cur || 'CZK'),
       crmApi.lateRisk(10),
       crmApi.reminderEffectiveness(periodMonths.value),
@@ -132,7 +104,6 @@ async function loadAll() {
     expenses.value = exp
     revenues.value = rev
     churn.value = ch
-    actionItems.value = ai
     cashFlow.value = cf
     lateRisk.value = lr
     reminderEff.value = re
@@ -455,82 +426,7 @@ onMounted(loadAll)
     </div>
 
     <div v-else class="space-y-4">
-      <!-- ═══ Action items widget (daily TODO) ═══ -->
-      <div v-if="actionItems && actionItems.total > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm">
-        <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between bg-gradient-to-r from-primary-50 to-white rounded-t-lg">
-          <h3 class="text-sm font-semibold uppercase tracking-wide text-primary-700">
-            ⚡ {{ t('crm.action_items.title') }}
-            <span class="ml-2 px-1.5 py-0.5 bg-primary-600 text-white rounded text-xs">{{ actionItems.total }}</span>
-          </h3>
-          <button v-if="actionItems.dismissed_count > 0 && auth.canWrite" type="button" @click="restoreAllDismissed"
-            class="text-xs text-neutral-500 hover:text-primary-600 underline decoration-dotted">
-            {{ t('crm.action_items.restore_n', { n: actionItems.dismissed_count }) }}
-          </button>
-        </header>
-        <div class="divide-y divide-neutral-100">
-          <div v-for="(item, idx) in actionItems.items" :key="idx"
-            class="relative flex items-center justify-between px-5 py-3 hover:bg-neutral-50">
-            <RouterLink :to="item.link" class="flex items-center gap-3 flex-1 min-w-0">
-              <span :class="['inline-block w-2.5 h-2.5 rounded-full shrink-0',
-                item.severity === 'high' ? 'bg-danger-500' :
-                item.severity === 'medium' ? 'bg-warning-500' : 'bg-neutral-400']"></span>
-              <div class="min-w-0">
-                <div class="text-sm font-medium text-neutral-700">{{ item.title }}</div>
-                <div class="text-xs text-neutral-500 mt-0.5">{{ item.hint }}</div>
-              </div>
-            </RouterLink>
-            <div class="flex items-center gap-1 ml-3 shrink-0">
-              <RouterLink :to="item.link" class="text-neutral-400 hover:text-neutral-600 p-1" :title="t('crm.action_items.go_to')">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-              </RouterLink>
-              <button v-if="auth.canWrite" type="button" @click.stop="toggleMenu(idx)"
-                class="text-neutral-400 hover:text-neutral-700 p-1 rounded hover:bg-neutral-100"
-                :title="t('crm.action_items.dismiss')">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-              </button>
-              <div v-if="(openMenuIdx === idx) && auth.canWrite"
-                class="absolute right-3 top-12 z-20 bg-surface border border-neutral-200 rounded-md shadow-lg py-1 w-[280px]"
-                @click.stop>
-                <div class="px-3 py-1.5 text-xs uppercase tracking-wide text-neutral-500 font-semibold border-b border-neutral-100">
-                  {{ t('crm.action_items.dismiss_title') }}
-                </div>
-                <button type="button" @click="dismissItem(item.type, 'day')"
-                  class="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 text-neutral-700">
-                  {{ t('crm.action_items.dismiss_day') }}
-                  <div class="text-xs text-neutral-400">{{ t('crm.action_items.dismiss_day_hint') }}</div>
-                </button>
-                <button type="button" @click="dismissItem(item.type, 'week')"
-                  class="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 text-neutral-700">
-                  {{ t('crm.action_items.dismiss_week') }}
-                  <div class="text-xs text-neutral-400">{{ t('crm.action_items.dismiss_week_hint') }}</div>
-                </button>
-                <button type="button" @click="dismissItem(item.type, 'historical')"
-                  class="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 text-neutral-700">
-                  {{ t('crm.action_items.dismiss_historical') }}
-                  <div class="text-xs text-neutral-400">{{ t('crm.action_items.dismiss_historical_hint') }}</div>
-                </button>
-                <button type="button" @click="dismissItem(item.type, 'forever')"
-                  class="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 text-danger-600 border-t border-neutral-100">
-                  {{ t('crm.action_items.dismiss_forever') }}
-                  <div class="text-xs text-neutral-400">{{ t('crm.action_items.dismiss_forever_hint') }}</div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══ Standalone restore hint — pro případ že total=0 ale jsou skryté ═══ -->
-      <div v-else-if="actionItems && actionItems.dismissed_count > 0"
-        class="bg-neutral-50 border border-neutral-200 rounded-lg px-4 py-2 flex items-center justify-between text-sm">
-        <span class="text-neutral-500">
-          {{ t('crm.action_items.all_clear_n_hidden', { n: actionItems.dismissed_count }) }}
-        </span>
-        <button v-if="auth.canWrite" type="button" @click="restoreAllDismissed"
-          class="text-xs text-primary-600 hover:text-primary-700 underline decoration-dotted">
-          {{ t('crm.action_items.restore_n', { n: actionItems.dismissed_count }) }}
-        </button>
-      </div>
+      <!-- Akce pro tebe se přesunuly na Přehled (Dashboard) — viz ActionItemsWidget. -->
 
       <!-- ═══ Headline KPI — aktuální měsíc + YTD (nezávislé na zvoleném období) ═══ -->
       <div>
@@ -1076,7 +972,7 @@ onMounted(loadAll)
         </div>
 
         <!-- Churn risk -->
-        <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+        <div id="churn-risk" class="scroll-mt-20 bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
           <header class="px-5 py-3 border-b border-neutral-200">
             <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               {{ t('crm.churn.title') }}

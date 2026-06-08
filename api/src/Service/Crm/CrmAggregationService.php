@@ -916,8 +916,43 @@ final class CrmAggregationService
                 'title'    => 'Pošli upomínky',
                 'hint'     => sprintf('%d %s po splatnosti', $overdueCount,
                     $overdueCount === 1 ? 'faktura' : ($overdueCount < 5 ? 'faktury' : 'faktur')),
-                'link'     => '/invoices?status=overdue',
+                'link'     => '/invoices?overdue=1',
                 'count'    => $overdueCount,
+            ];
+        }
+
+        // 1b. Nespárované příchozí platby z banky — spáruj s vystavenými fakturami.
+        // Scope banky je přes account_number z currencies dodavatele (bank_statements
+        // nemá supplier_id) — stejný predikát jako BankStatementAction::list().
+        // Jen příchozí (amount > 0) za posledních 90 dní, aby se nevynořovaly prastaré
+        // vlastní převody/poplatky; starší šum lze i tak skrýt přes dismiss „historická".
+        $stmt = $pdo->prepare(
+            "SELECT bt.id FROM bank_transactions bt
+               JOIN bank_statements bs ON bs.id = bt.statement_id
+              WHERE bt.match_status = 'unmatched'
+                AND bt.amount > 0
+                AND bt.posted_at >= DATE_SUB(?, INTERVAL 90 DAY)
+                AND EXISTS (
+                    SELECT 1 FROM currencies cur
+                     WHERE cur.supplier_id = ?
+                       AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                         = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                       AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                )"
+        );
+        $stmt->execute([$today, $supplierId]);
+        $bankIds = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+        $bankIds = $this->filterByDismissal($bankIds, $dismissals, 'bank_unmatched');
+        $bankCount = count($bankIds);
+        if ($bankCount > 0) {
+            $items[] = [
+                'type'     => 'bank_unmatched',
+                'severity' => $bankCount > 5 ? 'high' : 'medium',
+                'title'    => 'Spáruj platby z banky',
+                'hint'     => sprintf('%d nespárovaných příchozích %s z výpisů', $bankCount,
+                    $bankCount === 1 ? 'platba' : ($bankCount < 5 ? 'platby' : 'plateb')),
+                'link'     => '/bank',
+                'count'    => $bankCount,
             ];
         }
 
@@ -969,6 +1004,27 @@ final class CrmAggregationService
             ];
         }
 
+        // 3b. Koncepty přijatých faktur — naimportované (API/AI/PDF) zůstávají ve stavu
+        // draft kvůli upomínkám/kontrole; vyzvi k revizi a zaúčtování.
+        $stmt = $pdo->prepare(
+            "SELECT id FROM purchase_invoices WHERE supplier_id = ? AND status = 'draft'"
+        );
+        $stmt->execute([$supplierId]);
+        $purchaseDraftIds = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+        $purchaseDraftIds = $this->filterByDismissal($purchaseDraftIds, $dismissals, 'purchase_drafts');
+        $purchaseDraftCount = count($purchaseDraftIds);
+        if ($purchaseDraftCount > 0) {
+            $items[] = [
+                'type'     => 'purchase_drafts',
+                'severity' => 'low',
+                'title'    => 'Zkontroluj koncepty přijatých faktur',
+                'hint'     => sprintf('%d %s čeká na revizi/zaúčtování', $purchaseDraftCount,
+                    $purchaseDraftCount === 1 ? 'koncept' : ($purchaseDraftCount < 5 ? 'koncepty' : 'konceptů')),
+                'link'     => '/purchase-invoices?status=draft',
+                'count'    => $purchaseDraftCount,
+            ];
+        }
+
         // 4. Reports deadlines — DPH/KH/SH se podávají 25. následujícího měsíce
         // (date-based, historical mode chová se jako forever na aktuální měsíc)
         if (!$this->isFullyDismissed($dismissals, 'tax_deadline')) {
@@ -1000,6 +1056,58 @@ final class CrmAggregationService
             }
         }
 
+        // 4b. Souhrnné hlášení (SH) — také se podává 25. následujícího měsíce, ale JEN
+        // pokud za uplynulý měsíc existují EU B2B plnění (dodání zboží/služeb do JČS
+        // plátci s DIČ, kódy 20/22/31 nebo reverse charge na EU odběratele). Bez nich
+        // se SH nepodává — proto se akce zobrazí jen když je co reportovat.
+        // Pozn.: kontrolujeme měsíční periodu; čtvrtletní filtry (jen služby) mohou být
+        // mírně přepomenuty, lze skrýt přes dismiss.
+        if (!$this->isFullyDismissed($dismissals, 'shv_deadline')) {
+            $now = new \DateTimeImmutable($today);
+            $deadlineDate = sprintf('%04d-%02d-25', (int) $now->format('Y'), (int) $now->format('n'));
+            $daysToDeadline = (int) $now->diff(new \DateTimeImmutable($deadlineDate))->format('%r%a');
+            if ($daysToDeadline >= -3 && $daysToDeadline <= 7) {
+                $prevMonth = $now->modify('first day of last month');
+                $periodStart = $prevMonth->format('Y-m-01');
+                $periodEnd = $prevMonth->format('Y-m-t');
+                $stmt = $pdo->prepare(
+                    "SELECT 1
+                       FROM invoices i
+                       JOIN clients c ON c.id = i.client_id
+                  LEFT JOIN countries co ON co.id = c.country_id
+                       JOIN invoice_items ii ON ii.invoice_id = i.id
+                      WHERE i.supplier_id = ?
+                        AND i.status IN ('issued','sent','reminded','paid')
+                        AND i.invoice_type IN ('invoice','credit_note')
+                        AND COALESCE(co.is_eu, 0) = 1
+                        AND COALESCE(co.iso2, 'CZ') <> 'CZ'
+                        AND c.dic IS NOT NULL AND c.dic <> ''
+                        AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
+                        AND (
+                              COALESCE(ii.vat_classification_code, i.vat_classification_code) IN ('20','22','31')
+                              OR i.reverse_charge = 1
+                        )
+                      LIMIT 1"
+                );
+                $stmt->execute([$supplierId, $periodStart, $periodEnd]);
+                $hasEuSupplies = (bool) $stmt->fetchColumn();
+                if ($hasEuSupplies) {
+                    $items[] = [
+                        'type'     => 'shv_deadline',
+                        'severity' => $daysToDeadline < 0 ? 'high' : ($daysToDeadline <= 2 ? 'high' : 'medium'),
+                        'title'    => 'Souhrnné hlášení za uplynulý měsíc',
+                        'hint'     => $daysToDeadline < 0
+                            ? sprintf('Termín byl %d dní zpět — podej co nejdříve!', abs($daysToDeadline))
+                            : sprintf('Máš EU plnění — termín podání za %d %s (do %s)', $daysToDeadline,
+                                $daysToDeadline === 1 ? 'den' : ($daysToDeadline < 5 ? 'dny' : 'dní'),
+                                $deadlineDate),
+                        'link'     => '/reports/shv',
+                        'days'     => $daysToDeadline,
+                    ];
+                }
+            }
+        }
+
         // 5. Klienti dlouho bez objednávky (90+ dní)
         $stmt = $pdo->prepare(
             "WITH last_invoice AS (
@@ -1024,7 +1132,7 @@ final class CrmAggregationService
                 'title'    => 'Kontaktuj neaktivní klienty',
                 'hint'     => sprintf('%d %s 90+ dní bez objednávky', $churnCount,
                     $churnCount === 1 ? 'klient je' : 'klientů je'),
-                'link'     => '/crm',
+                'link'     => '/crm#churn-risk',
                 'count'    => $churnCount,
             ];
         }

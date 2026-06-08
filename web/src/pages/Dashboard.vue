@@ -10,6 +10,8 @@ import { formatMoney, formatDate } from '@/composables/useFormat'
 import SparklineChart from '@/components/charts/SparklineChart.vue'
 import TopClientsPieChart from '@/components/charts/TopClientsPieChart.vue'
 import TaxNetWidget from '@/components/dashboard/TaxNetWidget.vue'
+import ActionItemsWidget from '@/components/dashboard/ActionItemsWidget.vue'
+import WorkReportModal from '@/components/modals/WorkReportModal.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -19,7 +21,7 @@ const summary = ref<DashboardSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
 
-onMounted(async () => {
+async function loadSummary() {
   try {
     summary.value = await dashboardApi.summary()
   } catch (e: any) {
@@ -27,7 +29,17 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadSummary)
+
+// Výkaz práce modal — otevíráno z tlačítka „Výkaz" na kartě konceptu (stejný popup jako v /invoices).
+const wrModalOpen = ref(false)
+const wrModalInvoiceId = ref(0)
+function openWorkReport(id: number) {
+  wrModalInvoiceId.value = id
+  wrModalOpen.value = true
+}
 
 const kpiGridCols = computed(() => {
   if (!summary.value) return 'lg:grid-cols-6'
@@ -119,6 +131,52 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
     </div>
 
     <div v-else-if="summary && summary.kpi" class="space-y-6">
+      <!-- ═══ Akce pro tebe (přesunuto z CRM) — první část Přehledu ═══ -->
+      <ActionItemsWidget />
+
+      <!-- ═══ Výkazy práce — rozpracované (draft) vystavené faktury k doplnění ═══ -->
+      <section v-if="summary.draft_invoices && summary.draft_invoices.length" class="space-y-3">
+        <h2 class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-700">
+            {{ t('dashboard.work_reports.title') }}
+          </span>
+          <span class="text-xs text-neutral-400">{{ t('dashboard.work_reports.hint') }}</span>
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div v-for="d in summary.draft_invoices" :key="d.id"
+            class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm flex flex-col gap-2">
+            <div class="flex items-start justify-between gap-2">
+              <RouterLink :to="`/clients/${d.client_id}`" class="font-medium text-neutral-900 hover:text-primary-700 hover:underline truncate" :title="d.client_company_name">
+                {{ d.client_company_name }}
+              </RouterLink>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 uppercase tracking-wide font-medium whitespace-nowrap">
+                {{ t('status.draft') }}
+              </span>
+            </div>
+            <div class="text-xs text-neutral-500 min-h-[1rem] truncate" :title="d.project_name || ''">
+              <span v-if="d.project_name">📁 {{ d.project_name }}</span>
+              <span v-else class="text-neutral-300">{{ t('dashboard.work_reports.no_project') }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-2 mt-auto pt-2 border-t border-neutral-100">
+              <span class="text-xs font-mono text-neutral-600 truncate">
+                <span v-if="d.varsymbol">{{ d.varsymbol }} · </span>{{ formatMoney(d.total_with_vat, d.currency) }}
+              </span>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <RouterLink :to="`/invoices/${d.id}/edit`"
+                  class="inline-flex items-center justify-center h-7 px-2.5 rounded-md border border-neutral-300 text-neutral-700 hover:bg-neutral-50 text-xs font-medium">
+                  {{ t('common.edit') }}
+                </RouterLink>
+                <button type="button" @click="openWorkReport(d.id)"
+                  class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                  {{ t('dashboard.work_reports.button') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Daňový widget „co mi zbyde" — jen pro OSVČ (komponenta se sama skryje jinak) -->
       <TaxNetWidget />
 
@@ -534,5 +592,11 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
       </div>
       </div>
     </div>
+
+    <!-- Výkaz práce modal — otevřený z tlačítka „Výkaz" na kartě konceptu. -->
+    <WorkReportModal v-if="wrModalInvoiceId > 0"
+      v-model="wrModalOpen"
+      :invoice-id="wrModalInvoiceId"
+      @saved="loadSummary" />
   </div>
 </template>

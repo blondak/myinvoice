@@ -496,14 +496,26 @@ final class InvoiceRepository
         }
         if (!empty($filters['unpaid_only'])) {
             $where[] = "i.status IN ('issued','sent','reminded')";
-            $where[] = 'i.invoice_type IN ("invoice","credit_note")';
+            // Pohledávky = vše kromě proforem + NEZAPLACENÉ NESPÁROVANÉ proformy
+            // (zálohovky bez dceřiného ostrého dokladu) — ty jsou reálný dluh.
+            // Dřív filtr proformy zcela vynechával (IN invoice,credit_note), takže
+            // nezaplacené zálohové faktury se v "nezaplacené" vůbec neukázaly.
+            // Spárovaná proforma se vynechá, dluh nese ostrý doklad. Zrcadlí dashboard
+            // (receivableDocTypeSql) a InvoiceAmountPolicy.
+            $where[] = "(i.invoice_type != 'proforma'"
+                . " OR NOT EXISTS (SELECT 1 FROM invoices ch"
+                . " WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice'))";
             // Finální daňový doklad k zaplacené proformě má amount_to_pay = 0 by design
             // (záloha pokryla celek) — není nezaplacený, jen status zůstal 'issued'.
-            // Dobropisy (záporný total) ponecháváme. Zrcadlí dashboard a InvoiceAmountPolicy.
+            // Dobropisy (záporný total) ponecháváme.
             $where[] = "(i.invoice_type NOT IN ('invoice','proforma') OR i.amount_to_pay > 0)";
         }
         if (!empty($filters['overdue'])) {
             $where[] = "i.status IN ('issued','sent','reminded') AND i.due_date <= CURDATE()";
+            // Stejná pohledávková sémantika jako unpaid (vč. nespárovaných proforem).
+            $where[] = "(i.invoice_type != 'proforma'"
+                . " OR NOT EXISTS (SELECT 1 FROM invoices ch"
+                . " WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice'))";
             $where[] = "(i.invoice_type NOT IN ('invoice','proforma') OR i.amount_to_pay > 0)";
         }
         if (!empty($filters['q'])) {

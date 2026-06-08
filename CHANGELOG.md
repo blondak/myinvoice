@@ -5,6 +5,23 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.0] — 2026-06-09
+
+### Added
+
+- **„Akce pro tebe" jsou nově na Přehledu (Dashboard) — jako první sekce.** Denní TODO seznam se přesunul z CRM dashboardu na úvodní Přehled, kde ho uvidíš hned po přihlášení. Logika (skrytí na den/týden/navždy/pro historická data i obnovení) zůstává beze změny; widget je vytažen do samostatné komponenty `ActionItemsWidget`.
+- **Nová sekce „Výkazy práce" na Přehledu.** Pokud máš rozpracované (koncept) vydané faktury, zobrazí se jako karty vedle sebe s **firmou** a **zakázkou**. Každá karta má tlačítko **Upravit** (otevře editor faktury) a **Výkaz** (otevře přímo popup výkazu práce — stejný jako v seznamu vydaných faktur), takže rozdělanou práci doplníš na jedno kliknutí.
+- **Tři nové akce v „Akce pro tebe":**
+  - **Spáruj platby z banky** → nespárované příchozí platby z bankovních výpisů (za posledních 90 dní) čekající na přiřazení k faktuře.
+  - **Zkontroluj koncepty přijatých faktur** → naimportované přijaté faktury (API / AI / PDF) zůstávají ve stavu koncept; připomene jejich revizi a zaúčtování.
+  - **Souhrnné hlášení za uplynulý měsíc** → upozornění na termín podání SH (25. dne), ale jen když za uplynulý měsíc skutečně existují EU plnění (jinak se SH nepodává a akce se nezobrazí).
+
+### Fixed
+
+- **Filtr „Nezaplacené" (`/invoices?unpaid=1`) nezobrazoval nezaplacené zálohové (proforma) faktury.** Filtr je vylučoval úplně; nově ukazuje i nezaplacené **nespárované** proformy (zálohovky bez navázaného finálního dokladu) — stejná pohledávková logika jako na dashboardu. Sjednoceno i s filtrem „Po splatnosti".
+- **Akce „Pošli upomínky" vedla na nefunkční odkaz.** Mířila na `/invoices?status=overdue` (neplatná hodnota stavu → prázdný seznam); nově správně na `/invoices?overdue=1`.
+- **Akce „Kontaktuj neaktivní klienty" nikam nevedla.** Místo obecného `/crm` teď skočí přímo na sekci „Riziko odchodu klientů" (kotva `#churn-risk`).
+
 ## [4.19.7] — 2026-06-08
 
 ### Fixed

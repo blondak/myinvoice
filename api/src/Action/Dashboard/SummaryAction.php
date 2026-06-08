@@ -50,6 +50,7 @@ final class SummaryAction
             'kpi'                    => $this->kpi($pdo, $year, $prevYear, $sid, $isVatPayer),
             'overdue'                => $this->overdue($pdo, $sid),
             'unpaid_upcoming'        => $this->unpaidUpcoming($pdo, $sid),
+            'draft_invoices'         => $this->draftInvoices($pdo, $sid),
             'top_clients_ytd'        => $this->topClients($pdo, $year, $sid, $isVatPayer),
             'top_clients_prev_year'  => $this->topClients($pdo, $prevYear, $sid, $isVatPayer),
             'top_clients_12m'        => $this->topClientsRolling12m($pdo, $sid, $isVatPayer),
@@ -594,6 +595,41 @@ final class SummaryAction
         $stmt->execute([$sid]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         return array_map(fn (array $r) => $this->castListItem($r), $rows);
+    }
+
+    /**
+     * Rozpracované (draft) vystavené faktury — pro widget „Výkazy práce" na Přehledu.
+     * Vrací firmu + zakázku (projekt) + tlačítko Výkaz vede na editaci dokladu.
+     * @return list<array<string,mixed>>
+     */
+    private function draftInvoices(\PDO $pdo, int $sid): array
+    {
+        $sql = "SELECT i.id, i.varsymbol, i.invoice_type, i.client_id, cur.code AS currency,
+                       i.issue_date, i.total_with_vat, i.project_id,
+                       c.company_name AS client_company_name,
+                       p.name AS project_name
+                  FROM invoices i
+                  JOIN clients c ON c.id = i.client_id
+                  JOIN currencies cur ON cur.id = i.currency_id
+             LEFT JOIN projects p ON p.id = i.project_id
+                 WHERE i.supplier_id = ?
+                   AND i.status = 'draft'
+                 ORDER BY i.updated_at DESC, i.id DESC
+                 LIMIT 24";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$sid]);
+        return array_map(static fn (array $r) => [
+            'id'                  => (int) $r['id'],
+            'varsymbol'           => $r['varsymbol'],
+            'invoice_type'        => $r['invoice_type'],
+            'client_id'           => (int) $r['client_id'],
+            'client_company_name' => $r['client_company_name'],
+            'project_id'          => $r['project_id'] !== null ? (int) $r['project_id'] : null,
+            'project_name'        => $r['project_name'],
+            'currency'            => $r['currency'],
+            'issue_date'          => $r['issue_date'],
+            'total_with_vat'      => (float) $r['total_with_vat'],
+        ], $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: []);
     }
 
     private function topClients(\PDO $pdo, int $year, int $sid, bool $isVatPayer): array
