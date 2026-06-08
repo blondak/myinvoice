@@ -12,6 +12,8 @@ import { crmApi, type CrmKpi, type CrmOverview, type CrmMonthlyRow, type TopClie
   type ReminderEffectiveness, type PaymentTimeHistogram, type CrmYearlyRow } from '@/api/crm'
 import { formatMoney } from '@/composables/useFormat'
 import { apiErrorMessage } from '@/api/errors'
+import RevenueChart from '@/components/charts/RevenueChart.vue'
+import CumulativeYtdChart from '@/components/charts/CumulativeYtdChart.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -19,6 +21,8 @@ const toast = useToast()
 
 const overview = ref<CrmOverview | null>(null)
 const monthly = ref<CrmMonthlyRow[]>([])
+// Stabilní 24měsíční řada pro grafy zisku (12 m + loňské okno) — nezávislá na přepínači období.
+const monthly24 = ref<CrmMonthlyRow[]>([])
 const yearly = ref<CrmYearlyRow[]>([])
 const topClients = ref<TopClient[]>([])
 const topVendors = ref<TopVendor[]>([])
@@ -90,7 +94,7 @@ async function loadAll() {
     // U „Vše" neposíláme měnu (cur=undefined) → endpointy vrátí všechny měny a
     // agregaci do CZK uděláme klientsky přes *_czk pole.
     const cur = (currencyFilter.value && currencyFilter.value !== ALL_CURRENCIES) ? currencyFilter.value : undefined
-    const [ov, mo, yr, tc, tv, ar, ap, d, p, conc, vc, dp, exp, rev, ch, ai, cf, lr, re, ph] = await Promise.all([
+    const [ov, mo, yr, tc, tv, ar, ap, d, p, conc, vc, dp, exp, rev, ch, ai, cf, lr, re, ph, m24] = await Promise.all([
       crmApi.overview(),
       crmApi.monthly(periodMonths.value, cur),
       crmApi.yearly(cur),
@@ -111,6 +115,7 @@ async function loadAll() {
       crmApi.lateRisk(10),
       crmApi.reminderEffectiveness(periodMonths.value),
       crmApi.paymentTimeHistogram(periodMonths.value),
+      crmApi.monthly(24, cur),
     ])
     overview.value = ov
     monthly.value = mo
@@ -132,6 +137,7 @@ async function loadAll() {
     lateRisk.value = lr
     reminderEff.value = re
     paymentHist.value = ph
+    monthly24.value = m24
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -181,27 +187,137 @@ function aggregateCzk(rows: CrmKpi[]): CrmKpi {
 // (KPI dlaždice ukáže 0 ve zvolené měně). Dřív fallback na current_month[0] zobrazil
 // částku JINÉ měny (typicky CZK, řazeno currency ASC) pod labelem zvolené měny —
 // "579 481,93 USD" místo 0 USD, když USD nemá v aktuálním měsíci žádnou fakturu.
-const currentMonthKpi = computed(() => {
-  if (!overview.value) return null
-  if (currencyFilter.value === ALL_CURRENCIES) return aggregateCzk(overview.value.current_month)
-  return overview.value.current_month.find(k => k.currency === currencyFilter.value) || null
-})
-const lastMonthKpi = computed(() => {
-  if (!overview.value) return null
-  if (currencyFilter.value === ALL_CURRENCIES) return aggregateCzk(overview.value.last_month)
-  return overview.value.last_month.find(k => k.currency === currencyFilter.value) || null
-})
-const ytdKpi = computed(() => {
-  if (!overview.value) return null
-  if (currencyFilter.value === ALL_CURRENCIES) return aggregateCzk(overview.value.ytd)
-  return overview.value.ytd.find(k => k.currency === currencyFilter.value) || null
-})
+// Vybere KPI řádek pro zvolenou měnu (nebo CZK-agregát u „Vše").
+// NEPADÁME na [0] fallback — když zvolená měna nemá za období data, vrať null
+// (KPI dlaždice ukáže 0 ve zvolené měně). Dřív fallback na [0] zobrazil částku JINÉ
+// měny (řazeno currency ASC) pod labelem zvolené měny.
+function pickKpi(rows: CrmKpi[] | undefined | null): CrmKpi | null {
+  if (!rows) return null
+  if (currencyFilter.value === ALL_CURRENCIES) return aggregateCzk(rows)
+  return rows.find(k => k.currency === currencyFilter.value) || null
+}
+const currentMonthKpi = computed(() => pickKpi(overview.value?.current_month))
+const lastMonthKpi    = computed(() => pickKpi(overview.value?.last_month))
+const ytdKpi          = computed(() => pickKpi(overview.value?.ytd))
+const last12mKpi      = computed(() => pickKpi(overview.value?.last_12m))
+const prev12mKpi      = computed(() => pickKpi(overview.value?.prev_12m))
+const prevYearFullKpi = computed(() => pickKpi(overview.value?.prev_year_full))
+const prevYearYtdKpi  = computed(() => pickKpi(overview.value?.prev_year_ytd))
 
 // Trend % vs last month
 function trendPct(current: number, last: number): number {
   if (last === 0) return current > 0 ? 100 : 0
   return Math.round(((current - last) / Math.abs(last)) * 100)
 }
+
+// Meziroční/období delta v %. null když není s čím srovnávat (base i current 0).
+function deltaPct(current?: number, base?: number): number | null {
+  const c = current ?? 0, b = base ?? 0
+  if (b === 0 && c === 0) return null
+  return trendPct(c, b)
+}
+
+// Marže v % (zisk / tržby). null když nulové tržby.
+function marginPct(profit?: number, revenue?: number): number | null {
+  if (!revenue || revenue === 0) return null
+  return ((profit ?? 0) / revenue) * 100
+}
+
+// YoY badge: směr + barva (upGood=true → růst zelený; u nákladů false → růst červený).
+function yoy(current?: number, base?: number, upGood = true) {
+  const pct = deltaPct(current, base)
+  if (pct === null) return { show: false, cls: '', arrow: '', abs: 0 }
+  const positive = pct >= 0
+  const good = upGood ? positive : !positive
+  return {
+    show: true,
+    cls: good ? 'text-success-600' : 'text-danger-500',
+    arrow: positive ? '▲' : '▼',
+    abs: Math.abs(pct),
+  }
+}
+
+// Předpočítané YoY odznaky pro karty (YTD vs stejné okno loni, 12m vs předch. 12m).
+const rev12Yoy     = computed(() => yoy(last12mKpi.value?.revenue, prev12mKpi.value?.revenue, true))
+const revYtdYoy    = computed(() => yoy(ytdKpi.value?.revenue, prevYearYtdKpi.value?.revenue, true))
+const cost12Yoy    = computed(() => yoy(last12mKpi.value?.costs, prev12mKpi.value?.costs, false))
+const costYtdYoy   = computed(() => yoy(ytdKpi.value?.costs, prevYearYtdKpi.value?.costs, false))
+const profit12Yoy  = computed(() => yoy(last12mKpi.value?.profit, prev12mKpi.value?.profit, true))
+const profitYtdYoy = computed(() => yoy(ytdKpi.value?.profit, prevYearYtdKpi.value?.profit, true))
+
+// Srovnávací tabulka období (tržby/náklady/zisk/marže) — nezávislá na přepínači období.
+const comparisonRows = computed(() => {
+  const mk = (key: string, label: string, k: CrmKpi | null) => ({
+    key,
+    label,
+    revenue: k?.revenue ?? 0,
+    costs: k?.costs ?? 0,
+    profit: k?.profit ?? 0,
+    margin: marginPct(k?.profit, k?.revenue),
+  })
+  return [
+    mk('this_month', t('crm.compare.this_month'), currentMonthKpi.value),
+    mk('last_month', t('crm.compare.last_month'), lastMonthKpi.value),
+    mk('last_12m',   t('crm.compare.last_12m'),   last12mKpi.value),
+    mk('ytd',        t('crm.compare.ytd'),        ytdKpi.value),
+    mk('prev_year',  t('crm.compare.prev_year'),  prevYearFullKpi.value),
+  ]
+})
+
+// ─── Proklik z tabulek do seznamů faktur (URL filtrační parametry year/month/from/to) ───
+// Seznamy /invoices i /purchase-invoices čtou stejné query klíče (viz loadFiltersFromQuery).
+function pad2(n: number): string { return String(n).padStart(2, '0') }
+function ymd(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+
+/** "2026-05" → { year:'2026', month:'5' } */
+function monthQuery(period: string): Record<string, string> {
+  const [y, m] = period.split('-')
+  return { year: y, month: String(Number(m)) }
+}
+
+/** Query pro řádek srovnávací tabulky (období → year/month nebo from/to). */
+function comparePeriodQuery(key: string): Record<string, string> {
+  const now = new Date()
+  const y = now.getFullYear()
+  switch (key) {
+    case 'this_month': return { year: String(y), month: String(now.getMonth() + 1) }
+    case 'last_month': {
+      const d = new Date(y, now.getMonth() - 1, 1)
+      return { year: String(d.getFullYear()), month: String(d.getMonth() + 1) }
+    }
+    case 'last_12m': {
+      const from = new Date(y, now.getMonth() - 11, 1)
+      const to = new Date(y, now.getMonth() + 1, 0) // poslední den aktuálního měsíce
+      return { from: ymd(from), to: ymd(to) }
+    }
+    case 'ytd': return { from: `${y}-01-01`, to: ymd(now) }
+    case 'prev_year': return { year: String(y - 1) }
+    default: return {}
+  }
+}
+
+// Data pro grafy zisku: 12 měsíců končících aktuálním + odpovídající okno o rok dříve.
+// Stabilní (z 24měsíční řady monthly24), nezávislé na přepínači období. Záporný zisk povolen.
+// U „Vše" agregujeme přes profit_czk (CZK), jinak nativní profit zvolené měny.
+const profitChartData = computed(() => {
+  const map = new Map<string, number>()
+  for (const m of monthly24.value) {
+    const val = currencyFilter.value === ALL_CURRENCIES ? m.profit_czk : m.profit
+    map.set(m.period, (map.get(m.period) || 0) + val)
+  }
+  const now = new Date()
+  const months: { ym: string; total: number }[] = []
+  const prevYear: { ym: string; total: number }[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    months.push({ ym, total: map.get(ym) || 0 })
+    const dp = new Date(d.getFullYear() - 1, d.getMonth(), 1)
+    const ymp = `${dp.getFullYear()}-${String(dp.getMonth() + 1).padStart(2, '0')}`
+    prevYear.push({ ym: ymp, total: map.get(ymp) || 0 })
+  }
+  return { months, prevYear }
+})
 
 // Měsíční řádky k zobrazení: u „Vše" agregujeme všechny měny per období do CZK
 // (přes *_czk pole), jinak vracíme server-filtrované řádky vybrané měny.
@@ -440,9 +556,22 @@ onMounted(loadAll)
               {{ Math.abs(trendPct(currentMonthKpi?.revenue || 0, lastMonthKpi.revenue)) }}%
             </span>
           </div>
-          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100">
-            <div>YTD: <span class="font-mono">{{ formatMoney(ytdKpi?.revenue || 0, displayCurrency) }}</span></div>
-            <div class="mt-0.5">{{ currentMonthKpi?.invoice_count || 0 }} {{ t('crm.kpi.invoices') }}</div>
+          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100 space-y-0.5">
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_12m_hint')">
+              <span>{{ t('crm.kpi.last_12m') }}</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(last12mKpi?.revenue || 0, displayCurrency) }}
+                <span v-if="rev12Yoy.show" class="ml-1" :class="rev12Yoy.cls">{{ rev12Yoy.arrow }}{{ rev12Yoy.abs }}%</span>
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_ytd_hint')">
+              <span>YTD</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(ytdKpi?.revenue || 0, displayCurrency) }}
+                <span v-if="revYtdYoy.show" class="ml-1" :class="revYtdYoy.cls">{{ revYtdYoy.arrow }}{{ revYtdYoy.abs }}%</span>
+              </span>
+            </div>
+            <div>{{ currentMonthKpi?.invoice_count || 0 }} {{ t('crm.kpi.invoices') }}</div>
           </div>
         </div>
 
@@ -466,9 +595,22 @@ onMounted(loadAll)
               {{ Math.abs(trendPct(currentMonthKpi?.costs || 0, lastMonthKpi.costs)) }}%
             </span>
           </div>
-          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100">
-            <div>YTD: <span class="font-mono">{{ formatMoney(ytdKpi?.costs || 0, displayCurrency) }}</span></div>
-            <div class="mt-0.5">{{ currentMonthKpi?.purchase_count || 0 }} {{ t('crm.kpi.purchases') }}</div>
+          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100 space-y-0.5">
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_12m_hint')">
+              <span>{{ t('crm.kpi.last_12m') }}</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(last12mKpi?.costs || 0, displayCurrency) }}
+                <span v-if="cost12Yoy.show" class="ml-1" :class="cost12Yoy.cls">{{ cost12Yoy.arrow }}{{ cost12Yoy.abs }}%</span>
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_ytd_hint')">
+              <span>YTD</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(ytdKpi?.costs || 0, displayCurrency) }}
+                <span v-if="costYtdYoy.show" class="ml-1" :class="costYtdYoy.cls">{{ costYtdYoy.arrow }}{{ costYtdYoy.abs }}%</span>
+              </span>
+            </div>
+            <div>{{ currentMonthKpi?.purchase_count || 0 }} {{ t('crm.kpi.purchases') }}</div>
           </div>
         </div>
 
@@ -490,10 +632,88 @@ onMounted(loadAll)
               · {{ Math.round((currentMonthKpi.profit / currentMonthKpi.revenue) * 100) }}% {{ t('crm.kpi.margin') }}
             </span>
           </div>
-          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100">
-            <div>YTD: <span class="font-mono">{{ formatMoney(ytdKpi?.profit || 0, displayCurrency) }}</span></div>
+          <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100 space-y-0.5">
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_12m_hint')">
+              <span>{{ t('crm.kpi.last_12m') }}</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(last12mKpi?.profit || 0, displayCurrency) }}
+                <span v-if="profit12Yoy.show" class="ml-1" :class="profit12Yoy.cls">{{ profit12Yoy.arrow }}{{ profit12Yoy.abs }}%</span>
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2" :title="t('crm.kpi.yoy_ytd_hint')">
+              <span>YTD</span>
+              <span class="font-mono text-neutral-600">
+                {{ formatMoney(ytdKpi?.profit || 0, displayCurrency) }}
+                <span v-if="profitYtdYoy.show" class="ml-1" :class="profitYtdYoy.cls">{{ profitYtdYoy.arrow }}{{ profitYtdYoy.abs }}%</span>
+              </span>
+            </div>
+            <div v-if="marginPct(ytdKpi?.profit, ytdKpi?.revenue) !== null">
+              {{ t('crm.kpi.ytd_margin', { pct: Math.round(marginPct(ytdKpi?.profit, ytdKpi?.revenue)!) }) }}
+            </div>
           </div>
         </div>
+        </div>
+      </div>
+
+      <!-- ═══ Srovnání období (tržby / náklady / zisk / marže) — nezávislé na přepínači níže ═══ -->
+      <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+        <header class="px-5 py-3 border-b border-neutral-200">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('crm.compare.title') }}</h3>
+        </header>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[560px]">
+            <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+              <tr>
+                <th class="text-left px-5 py-2 font-medium">{{ t('crm.compare.period') }}</th>
+                <th class="text-right px-3 py-2 font-medium">{{ t('crm.kpi.revenue') }}</th>
+                <th class="text-right px-3 py-2 font-medium">{{ t('crm.kpi.costs') }}</th>
+                <th class="text-right px-3 py-2 font-medium">{{ t('crm.kpi.profit') }}</th>
+                <th class="text-right px-5 py-2 font-medium">{{ t('crm.kpi.margin') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="(row, i) in comparisonRows" :key="i" class="hover:bg-neutral-50">
+                <td class="px-5 py-2 font-medium text-neutral-700">{{ row.label }}</td>
+                <td class="px-3 py-2 text-right">
+                  <RouterLink :to="{ path: '/invoices', query: comparePeriodQuery(row.key) }"
+                    class="font-mono text-neutral-900 hover:text-primary-700 hover:underline">
+                    {{ formatMoney(row.revenue, displayCurrency) }}
+                  </RouterLink>
+                </td>
+                <td class="px-3 py-2 text-right">
+                  <RouterLink :to="{ path: '/purchase-invoices', query: comparePeriodQuery(row.key) }"
+                    class="font-mono text-danger-500 hover:text-danger-600 hover:underline">
+                    {{ formatMoney(row.costs, displayCurrency) }}
+                  </RouterLink>
+                </td>
+                <td class="px-3 py-2 text-right font-mono" :class="row.profit >= 0 ? 'text-success-600' : 'text-danger-500'">
+                  {{ row.profit >= 0 ? '+' : '' }}{{ formatMoney(row.profit, displayCurrency) }}
+                </td>
+                <td class="px-5 py-2 text-right font-mono text-neutral-600">
+                  {{ row.margin === null ? '—' : row.margin.toFixed(1) + '%' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ Grafy zisku: posledních 12 měsíců + kumulativní YTD vs loni (stabilní, 12 m) ═══ -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">
+            {{ t('crm.profit_last_12_months', { currency: displayCurrency }) }}
+          </h3>
+          <RevenueChart :months="profitChartData.months" :prev-year="profitChartData.prevYear" :currency="displayCurrency" />
+        </div>
+        <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div class="flex items-baseline justify-between mb-3">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              {{ t('crm.cumulative_profit', { currency: displayCurrency }) }}
+            </h3>
+            <span class="text-xs text-neutral-400">{{ t('crm.cumulative_profit_hint') }}</span>
+          </div>
+          <CumulativeYtdChart :months="profitChartData.months" :prev-year="profitChartData.prevYear" :currency="displayCurrency" :allow-negative="true" />
         </div>
       </div>
 
@@ -908,7 +1128,9 @@ onMounted(loadAll)
                 </tr>
               </thead>
               <tbody class="divide-y divide-neutral-100">
-                <tr v-for="r in yearly.filter(y => y.costs > 0 || y.purchase_count > 0)" :key="`cy-${r.year}-${r.currency}`">
+                <tr v-for="r in yearly.filter(y => y.costs > 0 || y.purchase_count > 0)" :key="`cy-${r.year}-${r.currency}`"
+                  class="cursor-pointer hover:bg-neutral-50" :title="t('crm.go_to_purchases')"
+                  @click="$router.push({ path: '/purchase-invoices', query: { year: String(r.year) } })">
                   <td class="px-4 py-2 font-medium">{{ r.year }}</td>
                   <td class="px-4 py-2 text-right font-mono text-danger-500">{{ formatMoney(r.costs, r.currency) }}</td>
                   <td class="px-4 py-2 text-right text-xs text-neutral-500">{{ r.purchase_count }}</td>
@@ -935,10 +1157,91 @@ onMounted(loadAll)
                 </tr>
               </thead>
               <tbody class="divide-y divide-neutral-100">
-                <tr v-for="row in [...monthlyDisplay].filter(m => m.costs > 0 || m.purchase_count > 0).reverse()" :key="`cm-${row.period}-${row.currency}`">
+                <tr v-for="row in [...monthlyDisplay].filter(m => m.costs > 0 || m.purchase_count > 0).reverse()" :key="`cm-${row.period}-${row.currency}`"
+                  class="cursor-pointer hover:bg-neutral-50" :title="t('crm.go_to_purchases')"
+                  @click="$router.push({ path: '/purchase-invoices', query: monthQuery(row.period) })">
                   <td class="px-4 py-2 font-mono text-neutral-700">{{ row.period }}</td>
                   <td class="px-4 py-2 text-right font-mono text-danger-500">{{ formatMoney(row.costs, row.currency) }}</td>
                   <td class="px-4 py-2 text-right text-xs text-neutral-500">{{ row.purchase_count }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Zisk po rocích + Zisk po měsících (výsledovka tržby/zisk/marže) ═══ -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Zisk po rocích -->
+        <div v-if="yearly.length > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              📅 {{ t('crm.profit_by_year_table') }}
+            </h3>
+          </header>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+                <tr>
+                  <th class="text-left px-4 py-2 font-medium">{{ t('common.year') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.revenue') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.profit') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.margin') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-100">
+                <tr v-for="r in yearly.filter(y => y.revenue > 0 || y.costs > 0)" :key="`py-${r.year}-${r.currency}`" class="hover:bg-neutral-50">
+                  <td class="px-4 py-2 font-medium">{{ r.year }}</td>
+                  <td class="px-4 py-2 text-right">
+                    <RouterLink :to="{ path: '/invoices', query: { year: String(r.year) } }"
+                      class="font-mono text-neutral-700 hover:text-primary-700 hover:underline" :title="t('crm.go_to_invoices')">
+                      {{ formatMoney(r.revenue, r.currency) }}
+                    </RouterLink>
+                  </td>
+                  <td class="px-4 py-2 text-right font-mono" :class="r.profit >= 0 ? 'text-success-600' : 'text-danger-500'">
+                    {{ r.profit >= 0 ? '+' : '' }}{{ formatMoney(r.profit, r.currency) }}
+                  </td>
+                  <td class="px-4 py-2 text-right font-mono text-xs text-neutral-500">
+                    {{ marginPct(r.profit, r.revenue) === null ? '—' : marginPct(r.profit, r.revenue)!.toFixed(1) + '%' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Zisk po měsících (posledních N podle periodMonths) -->
+        <div v-if="monthlyDisplay.length > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+          <header class="px-5 py-3 border-b border-neutral-200">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              📊 {{ t('crm.profit_by_month_table') }} <span class="normal-case font-normal text-[10px] text-neutral-400">({{ periodChip }})</span>
+            </h3>
+          </header>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+                <tr>
+                  <th class="text-left px-4 py-2 font-medium">{{ t('common.month') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.revenue') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.profit') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('crm.kpi.margin') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-100">
+                <tr v-for="row in [...monthlyDisplay].filter(m => m.revenue > 0 || m.costs > 0).reverse()" :key="`pm-${row.period}-${row.currency}`" class="hover:bg-neutral-50">
+                  <td class="px-4 py-2 font-mono text-neutral-700">{{ row.period }}</td>
+                  <td class="px-4 py-2 text-right">
+                    <RouterLink :to="{ path: '/invoices', query: monthQuery(row.period) }"
+                      class="font-mono text-neutral-700 hover:text-primary-700 hover:underline" :title="t('crm.go_to_invoices')">
+                      {{ formatMoney(row.revenue, row.currency) }}
+                    </RouterLink>
+                  </td>
+                  <td class="px-4 py-2 text-right font-mono" :class="row.profit >= 0 ? 'text-success-600' : 'text-danger-500'">
+                    {{ row.profit >= 0 ? '+' : '' }}{{ formatMoney(row.profit, row.currency) }}
+                  </td>
+                  <td class="px-4 py-2 text-right font-mono text-xs text-neutral-500">
+                    {{ marginPct(row.profit, row.revenue) === null ? '—' : marginPct(row.profit, row.revenue)!.toFixed(1) + '%' }}
+                  </td>
                 </tr>
               </tbody>
             </table>

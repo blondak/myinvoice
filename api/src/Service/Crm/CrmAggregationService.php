@@ -70,12 +70,20 @@ final class CrmAggregationService
     }
 
     /**
-     * Overview KPI: aktuální měsíc + minulý měsíc + YTD (per currency).
+     * Overview KPI (per currency):
+     *   - current_month / last_month — aktuální a minulý měsíc
+     *   - ytd / prev_year_ytd        — od začátku roku + stejné okno loni (fair YoY)
+     *   - last_12m / prev_12m        — klouzavých 12 měsíců + předchozích 12 (trailing YoY)
+     *   - prev_year_full             — celý předchozí kalendářní rok
      *
      * @return array{
      *   current_month: array<int, array<string,mixed>>,
      *   last_month: array<int, array<string,mixed>>,
      *   ytd: array<int, array<string,mixed>>,
+     *   last_12m: array<int, array<string,mixed>>,
+     *   prev_12m: array<int, array<string,mixed>>,
+     *   prev_year_full: array<int, array<string,mixed>>,
+     *   prev_year_ytd: array<int, array<string,mixed>>,
      *   currencies: list<string>
      * }
      */
@@ -90,11 +98,26 @@ final class CrmAggregationService
         $lastMonth = $now->modify('-1 month')->format('Y-m');
         $yearStart = $now->format('Y-01');
 
+        // Klouzavých 12 měsíců (včetně aktuálního) + předchozích 12 pro trailing YoY.
+        $last12Start = $now->modify('-11 months')->format('Y-m');
+        $prev12Start = $now->modify('-23 months')->format('Y-m');
+        $prev12End   = $now->modify('-12 months')->format('Y-m');
+
+        // Předchozí kalendářní rok: celý + stejné YTD okno (leden..aktuální měsíc) pro férové srovnání.
+        $prevYear = (int) $now->format('Y') - 1;
+        $prevYearStart  = sprintf('%04d-01', $prevYear);
+        $prevYearEnd    = sprintf('%04d-12', $prevYear);
+        $prevYearYtdEnd = sprintf('%04d-%s', $prevYear, $now->format('m'));
+
         return [
-            'current_month' => $this->loadMonth($supplierId, $currentMonth),
-            'last_month'    => $this->loadMonth($supplierId, $lastMonth),
-            'ytd'           => $this->loadRange($supplierId, $yearStart, $currentMonth),
-            'currencies'    => $this->listCurrencies($supplierId),
+            'current_month'  => $this->loadMonth($supplierId, $currentMonth),
+            'last_month'     => $this->loadMonth($supplierId, $lastMonth),
+            'ytd'            => $this->loadRange($supplierId, $yearStart, $currentMonth),
+            'last_12m'       => $this->loadRange($supplierId, $last12Start, $currentMonth),
+            'prev_12m'       => $this->loadRange($supplierId, $prev12Start, $prev12End),
+            'prev_year_full' => $this->loadRange($supplierId, $prevYearStart, $prevYearEnd),
+            'prev_year_ytd'  => $this->loadRange($supplierId, $prevYearStart, $prevYearYtdEnd),
+            'currencies'     => $this->listCurrencies($supplierId),
         ];
     }
 

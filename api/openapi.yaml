@@ -2913,7 +2913,7 @@ paths:
   /api/v1/crm/overview:
     get:
       tags: [CRM]
-      summary: KPI overview (current month + last + YTD per currency)
+      summary: KPI overview (current month + last + YTD + trailing 12m + prev year per currency)
       parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
       responses: { '200': { description: KPI } }
 

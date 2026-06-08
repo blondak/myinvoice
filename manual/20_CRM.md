@@ -13,7 +13,18 @@ CRM (Customer Relationship Management) v MyInvoice.cz je BI/analytický modul na
 - **Náklady tento měsíc** — z přijatých faktur (status ∈ received/booked/paid)
 - **Zisk** — tržby − náklady (s color coding: zelený pokud kladný, červený jinak)
 
-Plus trend % vs minulý měsíc (▲/▼) a YTD totals.
+Každá karta kromě hodnoty za tento měsíc (a trendu ▲/▼ vs minulý měsíc) ukazuje i **posledních 12 měsíců** (klouzavě) a **YTD** (od začátku roku), a u obou **meziroční změnu v %** — 12 měsíců proti předchozím 12 měsícům a YTD proti stejnému období loni (u nákladů je růst červený, u tržeb a zisku zelený). Karta Zisk navíc zobrazuje marži YTD. Tyto hodnoty jsou nezávislé na přepínači období níže.
+
+### Srovnání období
+
+Tabulka **Tržby / Náklady / Zisk / Marže** pro pět období vedle sebe: tento měsíc, minulý měsíc, posledních 12 měsíců, letos (YTD) a loňský rok. Částky tržeb a nákladů jsou prokliknutelné — vedou na seznam vydaných, resp. přijatých faktur filtrovaný na dané období (viz [Proklik do faktur](#proklik-do-faktur)).
+
+### Grafy zisku
+
+Stejné dva grafy jako na stránkách Tržby a Náklady, ale pro **zisk**:
+
+- **Zisk za posledních 12 měsíců** — sloupcový graf (klouzavé okno) s linkou téhož období o rok dříve; ztrátové měsíce jdou pod nulu.
+- **Kumulativní zisk YTD vs. loni** — narůstající křivka od ledna, porovnaná s předchozím rokem do stejného dne; ztráta kumulaci snižuje.
 
 ### Monthly trend chart
 
@@ -57,6 +68,18 @@ Symetrický rozpad tržeb per `revenue_categories` (tabulka v CRM dashboardu, ko
 ### Churn risk
 
 Klienti, kteří **60+ dní nemají objednávku**. Pro každého: poslední faktura, počet dní bez objednávky (color coded: >180 red, >90 warning), kumulativní revenue. Click na klienta → /clients/{id}.
+
+### Tabulky po rocích a měsících
+
+Dvojice tabulek **Náklady po rocích / po měsících** (jen přijaté faktury) a **Zisk po rocích / po měsících** (tržby, zisk a marže — výsledovka). Tabulky „po měsících" respektují přepínač období, „po rocích" ukazují všechny roky s aktivitou.
+
+### Proklik do faktur
+
+Tabulky CRM jsou prokliknutelné a otevřou příslušný seznam faktur s předvyplněným filtrem v URL (rok, měsíc, případně rozsah datumů):
+
+- **Náklady po rocích / po měsících** → klik na řádek otevře **přijaté faktury** filtrované na daný rok, resp. rok + měsíc.
+- **Zisk po rocích / po měsících** → klik na tržbu otevře **vydané faktury** za daný rok, resp. měsíc.
+- **Srovnání období** → tržba vede na vydané faktury, náklad na přijaté faktury za dané období.
 
 ## Filtry
 

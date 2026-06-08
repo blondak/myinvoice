@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.1] — 2026-06-08
+
+### Added
+
+- **CRM dashboard — kompletní přehled zisku.** Headline karty (Tržby / Náklady / Zisk) nově kromě hodnoty za tento měsíc ukazují i **posledních 12 měsíců** a **YTD**, vždy s **meziroční změnou v %** (12 měsíců vs. předchozích 12, YTD vs. stejné období loni; u nákladů je růst červený, u tržeb a zisku zelený). Karta Zisk navíc zobrazuje marži YTD. Přibyla **srovnávací tabulka** pěti období (tento měsíc / minulý měsíc / 12 měsíců / YTD / loňský rok) s tržbami, náklady, ziskem a marží, dvojice grafů **Zisk za posledních 12 měsíců** a **Kumulativní zisk YTD vs. loni** (stejné jako v Tržbách/Nákladech, jen pro zisk — povolují ztrátu pod nulu) a **výsledovkové tabulky Zisk po rocích / po měsících** (tržby, zisk, marže). Tyto přehledy jsou nezávislé na přepínači analytického období. Manuál § 20.
+- **Proklik z tabulek CRM do faktur.** Řádky tabulek vedou na příslušný seznam s filtrem v URL: Náklady po rocích/měsících → přijaté faktury (rok, resp. rok+měsíc), Zisk po rocích/měsících → vydané faktury, Srovnání období → tržba na vydané, náklad na přijaté faktury za dané období.
+
 ## [4.19.0] — 2026-06-08
 
 ### Added
