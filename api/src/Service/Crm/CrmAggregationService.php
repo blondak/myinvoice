@@ -31,7 +31,9 @@ final class CrmAggregationService
     /** Datum nákladu (pozdější z DUZP/vystavení) — jako Náklady. */
     private const COST_DATE = "GREATEST(COALESCE(pi.tax_date, pi.issue_date), pi.issue_date)";
     private const REV_STATUS  = "('issued', 'sent', 'reminded', 'paid')";
-    private const REV_TYPES   = "('invoice', 'credit_note')";
+    // tax_document = daňový doklad k přijaté platbě (#89): patří do tržeb; finál
+    // k záloze pak nese jen zbytek (záporné odpočtové řádky) → žádné dvojí započtení.
+    private const REV_TYPES   = "('invoice', 'credit_note', 'tax_document')";
     private const COST_STATUS = "('received', 'booked', 'paid')";
 
     /** Je dodavatel plátce DPH? Určuje net (plátce) vs gross (neplátce) bázi. */
@@ -528,12 +530,13 @@ final class CrmAggregationService
                 END AS bucket,
                 COALESCE(c.code, 'CZK') AS currency,
                 COUNT(*) AS cnt,
-                SUM(COALESCE(i.total_with_vat, 0)) AS total
+                SUM(COALESCE(i.amount_to_pay, 0) - COALESCE(i.paid_total, 0)) AS total
               FROM invoices i
          LEFT JOIN currencies c ON c.id = i.currency_id
              WHERE i.supplier_id = ?
                AND i.status IN ('issued', 'sent', 'reminded')
                AND " . $this->receivableDocTypeSql() . "
+               AND (i.invoice_type NOT IN ('invoice','proforma','tax_document') OR i.amount_to_pay - i.paid_total > 0)
           GROUP BY bucket, currency
           ORDER BY currency, FIELD(bucket, 'not_due', 'overdue_30', 'overdue_60', 'overdue_90', 'overdue_90_plus')
         ";
@@ -909,7 +912,7 @@ final class CrmAggregationService
                 AND (i.invoice_type != 'proforma'
                      OR NOT EXISTS (SELECT 1 FROM invoices ch
                                      WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice'))
-                AND (i.invoice_type NOT IN ('invoice','proforma') OR i.amount_to_pay > 0)"
+                AND (i.invoice_type NOT IN ('invoice','proforma','tax_document') OR i.amount_to_pay - i.paid_total > 0)"
         );
         $stmt->execute([$supplierId, $today]);
         $overdueIds = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
@@ -1084,7 +1087,7 @@ final class CrmAggregationService
                        JOIN invoice_items ii ON ii.invoice_id = i.id
                       WHERE i.supplier_id = ?
                         AND i.status IN ('issued','sent','reminded','paid')
-                        AND i.invoice_type IN ('invoice','credit_note')
+                        AND i.invoice_type IN ('invoice','credit_note','tax_document')
                         AND COALESCE(co.is_eu, 0) = 1
                         AND COALESCE(co.iso2, 'CZ') <> 'CZ'
                         AND c.dic IS NOT NULL AND c.dic <> ''
@@ -1355,7 +1358,7 @@ final class CrmAggregationService
                         AND (i.invoice_type != 'proforma'
                              OR NOT EXISTS (SELECT 1 FROM invoices ch
                                              WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice'))
-                        AND (i.invoice_type NOT IN ('invoice','proforma') OR i.amount_to_pay > 0)"
+                        AND (i.invoice_type NOT IN ('invoice','proforma','tax_document') OR i.amount_to_pay - i.paid_total > 0)"
                 );
                 $stmt->execute([$supplierId, $today]);
                 break;
@@ -1457,14 +1460,17 @@ final class CrmAggregationService
                 $weekEnd = $weekStart->modify('+6 days');
             }
 
-            // In: nezaplacené vystavené faktury s due_date v tomto týdnu
+            // In: nezaplacené vystavené faktury s due_date v tomto týdnu — očekávané
+            // inkaso = zbývající částka (amount_to_pay - paid_total): částečné úhrady
+            // i odpočty záloh už dorazily, podruhé nepřitečou (#89).
             $stmt = $pdo->prepare(
-                "SELECT COALESCE(SUM(i.total_with_vat), 0) AS amt
+                "SELECT COALESCE(SUM(i.amount_to_pay - i.paid_total), 0) AS amt
                    FROM invoices i
               LEFT JOIN currencies c ON c.id = i.currency_id
                   WHERE i.supplier_id = ?
                     AND i.status IN ('issued', 'sent', 'reminded')
                     AND i.invoice_type != 'proforma'
+                    AND (i.invoice_type NOT IN ('invoice','tax_document') OR i.amount_to_pay - i.paid_total > 0)
                     AND i.due_date BETWEEN ? AND ?
                     AND COALESCE(c.code, 'CZK') = ?"
             );
@@ -1597,7 +1603,8 @@ final class CrmAggregationService
                FROM invoices i
               WHERE i.supplier_id = ?
                 AND i.status IN ('paid', 'sent', 'reminded')
-                AND i.invoice_type != 'proforma'
+                -- tax_document je auto-paid bez upomínek — do statistiky účinnosti nepatří
+                AND i.invoice_type NOT IN ('proforma', 'tax_document')
                 AND i.issue_date >= ?"
         );
         $stmt->execute([$supplierId, $start]);

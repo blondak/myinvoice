@@ -1025,6 +1025,38 @@
     "send_test": "Test odeslání",
     "send_to_client": "Odeslat klientovi",
     "mark_paid": "Označit zaplaceno",
+    "partial_payment": "Částečná úhrada",
+    "payments": {
+      "title": "Platby",
+      "add": "Přidat platbu",
+      "paid_on": "Datum",
+      "amount": "Částka",
+      "source": "Zdroj",
+      "sources": {
+        "manual": "Ručně",
+        "mark_paid": "Označeno zaplaceno",
+        "bank": "Banka",
+        "legacy": "Historická"
+      },
+      "vs": "VS platby",
+      "reference": "Reference",
+      "note": "Poznámka",
+      "tax_doc": "Daňový doklad",
+      "create_tax_doc": "Vystavit daňový doklad",
+      "create_tax_doc_checkbox": "Vystavit daňový doklad k přijaté platbě",
+      "create_tax_doc_hint": "Koncept s DUZP k datu platby (§ 28 ZDPH); DPH se vypočte shora koeficientem.",
+      "tax_doc_created": "Koncept daňového dokladu k platbě vytvořen.",
+      "tax_docs_banner": "Daňové doklady k přijatým platbám:",
+      "statement_link": "výpis",
+      "paid_total": "Uhrazeno",
+      "remaining": "Zbývá uhradit",
+      "invalid_amount": "Zadej platnou částku platby.",
+      "recorded": "Platba zaevidována, zbývá {remaining}.",
+      "recorded_paid": "Platba zaevidována — doklad je plně uhrazen.",
+      "deleted": "Platba smazána.",
+      "delete_confirm": "Smazat platbu {amount} ze dne {date}?",
+      "locked_bank": "Platba z bankovního párování — ruší se přes „Zrušit spárování“ v detailu výpisu."
+    },
     "cancel_or_credit": "Storno / dobropis",
     "cancel_credit_note": "Storno dobropisu",
     "delete_cancelled": "Smazat (storno + originál)",
@@ -1112,6 +1144,9 @@
         "signature_config": "Změna konfigurace podpisů",
         "currency": "Změna bank. údajů",
         "manual": "Ruční invalidace",
+        "mark_paid": "Označeno zaplaceno",
+        "unmark_paid": "Zrušeno zaplaceno",
+        "payment_change": "Změna plateb",
         "backfill_sent": "Doplněno zpětně",
         "approval_request": "Žádost o schválení výkazu",
         "approval_reminder": "Upomínka schválení výkazu"
@@ -1263,6 +1298,9 @@
     "modals": {
       "mark_paid_title": "Označit jako zaplacené",
       "mark_paid_date": "Datum úhrady",
+      "partial_payment_title": "Částečná úhrada",
+      "partial_payment_remaining": "Zbývá uhradit {remaining}. Plné pokrytí částky doklad automaticky označí jako zaplacený.",
+      "partial_payment_amount": "Částka platby",
       "cancel_title": "Storno / Dobropis",
       "cancel_title_cn": "Storno dobropisu",
       "cancel_choose": "Vyber typ zrušení:",
@@ -1294,7 +1332,8 @@
   "status": {
     "draft": "Koncept", "issued": "Vystaveno", "sent": "Odesláno",
     "reminded": "Upomínka", "paid": "Zaplaceno", "cancelled": "Storno",
-    "issued_not_sent": "Vystaveno (neodesláno)"
+    "issued_not_sent": "Vystaveno (neodesláno)",
+    "partially_paid": "Částečně uhrazeno", "overpaid": "Přeplaceno"
   },
   "payment_method": {
     "label": "Způsob úhrady",
@@ -1344,7 +1383,8 @@
   },
   "type": {
     "invoice": "Faktura", "proforma": "Zálohová",
-    "credit_note": "Dobropis", "cancellation": "Storno"
+    "credit_note": "Dobropis", "cancellation": "Storno",
+    "tax_document": "Daňový doklad k platbě"
   },
   "client": {
     "title": "Klienti",

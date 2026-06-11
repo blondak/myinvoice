@@ -3,7 +3,7 @@ import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vu
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment, type AdvanceCandidate } from '@/api/invoices'
+import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment, type AdvanceCandidate, type InvoicePayment } from '@/api/invoices'
 import {
   settingsApi,
   type PdfSignatureDocumentEntityType,
@@ -13,7 +13,7 @@ import {
 } from '@/api/settings'
 import { adminApi, type InvoiceSmtpLog } from '@/api/admin'
 import { apiErrorMessage } from '@/api/errors'
-import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass } from '@/composables/useFormat'
+import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass, displayStatus } from '@/composables/useFormat'
 import { useAuthStore } from '@/stores/auth'
 import { useSupplierStore } from '@/stores/supplier'
 import { useHotkey } from '@/composables/useHotkey'
@@ -167,6 +167,137 @@ async function load() {
   invoicesApi.listAttachments(Number(route.params.id))
     .then(items => { attachments.value = items })
     .catch(() => {})
+  loadPayments()
+}
+
+// ───── Evidence plateb / částečné úhrady (#89) ─────────────────────────
+const payments = ref<InvoicePayment[]>([])
+
+function paymentsRelevant(): boolean {
+  const inv = invoice.value
+  return !!inv
+    && ['invoice', 'proforma'].includes(inv.invoice_type)
+    && inv.status !== 'draft' && inv.status !== 'cancelled'
+}
+
+function loadPayments() {
+  if (!invoice.value || !paymentsRelevant()) { payments.value = []; return }
+  invoicesApi.listPayments(invoice.value.id)
+    .then(r => { payments.value = r.payments })
+    .catch(() => { payments.value = [] })
+}
+
+const remainingToPay = computed(() => {
+  if (!invoice.value) return 0
+  return Math.round(((invoice.value.amount_to_pay ?? 0) - (invoice.value.paid_total ?? 0)) * 100) / 100
+})
+
+// Modal částečné úhrady
+const partialOpen = ref(false)
+const partialAmount = ref<string>('')
+const partialDate = ref<string>(new Date().toISOString().slice(0, 10))
+const partialVs = ref('')
+const partialRef = ref('')
+const partialNote = ref('')
+const partialCreateTaxDoc = ref(false)
+
+// Daňový doklad k přijaté platbě dává smysl jen u zálohy plátce DPH bez reverse
+// charge — a jen dokud neexistuje finál (jeho § 37a odpočty jsou zafixované,
+// dodatečný daňový doklad by úplatu zdanil podruhé; backend to taky odmítne).
+const taxDocApplicable = computed(() =>
+  isProforma.value && supplierIsVatPayer.value && !invoice.value?.reverse_charge
+  && !invoice.value?.final_invoice)
+
+const canPartialPayment = computed(() =>
+  !!invoice.value
+  && ['invoice', 'proforma'].includes(invoice.value.invoice_type)
+  && ['issued', 'sent', 'reminded'].includes(invoice.value.status)
+  && remainingToPay.value > 0
+  && auth.canWrite)
+
+function openPartialPayment() {
+  partialAmount.value = ''
+  partialDate.value = new Date().toISOString().slice(0, 10)
+  partialVs.value = ''
+  partialRef.value = ''
+  partialNote.value = ''
+  partialCreateTaxDoc.value = taxDocApplicable.value
+  partialOpen.value = true
+}
+
+async function submitPartialPayment() {
+  if (!invoice.value) return
+  const amount = Number(String(partialAmount.value).replace(',', '.'))
+  if (!Number.isFinite(amount) || amount <= 0) {
+    toast.error(t('invoice.payments.invalid_amount'))
+    return
+  }
+  busy.value = 'partial-payment'
+  try {
+    const r = await invoicesApi.createPayment(invoice.value.id, {
+      amount,
+      paid_on: partialDate.value,
+      variable_symbol: partialVs.value.trim() || null,
+      bank_reference: partialRef.value.trim() || null,
+      note: partialNote.value.trim() || null,
+    })
+    invoice.value = r.invoice
+    payments.value = r.payments
+    partialOpen.value = false
+    toast.success(r.became_paid
+      ? t('invoice.payments.recorded_paid')
+      : t('invoice.payments.recorded', { remaining: formatMoney(r.remaining, invoice.value.currency) }))
+    // Daňový doklad k přijaté platbě (jen částečná úhrada zálohy — plná úhrada
+    // jde přes finální doklad, který nabízí tlačítko „Vystavit daňový doklad").
+    if (partialCreateTaxDoc.value && taxDocApplicable.value && !r.became_paid) {
+      await createTaxDocForPayment(r.payment.id)
+    }
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.operation_failed'))
+  } finally {
+    busy.value = null
+  }
+}
+
+async function createTaxDocForPayment(paymentId: number) {
+  if (!invoice.value) return
+  busy.value = 'payment-tax-doc'
+  try {
+    const r = await invoicesApi.createPaymentTaxDocument(invoice.value.id, paymentId)
+    payments.value = r.payments
+    toast.success(t('invoice.payments.tax_doc_created'))
+    // Rovnou do detailu konceptu — uživatel ho zkontroluje a vystaví jedním klikem.
+    router.push(`/invoices/${r.tax_document_id}`)
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.operation_failed'))
+  } finally {
+    busy.value = null
+  }
+}
+
+// Daňové doklady k platbám (nestornované) — viditelný cross-link banner na záloze.
+const paymentTaxDocs = computed(() =>
+  payments.value.filter(p => p.tax_document_invoice_id && p.tax_document_status !== 'cancelled'))
+
+async function deletePayment(p: InvoicePayment) {
+  if (!invoice.value) return
+  if (!confirm(t('invoice.payments.delete_confirm', {
+    amount: formatMoney(p.amount, invoice.value.currency),
+    date: formatDate(p.paid_on),
+  }))) return
+  busy.value = 'payment-delete'
+  try {
+    const r = await invoicesApi.deletePayment(invoice.value.id, p.id)
+    invoice.value = r.invoice
+    payments.value = r.payments
+    toast.success(t('invoice.payments.deleted'))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.operation_failed'))
+  } finally {
+    busy.value = null
+  }
 }
 
 async function loadSignatureProfiles() {
@@ -310,6 +441,9 @@ function pdfReasonLabel(reason: string): string {
     'approval_reminder': 'invoice.pdf_history.reason.approval_reminder',
     'invalidate_currency': 'invoice.pdf_history.reason.currency',
     'invalidate_manual': 'invoice.pdf_history.reason.manual',
+    'invalidate_mark_paid': 'invoice.pdf_history.reason.mark_paid',
+    'invalidate_unmark_paid': 'invoice.pdf_history.reason.unmark_paid',
+    'invalidate_payment_change': 'invoice.pdf_history.reason.payment_change',
     'backfill_sent': 'invoice.pdf_history.reason.backfill_sent',
   }
   return map[reason] ? (t(map[reason]) as string) : reason
@@ -476,6 +610,7 @@ const markPaidOpen = ref(false)
 
 useHotkey('escape', () => {
   if (markPaidOpen.value)     markPaidOpen.value = false
+  else if (partialOpen.value) partialOpen.value = false
   else if (cancelOpen.value)  cancelOpen.value = false
   else if (sendOpen.value)    sendOpen.value = false
   else if (reminderOpen.value) reminderOpen.value = false
@@ -500,6 +635,7 @@ async function markPaid() {
     invoice.value = await invoicesApi.markPaid(invoice.value.id, paidAtInput.value, {
       sendThanks: thanksEnabled.value && sendThanks.value,
     })
+    loadPayments() // mark-paid vytváří platbu na zbytek (#89) — box Platby bez reloadu
     markPaidOpen.value = false
     toast.success( t('invoice.marked_paid_at', { date: paidAtInput.value }))
     const pt = invoice.value.payment_thanks
@@ -519,6 +655,7 @@ async function unmarkPaid() {
   busy.value = 'unmark-paid'
   try {
     invoice.value = await invoicesApi.unmarkPaid(invoice.value.id)
+    loadPayments() // unmark-paid evidované platby smazal
     toast.success(t('invoice.unmark_paid_done'))
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('invoice.operation_failed'))
@@ -562,7 +699,8 @@ async function cancel() {
 
 async function issueFinalFromProforma() {
   if (!invoice.value) return
-  if (invoice.value.invoice_type !== 'proforma' || invoice.value.status !== 'paid') return
+  if (invoice.value.invoice_type !== 'proforma') return
+  if (invoice.value.status !== 'paid' && Number(invoice.value.paid_total ?? 0) <= 0) return
   if (!confirm(t('invoice.issue_final_confirm', { varsymbol: invoice.value.varsymbol || `#${invoice.value.id}` }))) return
   busy.value = 'issue-final'
   try {
@@ -818,7 +956,10 @@ async function send() {
 
 const isDraft = computed(() => invoice.value?.status === 'draft')
 const isProforma = computed(() => invoice.value?.invoice_type === 'proforma')
-const canIssueFinal = computed(() => isProforma.value && invoice.value?.status === 'paid')
+// Vyúčtovat lze i částečně uhrazenou proformu (#89) — odpočet pokryje přijaté platby.
+const canIssueFinal = computed(() => isProforma.value
+  && (invoice.value?.status === 'paid' || Number(invoice.value?.paid_total ?? 0) > 0)
+  && !invoice.value?.final_invoice)
 const isIssued = computed(() => invoice.value && ['issued', 'sent', 'reminded'].includes(invoice.value.status))
 // Admin „force" edit už vystaveného dokladu — viz tlačítko „Upravit (admin)".
 const canAdminEdit = computed(() =>
@@ -1006,8 +1147,8 @@ async function updateApprovalStatus() {
       <h1 class="text-2xl font-semibold flex items-center gap-3 flex-wrap min-w-0">
         <span v-if="invoice.varsymbol" class="font-mono">{{ invoice.varsymbol }}</span>
         <span v-else class="text-neutral-400 font-mono">{{ t('invoice.draft_id', { id: invoice.id }) }}</span>
-        <span class="text-xs px-2 py-0.5 rounded font-normal" :class="statusBadgeClass(invoice.status)">
-          {{ statusLabel(invoice.status) }}
+        <span class="text-xs px-2 py-0.5 rounded font-normal" :class="statusBadgeClass(displayStatus(invoice.status, invoice.payment_status))">
+          {{ statusLabel(displayStatus(invoice.status, invoice.payment_status)) }}
         </span>
         <span class="text-xs px-2 py-0.5 rounded font-normal bg-neutral-100 text-neutral-600">
           {{ typeLabel(invoice.invoice_type) }}
@@ -1053,7 +1194,8 @@ async function updateApprovalStatus() {
         <!-- Výkaz: jen u draftu (kde se reálně edituje) a s právem editace. U vystavených/odeslaných
              dokladů se výkaz needituje (backend SaveWorkReportAction vrátí 409 pro status != draft),
              proto se tlačítko vůbec nezobrazuje. Méně významné → až za hlavními akcemi. -->
-        <button v-if="isDraft && auth.canWrite"
+        <!-- Daňový doklad k přijaté platbě výkaz práce nemá (generuje se z platby). -->
+        <button v-if="isDraft && invoice.invoice_type !== 'tax_document' && auth.canWrite"
           @click="wrModalOpen = true"
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md inline-flex items-center gap-1.5"
           :title="t('invoice.wr_btn')">
@@ -1081,6 +1223,12 @@ async function updateApprovalStatus() {
           class="cursor-pointer px-3 h-9 text-sm border border-success-500/50 text-success-600 hover:bg-success-50 rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
           {{ t('invoice.mark_paid') }}
+        </button>
+        <!-- Částečná úhrada (#89) — evidence platby na libovolnou částku -->
+        <button v-if="canPartialPayment" @click="openPartialPayment" :disabled="busy !== null"
+          class="cursor-pointer px-3 h-9 text-sm border border-amber-500/50 text-amber-700 hover:bg-amber-50 rounded-md inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+          {{ t('invoice.partial_payment') }}
         </button>
         <button v-if="canSendReminder && auth.canWrite" @click="openReminderModal" :disabled="busy !== null"
           class="cursor-pointer px-3 h-9 text-sm bg-warning-500 hover:bg-warning-600 disabled:bg-neutral-300 text-white font-medium rounded-md inline-flex items-center gap-1.5"
@@ -1154,6 +1302,47 @@ async function updateApprovalStatus() {
           <button @click="markPaid" :disabled="busy !== null"
             class="cursor-pointer px-4 h-9 text-sm bg-success-500 hover:bg-success-600 disabled:bg-neutral-300 text-white font-medium rounded-md">
             {{ busy === 'paid' ? '…' : t('common.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal částečné úhrady (#89) -->
+    <div v-if="partialOpen" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div class="bg-surface rounded-xl shadow-lg max-w-sm w-full p-5">
+        <h3 class="text-lg font-semibold mb-1">{{ t('invoice.modals.partial_payment_title') }}</h3>
+        <p class="text-xs text-neutral-500 mb-3">
+          {{ t('invoice.modals.partial_payment_remaining', { remaining: formatMoney(remainingToPay, invoice.currency) }) }}
+        </p>
+        <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.partial_payment_amount') }} ({{ invoice.currency }})</label>
+        <input v-model="partialAmount" type="number" step="0.01" min="0.01" :placeholder="String(remainingToPay)"
+          class="w-full h-10 px-3 border border-neutral-300 rounded-md mb-3 font-mono" />
+        <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.modals.mark_paid_date') }}</label>
+        <input v-model="partialDate" type="date" class="w-full h-10 px-3 border border-neutral-300 rounded-md mb-3" />
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <div>
+            <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.payments.vs') }}</label>
+            <input v-model="partialVs" type="text" maxlength="20" class="w-full h-9 px-2 border border-neutral-300 rounded-md text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.payments.reference') }}</label>
+            <input v-model="partialRef" type="text" maxlength="120" class="w-full h-9 px-2 border border-neutral-300 rounded-md text-sm" />
+          </div>
+        </div>
+        <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.payments.note') }}</label>
+        <input v-model="partialNote" type="text" maxlength="255" class="w-full h-9 px-2 border border-neutral-300 rounded-md text-sm mb-3" />
+        <label v-if="taxDocApplicable" class="flex items-start gap-2 text-sm text-neutral-700 mb-4 cursor-pointer">
+          <input v-model="partialCreateTaxDoc" type="checkbox" class="mt-0.5 rounded border-neutral-300 text-primary-600" />
+          <span>
+            {{ t('invoice.payments.create_tax_doc_checkbox') }}
+            <span class="block text-xs text-neutral-500">{{ t('invoice.payments.create_tax_doc_hint') }}</span>
+          </span>
+        </label>
+        <div class="flex justify-end gap-2">
+          <button @click="partialOpen = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50">{{ t('common.cancel') }}</button>
+          <button @click="submitPartialPayment" :disabled="busy !== null"
+            class="cursor-pointer px-4 h-9 text-sm bg-amber-500 hover:bg-amber-600 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ busy === 'partial-payment' ? '…' : t('common.confirm') }}
           </button>
         </div>
       </div>
@@ -1307,6 +1496,17 @@ async function updateApprovalStatus() {
         {{ t('invoice.advance_link.unlink') }}
       </button>
     </div>
+    <!-- Daňové doklady k přijatým platbám zálohy (#89) — viditelný cross-link -->
+    <div v-if="isProforma && paymentTaxDocs.length > 0"
+      class="flex items-center justify-between gap-3 bg-amber-50 border border-amber-500/30 rounded-lg px-4 py-2.5 text-sm mb-4">
+      <span class="text-amber-700 min-w-0">
+        {{ t('invoice.payments.tax_docs_banner') }}
+        <template v-for="(p, i) in paymentTaxDocs" :key="p.id">
+          <RouterLink :to="`/invoices/${p.tax_document_invoice_id}`" class="font-mono font-medium hover:underline">
+            {{ p.tax_document_varsymbol || `#${p.tax_document_invoice_id}` }}</RouterLink><span v-if="p.tax_document_status === 'draft'" class="text-amber-600/80"> ({{ t('status.draft').toLowerCase() }})</span><span v-if="i < paymentTaxDocs.length - 1">, </span>
+        </template>
+      </span>
+    </div>
     <!-- Nepropojená proforma → nabídka spárovat s daňovým dokladem (opačný směr) -->
     <div v-else-if="canPairFinal"
       class="flex items-center justify-between gap-3 bg-neutral-50 border border-neutral-200 rounded-lg px-4 py-2.5 text-sm mb-4">
@@ -1332,7 +1532,9 @@ async function updateApprovalStatus() {
           {{ linkedProforma.varsymbol || `#${linkedProforma.id}` }}
         </RouterLink>
       </span>
-      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance()" :disabled="linkingAdvance"
+      <!-- Daňový doklad k přijaté platbě (#89) má vazbu strukturální (drží § 37a
+           odpočty finálu i vazbu na platbu) — rozpojit nelze, backend to odmítá. -->
+      <button v-if="auth.canWrite && invoice.invoice_type !== 'tax_document'" type="button" @click="unlinkAdvance()" :disabled="linkingAdvance"
         class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0 bg-surface">
         {{ t('invoice.advance_link.unlink') }}
       </button>
@@ -1516,6 +1718,22 @@ async function updateApprovalStatus() {
             <dt>{{ t('invoice.amount_to_pay') }}</dt>
             <dd class="font-mono">{{ formatMoney(invoice.amount_to_pay, invoice.currency) }}</dd>
           </div>
+          <!-- Evidované platby (#89): uhrazeno + zbývá -->
+          <template v-if="(invoice.paid_total ?? 0) > 0">
+            <div class="flex justify-between text-sm text-neutral-600 pt-2">
+              <dt>{{ t('invoice.payments.paid_total') }}</dt>
+              <dd class="font-mono">−{{ formatMoney(invoice.paid_total, invoice.currency) }}</dd>
+            </div>
+            <div class="flex justify-between text-base font-semibold"
+              :class="remainingToPay > 0 ? 'text-amber-700' : 'text-success-600'">
+              <dt>{{ t('invoice.payments.remaining') }}</dt>
+              <dd class="font-mono">{{ formatMoney(Math.max(remainingToPay, 0), invoice.currency) }}</dd>
+            </div>
+            <div v-if="remainingToPay < -0.05" class="flex justify-between text-sm font-medium text-purple-700">
+              <dt>{{ t('status.overpaid') }}</dt>
+              <dd class="font-mono">+{{ formatMoney(-remainingToPay, invoice.currency) }}</dd>
+            </div>
+          </template>
           <div v-if="invoice.czk_recap" class="text-xs text-neutral-500 pt-2 border-t border-neutral-200 mt-2">
             {{ t('invoice.czk_recap.rate_info', {
               rate: formatRate(invoice.czk_recap.rate),
@@ -1524,6 +1742,83 @@ async function updateApprovalStatus() {
             }) }}
           </div>
         </dl>
+      </div>
+    </div>
+
+    <!-- Platby (#89) — evidence úhrad faktury -->
+    <div v-if="paymentsRelevant() && (payments.length > 0 || (invoice.paid_total ?? 0) > 0)"
+      class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.payments.title') }}</h3>
+        <button v-if="canPartialPayment" @click="openPartialPayment" :disabled="busy !== null"
+          class="cursor-pointer text-xs px-2.5 py-1 border border-amber-500/50 text-amber-700 hover:bg-amber-50 rounded-md">
+          + {{ t('invoice.payments.add') }}
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+            <tr>
+              <th class="px-4 py-2 text-left font-medium">{{ t('invoice.payments.paid_on') }}</th>
+              <th class="px-4 py-2 text-right font-medium">{{ t('invoice.payments.amount') }}</th>
+              <th class="px-4 py-2 text-left font-medium">{{ t('invoice.payments.source') }}</th>
+              <th class="px-4 py-2 text-left font-medium hidden md:table-cell">{{ t('invoice.payments.reference') }}</th>
+              <th v-if="isProforma" class="px-4 py-2 text-left font-medium">{{ t('invoice.payments.tax_doc') }}</th>
+              <th class="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="p in payments" :key="p.id">
+              <td class="px-4 py-2.5">{{ formatDate(p.paid_on) }}</td>
+              <td class="px-4 py-2.5 text-right font-mono font-medium">{{ formatMoney(p.amount, p.currency) }}</td>
+              <td class="px-4 py-2.5">
+                <span class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                  {{ t('invoice.payments.sources.' + p.source) }}
+                </span>
+                <RouterLink v-if="p.bank_statement_id" :to="`/bank/${p.bank_statement_id}`"
+                  class="ml-1 text-xs text-primary-700 hover:underline">{{ t('invoice.payments.statement_link') }}</RouterLink>
+              </td>
+              <td class="px-4 py-2.5 hidden md:table-cell text-xs text-neutral-500">
+                <span v-if="p.variable_symbol" class="font-mono">VS {{ p.variable_symbol }}</span>
+                <span v-if="p.bank_reference" class="ml-1">{{ p.bank_reference }}</span>
+                <span v-if="p.note" class="block text-neutral-400">{{ p.note }}</span>
+              </td>
+              <td v-if="isProforma" class="px-4 py-2.5">
+                <RouterLink v-if="p.tax_document_invoice_id && p.tax_document_status !== 'cancelled'"
+                  :to="`/invoices/${p.tax_document_invoice_id}`"
+                  class="text-xs text-primary-700 hover:underline font-mono">
+                  {{ p.tax_document_varsymbol || `#${p.tax_document_invoice_id}` }}
+                  <span v-if="p.tax_document_status === 'draft'" class="text-neutral-400">({{ t('status.draft') }})</span>
+                </RouterLink>
+                <button v-else-if="taxDocApplicable && auth.canWrite" @click="createTaxDocForPayment(p.id)"
+                  :disabled="busy !== null"
+                  class="cursor-pointer text-xs px-2 py-0.5 border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded">
+                  {{ t('invoice.payments.create_tax_doc') }}
+                </button>
+                <span v-else class="text-xs text-neutral-400">—</span>
+              </td>
+              <td class="px-4 py-2.5 text-right">
+                <button v-if="auth.canWrite && !p.bank_transaction_id && !(p.tax_document_invoice_id && p.tax_document_status !== 'cancelled')"
+                  @click="deletePayment(p)" :disabled="busy !== null"
+                  class="cursor-pointer text-xs text-danger-500 hover:text-danger-700"
+                  :title="t('common.delete')">✕</button>
+                <span v-else-if="p.bank_transaction_id" class="text-xs text-neutral-300" :title="t('invoice.payments.locked_bank')">🔒</span>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot class="bg-neutral-50 text-sm">
+            <tr>
+              <td class="px-4 py-2 font-medium">{{ t('invoice.payments.paid_total') }}</td>
+              <td class="px-4 py-2 text-right font-mono font-semibold">{{ formatMoney(invoice.paid_total ?? 0, invoice.currency) }}</td>
+              <td :colspan="isProforma ? 4 : 3" class="px-4 py-2 text-right text-xs"
+                :class="remainingToPay > 0 ? 'text-amber-700' : 'text-success-600'">
+                {{ remainingToPay > 0
+                  ? t('invoice.payments.remaining') + ': ' + formatMoney(remainingToPay, invoice.currency)
+                  : (remainingToPay < -0.05 ? t('status.overpaid') + ' +' + formatMoney(-remainingToPay, invoice.currency) : t('status.paid')) }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
 

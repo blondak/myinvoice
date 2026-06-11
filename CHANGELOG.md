@@ -5,6 +5,19 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.23.0] — 2026-06-12
+
+### Added
+
+- **Částečné úhrady faktur a evidence plateb (#89).** Každá vydaná i zálohová faktura může mít **více evidovaných plateb** (splátky, více převodů, e-mailová avíza). V detailu je nový box **Platby** (datum, částka, zdroj, reference, mazání) a v liště akcí tlačítko **Částečná úhrada**; stávající **Označit zaplacené** zůstává jako zkratka „platba na celý zbytek" (plná zpětná kompatibilita, vč. API `mark-paid`). Stav úhrady ukazují nové badge **Částečně uhrazeno** a **Přeplaceno**; částečně uhrazená faktura zůstává pohledávkou se sníženým zůstatkem — přehledy (po splatnosti, aging, cashflow, CRM), upomínky, e-maily, **QR platba i PDF** (nový řádek *Uhrazeno / Zbývá uhradit*) počítají vždy jen se zbývající částkou. Bankovní párování (výpisy i e-mailová avíza) nově eviduje **N:1** — částečná platba se shodným variabilním symbolem se zaeviduje automaticky a další převody se přičítají; doplatek zálohy, ke které už existuje finální doklad, se správně připíše finálu. Veřejné REST API: `GET/POST /api/v1/invoices/{id}/payments`, `DELETE …/payments/{id}`.
+- **Daňový doklad k přijaté platbě u zálohových faktur (§ 28 odst. 2 ZDPH).** K (částečné) platbě zálohové faktury plátce DPH vystaví **daňový doklad k přijaté platbě** s DUZP = den přijetí úplaty — automaticky jako koncept při bankovním spárování, nebo na klik (modal Částečné úhrady / box Platby). DPH se počítá **shora koeficientem (§ 37)** a platba se rozdělí mezi sazby DPH zálohy poměrně; doklad se čísluje v řadě faktur a do **DPH přiznání, kontrolního hlášení i Knihy DPH** vstupuje v měsíci platby. Finální vyúčtování pak ke zdaněným platbám generuje **záporné odpočtové řádky (§ 37a)** — daní se jen zbytek, nikdy nic dvakrát (hlídáno oboustrannými pojistkami: daňový doklad nelze vystavit k záloze s existujícím finálem a ruční párování zálohy s vystavenými doklady k platbě je blokované). Vyúčtovat lze i částečně uhrazenou zálohu. U neplátce DPH a přenesené daňové povinnosti se doklad nevystavuje (u RC se záloha nedaní). Export: ISDOC `DocumentType 5` (daňový zálohový list), Pohoda `issuedTaxDocument`. Daňová správnost je pokrytá novým integračním testem (DPH/KH/Kniha napříč obdobími: součet daňového dokladu a finálu = přesně původní základy a daně).
+
+### Fixed
+
+- **CRM přehledy pohledávek (aging, týdenní cashflow) nadhodnocovaly dluh** — sčítaly celkovou částku dokladu místo zbývajícího dluhu a počítaly i finální doklady plně kryté zálohou (částka k úhradě 0). Nově sčítají skutečný zůstatek.
+- **Finální doklad vytvořený bankovním spárováním zálohy má DUZP = datum platby z výpisu** (dřív datum vytvoření konceptu) a výše odpočtu zálohy při ručním párování vychází ze **skutečně přijatých plateb**, ne z celkové částky zálohy.
+- **Popup editoru výkazu práce je použitelný na mobilu** — položky se na malých displejích zobrazují jako karty (jako položky faktury v detailu) s číselnou klávesnicí pro hodiny/sazbu; tlačítka „Přidat řádek" sjednocena se stylem editoru faktury.
+
 ## [4.22.0] — 2026-06-11
 
 ### Added

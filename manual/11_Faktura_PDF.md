@@ -24,13 +24,60 @@ Závisí na stavu faktury:
 
 | Stav | Dostupné akce |
 |---|---|
-| `issued` | Stáhnout PDF, Odeslat e-mailem, Označit zaplacené, Storno, Dobropis, Test odeslání, Test upomínky, **Editovat (force)** |
-| `sent` | Stáhnout PDF, Odeslat znovu, Označit zaplacené, Upomínka, Dobropis |
-| `reminded` | Stáhnout PDF, Další upomínka (cooldown 14 dní), Označit zaplacené |
+| `issued` | Stáhnout PDF, Odeslat e-mailem, Označit zaplacené, Částečná úhrada, Storno, Dobropis, Test odeslání, Test upomínky, **Editovat (force)** |
+| `sent` | Stáhnout PDF, Odeslat znovu, Označit zaplacené, Částečná úhrada, Upomínka, Dobropis |
+| `reminded` | Stáhnout PDF, Další upomínka (cooldown 14 dní), Označit zaplacené, Částečná úhrada |
 | `paid` | Stáhnout PDF, Dobropis (vrátit peníze) |
 
 > 💡 **Test odeslání / Test upomínky** — pošle e-mail jen na **tvůj** e-mail
 > (ne klientovi). Užitečné pro vyzkoušení šablony nebo SMTP konfigurace.
+
+### 11.1.2 Platby a částečné úhrady
+
+Každá faktura i zálohová faktura může mít **více evidovaných plateb** (splátky,
+více převodů, e-mailová avíza). Platby vznikají:
+
+- **automaticky** při párování bankovního výpisu nebo e-mailového avíza
+  (viz [23. Banka](23_Banka.md)) — i částečná platba se shodným variabilním
+  symbolem se zaeviduje,
+- tlačítkem **Částečná úhrada** — modal s částkou (předvyplněn zbytek), datem
+  platby, volitelným VS, referencí a poznámkou,
+- tlačítkem **Označit zaplacené** — to je zkratka „platba na celý zbytek".
+
+Detail faktury zobrazuje box **Platby**: datum, částku, zdroj (ručně / banka /
+označeno zaplaceno), referenci a u záloh odkaz na daňový doklad k platbě.
+Platbu lze smazat (✕) — pokud tím doklad přestane být pokrytý, vrátí se ze
+stavu *Zaplaceno* mezi pohledávky. Platba navázaná na bankovní transakci se
+maže přes **Zrušit spárování** v detailu výpisu; platba s vystaveným daňovým
+dokladem až po jeho smazání/stornu.
+
+Stav úhrady ukazuje badge: **Částečně uhrazeno** (přijata část peněz, zbytek
+se dál upomíná a počítá do pohledávek) a **Přeplaceno** (přišlo víc než
+částka k úhradě). V sumaci detailu je řádek **Uhrazeno** a **Zbývá uhradit**;
+stejný rozpis má i PDF a QR platba v PDF, e-mailu a upomínce zní vždy jen na
+zbývající částku.
+
+#### Zálohová faktura: daňový doklad k přijaté platbě
+
+Plátce DPH musí ke každé úplatě přijaté před uskutečněním plnění vystavit
+**daňový doklad k přijaté platbě** (§ 28 odst. 2 ZDPH) s DUZP = den přijetí
+platby. U **částečné úhrady zálohové faktury** ho MyInvoice vystaví jako
+koncept automaticky (bankovní párování) nebo na klik (zaškrtávátko v modalu
+Částečná úhrada / tlačítko v boxu Platby):
+
+- DPH se počítá **shora koeficientem** (§ 37) a platba se rozdělí mezi sazby
+  DPH zálohy poměrně podle jejich vah,
+- doklad se čísluje v řadě **faktur**, do výkazů DPH/KH/Knihy DPH vstupuje
+  v měsíci platby a vystavením je rovnou „zaplacený",
+- u **neplátce DPH** a u plnění v **přenesené daňové povinnosti** se
+  nevystavuje (u RC se záloha nedaní — daň vzniká až k DUZP plnění).
+
+Finální doklad (vyúčtování) pak ke zdaněným platbám přidá **záporné odpočtové
+řádky** (§ 37a) — daní se jen zbytek, nic dvakrát. Vyúčtovat lze i jen
+částečně uhrazenou zálohu; odpočet pokryje přijaté platby a zbytek zůstane
+na finálním dokladu k úhradě. Jakmile finál existuje, další daňový doklad
+k platbě už vystavit nejde (a obráceně ruční párování zálohy s daňovými
+doklady k platbě je blokované) — ochrana proti dvojímu zdanění.
 
 ## 11.2 PDF struktura
 

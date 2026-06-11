@@ -542,6 +542,153 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
 
+  /api/v1/invoices/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Invoices]
+      summary: Evidované platby faktury
+      description: |
+        Seznam plateb (částečných úhrad) faktury nebo zálohové faktury + souhrn:
+        `paid_total`, `remaining` (= `amount_to_pay - paid_total`) a odvozený
+        `payment_status` (`unpaid` / `partially_paid` / `paid` / `overpaid`).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items: { $ref: '#/components/schemas/InvoicePayment' }
+                  paid_total: { type: number, format: float }
+                  amount_to_pay: { type: number, format: float }
+                  remaining: { type: number, format: float }
+                  payment_status:
+                    type: string
+                    nullable: true
+                    enum: [unpaid, partially_paid, paid, overpaid]
+    post:
+      tags: [Invoices]
+      summary: Zaeviduje (částečnou) úhradu faktury
+      description: |
+        Přidá platbu v měně faktury. Pokud suma plateb pokryje `amount_to_pay`
+        (tolerance 0,05), faktura se označí jako zaplacená (`paid_at` = datum
+        poslední platby). Stávající `mark-paid` je zkratka „platba na zbytek".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  description: Částka platby v měně faktury (> 0)
+                paid_on:
+                  type: string
+                  format: date
+                  description: Datum platby (default = dnes)
+                variable_symbol: { type: string, nullable: true, maxLength: 20 }
+                bank_reference: { type: string, nullable: true, maxLength: 120 }
+                note: { type: string, nullable: true, maxLength: 255 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice: { $ref: '#/components/schemas/Invoice' }
+                  payments:
+                    type: array
+                    items: { $ref: '#/components/schemas/InvoicePayment' }
+                  payment: { $ref: '#/components/schemas/InvoicePayment' }
+                  became_paid: { type: boolean }
+                  remaining: { type: number, format: float }
+        '409':
+          description: Neplatný stav/částka (draft, storno, dobropis…)
+
+  /api/v1/invoices/{id}/payments/{paymentId}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+      - in: path
+        name: paymentId
+        required: true
+        schema: { type: integer, format: int64 }
+    delete:
+      tags: [Invoices]
+      summary: Smaže evidovanou platbu
+      description: |
+        Platbu navázanou na bankovní transakci nelze smazat (409) — ruší se přes
+        unmatch v detailu výpisu. Platbu s vystaveným daňovým dokladem k přijaté
+        platbě lze smazat až po smazání/stornu dokladu. Pokud po smazání přestane
+        být doklad pokrytý, vrátí se ze stavu `paid` zpět (`sent`/`issued`).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice: { $ref: '#/components/schemas/Invoice' }
+                  payments:
+                    type: array
+                    items: { $ref: '#/components/schemas/InvoicePayment' }
+                  became_unpaid: { type: boolean }
+                  remaining: { type: number, format: float }
+        '409':
+          description: Platba je zamčená (bankovní vazba / daňový doklad)
+
+  /api/v1/invoices/{id}/payments/{paymentId}/tax-document:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+      - in: path
+        name: paymentId
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Invoices]
+      summary: Vystaví daňový doklad k přijaté platbě (DRAFT)
+      description: |
+        K platbě **zálohové faktury** vystaví koncept daňového dokladu k přijaté
+        platbě (`invoice_type = tax_document`, § 28 odst. 2 ZDPH): DUZP = datum
+        platby, DPH shora koeficientem (§ 37), částka rozdělená mezi sazby DPH
+        proformy poměrně. Jen plátce DPH a ne-reverse-charge plnění. Idempotentní —
+        existující nestornovaný doklad k platbě vrátí beze změny.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tax_document_id: { type: integer, format: int64 }
+                  payments:
+                    type: array
+                    items: { $ref: '#/components/schemas/InvoicePayment' }
+        '409':
+          description: Podmínky nesplněny (neplátce DPH, reverse charge, není proforma)
+
   /api/v1/invoices/{id}/pdf:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
@@ -4343,10 +4490,16 @@ components:
         varsymbol: { type: string, nullable: true, description: "Variabilní symbol = číslo faktury. Přiděluje se při issue (u draft je null nebo manuální override)." }
         invoice_type:
           type: string
-          enum: [invoice, proforma, credit_note, cancellation]
+          enum: [invoice, proforma, credit_note, cancellation, tax_document]
+          description: "tax_document = daňový doklad k přijaté platbě zálohy (§ 28/2 ZDPH); DUZP = datum platby, parent_invoice_id = proforma."
         status:
           type: string
           enum: [draft, issued, sent, reminded, paid, cancelled]
+        payment_status:
+          type: string
+          nullable: true
+          enum: [unpaid, partially_paid, paid, overpaid]
+          description: "Odvozený platební stav (#89) z paid_total vs. amount_to_pay (tolerance 0,05). Null pro draft/cancelled."
         payment_method:
           type: string
           enum: [bank_transfer, card, cash, other]
@@ -4377,6 +4530,7 @@ components:
         rounding: { type: number, format: float, description: "Zaokrouhlení (CZK)" }
         advance_paid_amount: { type: number, format: float, description: "Záloha k odečtení (u faktury vystavované po proforme)" }
         amount_to_pay: { type: number, format: float, description: "total_with_vat + rounding − advance_paid_amount" }
+        paid_total: { type: number, format: float, description: "Suma evidovaných plateb (invoice_payments, #89); zbývá k úhradě = amount_to_pay − paid_total" }
         discount_percent: { type: number, format: float, description: "Procentuální sleva z celé faktury (0 = žádná). Materializuje se jako záporná položka „Sleva X %\" v `items`." }
         totals:
           type: object
@@ -5281,6 +5435,30 @@ components:
         page:     { type: integer, example: 1 }
         per_page: { type: integer, example: 50 }
         pages:    { type: integer, example: 9 }
+
+    InvoicePayment:
+      type: object
+      description: "Evidovaná platba faktury / zálohové faktury (#89). N:1 — jedna faktura může mít víc plateb (splátky, více převodů, avíza)."
+      properties:
+        id: { type: integer, format: int64 }
+        invoice_id: { type: integer, format: int64 }
+        paid_on: { type: string, format: date }
+        amount: { type: number, format: float, description: "Částka v měně faktury (> 0)" }
+        currency: { type: string, example: CZK, description: "Denormalizovaný kód měny faktury v okamžiku platby" }
+        variable_symbol: { type: string, nullable: true }
+        bank_reference: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+        source:
+          type: string
+          enum: [manual, mark_paid, bank, legacy]
+          description: "manual = ruční záznam, mark_paid = zkratka „označit zaplaceno“, bank = bankovní párování (GPC i e-mailové avízo), legacy = backfill z dob před evidencí plateb"
+        bank_transaction_id: { type: integer, format: int64, nullable: true, description: "Vazba na bankovní transakci (taková platba se maže přes unmatch ve výpisu)" }
+        bank_statement_id: { type: integer, format: int64, nullable: true }
+        tax_document_invoice_id: { type: integer, format: int64, nullable: true, description: "Daňový doklad k přijaté platbě vystavený k této platbě (jen u záloh)" }
+        tax_document_varsymbol: { type: string, nullable: true }
+        tax_document_status: { type: string, nullable: true, enum: [draft, issued, sent, reminded, paid, cancelled] }
+        created_by: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
 
     InvoiceItem:
       type: object

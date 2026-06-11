@@ -56,6 +56,8 @@ final class BankStatementAction
         private readonly \MyInvoice\Repository\PurchaseInvoiceRepository $purchaseRepo,
         private readonly \MyInvoice\Service\Invoice\PurchaseInvoiceCalculator $purCalc,
         private readonly \MyInvoice\Service\Mail\PaymentThanksMailer $paymentThanks,
+        private readonly \MyInvoice\Service\Invoice\InvoicePaymentService $payments,
+        private readonly \MyInvoice\Service\Invoice\PaymentTaxDocumentCreator $taxDocCreator,
     ) {}
 
     public function scan(Request $request, Response $response): Response
@@ -932,14 +934,38 @@ final class BankStatementAction
 
         $pdo = $this->db->pdo();
 
-        // Načti transakci pro posted_at (datum úhrady ze skutečnosti, ne dnes) + statement_id
-        $tx = $pdo->prepare('SELECT posted_at, statement_id FROM bank_transactions WHERE id = ?');
+        // Načti transakci pro posted_at (datum úhrady ze skutečnosti, ne dnes), částku
+        // a měnu (pro záznam platby v měně faktury) + statement_id.
+        $tx = $pdo->prepare(
+            'SELECT bt.posted_at, bt.statement_id, bt.amount, bt.variable_symbol, bt.bank_ref,
+                    COALESCE(NULLIF(bt.currency, ""), bs.currency) AS tx_currency
+               FROM bank_transactions bt
+               JOIN bank_statements bs ON bs.id = bt.statement_id
+              WHERE bt.id = ?'
+        );
         $tx->execute([$txId]);
         $txRow = $tx->fetch(\PDO::FETCH_ASSOC) ?: [];
         $postedAt = (string) ($txRow['posted_at'] ?? date('Y-m-d'));
         $statementId = (int) ($txRow['statement_id'] ?? 0);
 
         $userId = (int) (((array) $request->getAttribute(AuthMiddleware::ATTR_USER, []))['id'] ?? 0);
+
+        // Guard: transakce už založila platbu na JINÉ faktuře — tiché přepárování by
+        // nechalo platbu (a paid stav) na původní faktuře a novou by jen flagnulo.
+        // Uživatel musí nejdřív zrušit stávající spárování (smaže i platbu).
+        $existingPayment = $pdo->prepare(
+            'SELECT invoice_id FROM invoice_payments WHERE bank_transaction_id = ?'
+        );
+        $existingPayment->execute([$txId]);
+        $existingPaymentInvoiceId = $existingPayment->fetchColumn();
+        if ($existingPaymentInvoiceId !== false && (int) $existingPaymentInvoiceId !== $invoiceId) {
+            return Json::error(
+                $response,
+                'tx_already_paired',
+                'Transakce už eviduje platbu na jiné faktuře. Nejdřív zruš stávající spárování.',
+                409,
+            );
+        }
 
         $pdo->beginTransaction();
         try {
@@ -949,18 +975,52 @@ final class BankStatementAction
                   WHERE id = ?"
             )->execute([$invoiceId, $userId ?: null, $txId]);
 
-            // Pokud faktura ještě není paid/cancelled, označ ji jako paid s datem z výpisu
+            // Pokud faktura ještě není paid/cancelled, zaeviduj platbu (#89) — částka
+            // transakce v měně faktury. Plné pokrytí → service překlopí na 'paid';
+            // podplatba → faktura zůstává pohledávkou (částečná úhrada).
             $finalDraftId = null;
+            $taxDocId = null;
             $markedPaid = false;
+            $partialPayment = false;
             if (in_array($invoice['status'], ['issued', 'sent', 'reminded'], true)) {
-                $pdo->prepare(
-                    "UPDATE invoices SET status = 'paid', paid_at = ? WHERE id = ?"
-                )->execute([$postedAt, $invoiceId]);
-                $markedPaid = true;
+                $remaining = round((float) ($invoice['amount_to_pay'] ?? 0) - (float) ($invoice['paid_total'] ?? 0), 2);
+                $invAmount = $this->txAmountInInvoiceCurrency(
+                    (float) ($txRow['amount'] ?? 0),
+                    (string) ($invoice['currency'] ?? 'CZK'),
+                    (float) ($invoice['exchange_rate'] ?? 0),
+                    isset($txRow['tx_currency']) && $txRow['tx_currency'] !== null ? (string) $txRow['tx_currency'] : null,
+                    $remaining,
+                );
 
-                // Zaplacená proforma → vytvoř DRAFT finální faktury (daňový doklad k záloze)
-                if (($invoice['invoice_type'] ?? '') === 'proforma') {
-                    $finalDraftId = $this->finalCreator->create($invoiceId, $userId ?: 0);
+                // Idempotence: transakce už mohla platbu založit (legacy auto_partial flag
+                // z dob před evidencí plateb ji nemá, nově ano) — nevkládat duplicitně.
+                $existing = $pdo->prepare('SELECT id FROM invoice_payments WHERE bank_transaction_id = ?');
+                $existing->execute([$txId]);
+                if ($existing->fetchColumn() === false && $invAmount > 0) {
+                    $recorded = $this->payments->recordPayment($invoiceId, $invAmount, $postedAt, [
+                        'source'              => 'bank',
+                        'bank_transaction_id' => $txId,
+                        'variable_symbol'     => isset($txRow['variable_symbol']) ? (string) $txRow['variable_symbol'] : null,
+                        'bank_reference'      => isset($txRow['bank_ref']) ? (string) $txRow['bank_ref'] : null,
+                        'created_by'          => $userId,
+                    ]);
+                    $markedPaid = $recorded['became_paid'];
+                    $partialPayment = !$recorded['became_paid'];
+
+                    if (($invoice['invoice_type'] ?? '') === 'proforma') {
+                        if ($markedPaid) {
+                            // Zaplacená proforma → DRAFT finální faktury (DUZP = datum platby)
+                            $finalDraftId = $this->finalCreator->create($invoiceId, $userId ?: 0, $postedAt);
+                        } else {
+                            // Částečná úhrada proformy → DRAFT daňového dokladu k přijaté
+                            // platbě (plátce DPH, ne-RC; creator si podmínky hlídá sám).
+                            try {
+                                $taxDocId = $this->taxDocCreator->createForPayment((int) $recorded['payment_id'], $userId ?: 0);
+                            } catch (\RuntimeException) {
+                                // Neplátce / reverse charge — doklad se nevystavuje.
+                            }
+                        }
+                    }
                 }
             }
 
@@ -984,9 +1044,11 @@ final class BankStatementAction
 
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('bank.tx_manual_match', $userId ?: null, 'bank_transaction', $txId, [
-            'invoice_id'     => $invoiceId,
-            'paid_at'        => $postedAt,
-            'final_draft_id' => $finalDraftId,
+            'invoice_id'      => $invoiceId,
+            'paid_at'         => $postedAt,
+            'final_draft_id'  => $finalDraftId,
+            'partial_payment' => $partialPayment,
+            'tax_document_id' => $taxDocId,
         ], $ip, $request->getHeaderLine('User-Agent'));
         if ($finalDraftId !== null) {
             $this->logger->log('proforma.final_issued', $userId ?: null, 'invoice', $invoiceId, [
@@ -1013,10 +1075,34 @@ final class BankStatementAction
         if ($finalDraftId !== null) {
             $result['final_draft_id'] = $finalDraftId;
         }
+        if ($partialPayment) {
+            $result['partial_payment'] = true;
+        }
+        if ($taxDocId !== null) {
+            $result['tax_document_id'] = $taxDocId;
+        }
         if ($thanks !== null && ($thanks['status'] ?? '') === 'sent') {
             $result['payment_thanks_sent'] = true;
         }
         return Json::ok($response, $result);
+    }
+
+    /**
+     * Částka transakce v měně faktury (mirror StatementMatcher::txAmountInInvoiceCurrency):
+     * stejná/neznámá měna → přímo; CZK platba cizoměnové faktury → děleno kurzem faktury;
+     * jinak $fallback (zbývající částka — manuální match = uživatel říká „tahle platba
+     * patří k téhle faktuře", bez převoditelné měny bereme doplacení zbytku).
+     */
+    private function txAmountInInvoiceCurrency(float $txAmount, string $invCcy, float $rate, ?string $txCurrency, float $fallback): float
+    {
+        if ($txCurrency === null || strtoupper($txCurrency) === strtoupper($invCcy)) {
+            return round($txAmount, 2);
+        }
+        if (strtoupper($txCurrency) === 'CZK') {
+            $r = $rate > 0 ? $rate : 1.0;
+            return round($txAmount / $r, 2);
+        }
+        return round($fallback, 2);
     }
 
     /**
@@ -1162,6 +1248,25 @@ final class BankStatementAction
 
         $userId = (int) (((array) $request->getAttribute(AuthMiddleware::ATTR_USER, []))['id'] ?? 0);
 
+        // Guard (#89): k platbě této transakce existuje nestornovaný daňový doklad
+        // k přijaté platbě — odpárování by rozbilo daňovou stopu. Nejdřív doklad
+        // smazat (koncept) nebo stornovat, pak teprve rušit spárování.
+        $tdGuard = $pdo->prepare(
+            "SELECT COUNT(*)
+               FROM invoice_payments p
+               JOIN invoices td ON td.id = p.tax_document_invoice_id
+              WHERE p.bank_transaction_id = ? AND td.status <> 'cancelled'"
+        );
+        $tdGuard->execute([$txId]);
+        if ((int) $tdGuard->fetchColumn() > 0) {
+            return Json::error(
+                $response,
+                'has_tax_document',
+                'K platbě z této transakce je vystavený daňový doklad k přijaté platbě. Nejdřív ho smaž (koncept) nebo stornuj.',
+                409,
+            );
+        }
+
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
@@ -1173,10 +1278,15 @@ final class BankStatementAction
                   WHERE id = ?"
             )->execute([$txId]);
 
-            // Pokud byla faktura označena jako paid s paid_at = posted_at této transakce
-            // a nemá jinou stále spárovanou transakci, vrať ji na 'issued' a smaž paid_at.
-            // (Konzervativní heuristika — neměníme stav, který někdo nastavil ručně později.)
-            if ($invoiceId > 0 && $postedAt !== '') {
+            // Evidence plateb (#89): smaž platbu založenou touto transakcí — service
+            // přepočítá paid_total a případně vrátí fakturu ze stavu 'paid' (sent/issued).
+            $deletedPayment = $this->payments->deleteForBankTransaction($txId);
+
+            // Legacy heuristika pro spárování z dob před evidencí plateb (žádný payment
+            // řádek): pokud byla faktura označena jako paid s paid_at = posted_at této
+            // transakce a nemá jinou stále spárovanou transakci, vrať ji na 'issued'.
+            // (Konzervativní — neměníme stav, který někdo nastavil ručně později.)
+            if (!$deletedPayment && $invoiceId > 0 && $postedAt !== '') {
                 $other = $pdo->prepare(
                     "SELECT COUNT(*) FROM bank_transactions
                       WHERE matched_invoice_id = ?
@@ -1186,13 +1296,28 @@ final class BankStatementAction
                 $other->execute([$invoiceId, $txId]);
                 $stillMatched = (int) $other->fetchColumn();
                 if ($stillMatched === 0) {
-                    $pdo->prepare(
+                    $rev = $pdo->prepare(
                         "UPDATE invoices
                             SET status = 'issued', paid_at = NULL
                           WHERE id = ?
                             AND status = 'paid'
                             AND paid_at = ?"
-                    )->execute([$invoiceId, $postedAt]);
+                    );
+                    $rev->execute([$invoiceId, $postedAt]);
+                    if ($rev->rowCount() > 0) {
+                        // Backfill 'legacy' platba (migrace 0108) odpovídá tomuto
+                        // historickému spárování — smaž a přepočti paid_total, jinak
+                        // by faktura zůstala issued s plným paid_total (nekonzistence).
+                        $pdo->prepare(
+                            "DELETE FROM invoice_payments WHERE invoice_id = ? AND source = 'legacy'"
+                        )->execute([$invoiceId]);
+                        $pdo->prepare(
+                            'UPDATE invoices i
+                                SET i.paid_total = (SELECT COALESCE(SUM(p.amount), 0)
+                                                      FROM invoice_payments p WHERE p.invoice_id = i.id)
+                              WHERE i.id = ?'
+                        )->execute([$invoiceId]);
+                    }
                 }
             }
 

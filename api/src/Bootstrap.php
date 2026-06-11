@@ -119,6 +119,10 @@ final class Bootstrap
                 // #127 — automatické párování (GPC import, e-mailové avízo, cron) musí
                 // poslat děkovný e-mail za úhradu stejně jako ruční mark-paid/manualMatch.
                 $c->get(\MyInvoice\Service\Mail\PaymentThanksMailer::class),
+                // #89 — evidence plateb (exact i částečné úhrady přes invoice_payments)
+                // + auto DRAFT daňového dokladu k přijaté platbě u částečně uhrazené proformy.
+                $c->get(\MyInvoice\Service\Invoice\InvoicePaymentService::class),
+                $c->get(\MyInvoice\Service\Invoice\PaymentTaxDocumentCreator::class),
             ),
 
             // IpMatcher má v konstruktoru volitelný `?Config $config = null`. Autowiring

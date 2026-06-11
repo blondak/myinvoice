@@ -66,6 +66,10 @@ use MyInvoice\Action\Invoice\ListInvoicesAction;
 use MyInvoice\Action\Invoice\PreviewVarsymbolAction;
 use MyInvoice\Action\Invoice\MarkPaidAction;
 use MyInvoice\Action\Invoice\UnmarkPaidAction;
+use MyInvoice\Action\Invoice\ListPaymentsAction;
+use MyInvoice\Action\Invoice\CreatePaymentAction;
+use MyInvoice\Action\Invoice\DeletePaymentAction;
+use MyInvoice\Action\Invoice\CreatePaymentTaxDocumentAction;
 use MyInvoice\Action\Invoice\BulkReissueAction;
 use MyInvoice\Action\Invoice\CloneInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\AdvanceCandidatesAction;
@@ -260,6 +264,11 @@ final class Routes
         $app->post   ('/api/invoices/{id:[0-9]+}/issue',     IssueInvoiceAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/mark-paid', MarkPaidAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/unmark-paid', UnmarkPaidAction::class);
+        // Evidence plateb / částečné úhrady (#89) + daňový doklad k přijaté platbě (zálohy)
+        $app->get    ('/api/invoices/{id:[0-9]+}/payments', ListPaymentsAction::class);
+        $app->post   ('/api/invoices/{id:[0-9]+}/payments', CreatePaymentAction::class);
+        $app->delete ('/api/invoices/{id:[0-9]+}/payments/{paymentId:[0-9]+}', DeletePaymentAction::class);
+        $app->post   ('/api/invoices/{id:[0-9]+}/payments/{paymentId:[0-9]+}/tax-document', CreatePaymentTaxDocumentAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/cancel',    CancelInvoiceAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/pdf',       PdfAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/pdfs',      ListPdfsAction::class);

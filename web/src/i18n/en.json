@@ -1025,6 +1025,38 @@
     "send_test": "Send test",
     "send_to_client": "Send to client",
     "mark_paid": "Mark as paid",
+    "partial_payment": "Partial payment",
+    "payments": {
+      "title": "Payments",
+      "add": "Add payment",
+      "paid_on": "Date",
+      "amount": "Amount",
+      "source": "Source",
+      "sources": {
+        "manual": "Manual",
+        "mark_paid": "Marked paid",
+        "bank": "Bank",
+        "legacy": "Historical"
+      },
+      "vs": "Payment VS",
+      "reference": "Reference",
+      "note": "Note",
+      "tax_doc": "Tax document",
+      "create_tax_doc": "Issue tax document",
+      "create_tax_doc_checkbox": "Issue tax document for payment received",
+      "create_tax_doc_hint": "Draft with the tax point date (DUZP) set to the payment date; VAT computed top-down by coefficient.",
+      "tax_doc_created": "Tax document draft created.",
+      "tax_docs_banner": "Tax documents for payments received:",
+      "statement_link": "statement",
+      "paid_total": "Paid",
+      "remaining": "Remaining",
+      "invalid_amount": "Enter a valid payment amount.",
+      "recorded": "Payment recorded, {remaining} remaining.",
+      "recorded_paid": "Payment recorded — the document is fully paid.",
+      "deleted": "Payment deleted.",
+      "delete_confirm": "Delete payment {amount} from {date}?",
+      "locked_bank": "Payment from bank matching — remove it via “Unmatch” in the statement detail."
+    },
     "cancel_or_credit": "Cancel / credit note",
     "cancel_credit_note": "Cancel credit note",
     "delete_cancelled": "Delete (cancellation + original)",
@@ -1112,6 +1144,9 @@
         "signature_config": "Signature configuration changed",
         "currency": "Bank details changed",
         "manual": "Manual invalidation",
+        "mark_paid": "Marked paid",
+        "unmark_paid": "Unmarked paid",
+        "payment_change": "Payments changed",
         "backfill_sent": "Backfilled",
         "approval_request": "Approval requested",
         "approval_reminder": "Approval reminder sent"
@@ -1263,6 +1298,9 @@
     "modals": {
       "mark_paid_title": "Mark as paid",
       "mark_paid_date": "Payment date",
+      "partial_payment_title": "Partial payment",
+      "partial_payment_remaining": "{remaining} remaining. Covering the full amount marks the document as paid automatically.",
+      "partial_payment_amount": "Payment amount",
       "cancel_title": "Cancel / Credit note",
       "cancel_title_cn": "Cancel credit note",
       "cancel_choose": "Choose cancellation type:",
@@ -1294,7 +1332,8 @@
   "status": {
     "draft": "Draft", "issued": "Issued", "sent": "Sent",
     "reminded": "Reminded", "paid": "Paid", "cancelled": "Cancelled",
-    "issued_not_sent": "Issued (not sent)"
+    "issued_not_sent": "Issued (not sent)",
+    "partially_paid": "Partially paid", "overpaid": "Overpaid"
   },
   "payment_method": {
     "label": "Payment method",
@@ -1344,7 +1383,8 @@
   },
   "type": {
     "invoice": "Invoice", "proforma": "Proforma",
-    "credit_note": "Credit note", "cancellation": "Cancellation"
+    "credit_note": "Credit note", "cancellation": "Cancellation",
+    "tax_document": "Tax document for payment"
   },
   "client": {
     "title": "Clients",

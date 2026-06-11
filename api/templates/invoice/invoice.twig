@@ -380,12 +380,29 @@
         </tr>
         {% if invoice.advance_paid_amount > 0 %}
         <tr class="advance">
+          {% if invoice.invoice_type == 'tax_document' %}
+          {# Daňový doklad k přijaté platbě — „záloha" je sama přijatá platba. #}
+          <td class="tot-label">{{ t('Uhrazeno přijatou platbou', 'Settled by payment received') }}</td>
+          {% else %}
           <td class="tot-label">{{ t('Odečet zálohy', 'Advance deduction') }}</td>
+          {% endif %}
           <td class="tot-num nowrap">−{{ invoice.advance_paid_amount|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
         </tr>
         <tr class="to-pay">
           <td class="tot-label">{{ t('K úhradě', 'Amount due') }}</td>
           <td class="tot-num nowrap">{{ invoice.amount_to_pay|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
+        </tr>
+        {% endif %}
+        {# Částečné úhrady (#89): evidované platby snižují výzvu k platbě — znovu
+           stažené PDF nesmí chtít celou částku (QR výše zní na tentýž zbytek). #}
+        {% if (invoice.paid_total ?? 0) > 0 and invoice.status != 'paid' %}
+        <tr class="advance">
+          <td class="tot-label">{{ t('Uhrazeno', 'Paid to date') }}</td>
+          <td class="tot-num nowrap">−{{ invoice.paid_total|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
+        </tr>
+        <tr class="to-pay">
+          <td class="tot-label">{{ t('Zbývá uhradit', 'Remaining amount due') }}</td>
+          <td class="tot-num nowrap">{{ (invoice.amount_to_pay - invoice.paid_total)|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
         </tr>
         {% endif %}
         {% if invoice.czk_recap %}

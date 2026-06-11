@@ -225,7 +225,11 @@ final class InvoicePdfRenderer
         //     → drafty bez VS dostanou QR taky (preview pro klienta), remittance fallback
         //   Skip pro zaplacené faktury a pro non-bank-transfer payment_method
         $qrUri = null;
-        $hasAmount = (float) $invoice['amount_to_pay'] > 0;
+        // Částečné úhrady (#89): QR i výzva k platbě znějí na ZBÝVAJÍCÍ částku
+        // (amount_to_pay − paid_total) — znovu stažené/poslané PDF po částečné
+        // úhradě nesmí chtít celou částku. Cache se při změně plateb invaliduje.
+        $remaining = round((float) $invoice['amount_to_pay'] - (float) ($invoice['paid_total'] ?? 0), 2);
+        $hasAmount = $remaining > 0;
         $isCzk = ((string) $invoice['currency']) === 'CZK';
         $hasVs = !empty($invoice['varsymbol']);
         $isPaid = ($invoice['status'] ?? '') === 'paid';
@@ -234,7 +238,7 @@ final class InvoicePdfRenderer
         if ($hasAmount && $bankData !== null && (!$isCzk || $hasVs) && !$isPaid && $isBankTransfer) {
             $qrUri = $this->qr->generate(
                 (string) $invoice['currency'],
-                (float) $invoice['amount_to_pay'],
+                $remaining,
                 (string) ($invoice['varsymbol'] ?? ''),
                 $bankData,
                 (string) ($supplierData['display_name'] ?? $supplierData['company_name'] ?? 'MyInvoice'),
@@ -432,12 +436,14 @@ final class InvoicePdfRenderer
                 'proforma'     => 'Zálohová faktura',
                 'credit_note'  => $isVatPayer ? 'Opravný daňový doklad' : 'Opravná faktura',
                 'cancellation' => 'Storno (interní)',
+                'tax_document' => 'Daňový doklad k přijaté platbě',
             ],
             'en' => [
                 'invoice'      => $isVatPayer ? 'Invoice — Tax document' : 'Invoice',
                 'proforma'     => 'Proforma invoice',
                 'credit_note'  => $isVatPayer ? 'Credit note — Tax adjustment' : 'Credit note',
                 'cancellation' => 'Cancellation (internal)',
+                'tax_document' => 'Tax document for payment received',
             ],
         ];
         return $labels[$locale][$invoice['invoice_type']] ?? $labels['cs'][$invoice['invoice_type']] ?? '';
@@ -450,6 +456,7 @@ final class InvoicePdfRenderer
             'proforma'     => 'Zálohová faktura',
             'credit_note'  => 'Dobropis',
             'cancellation' => 'Storno',
+            'tax_document' => 'Daňový doklad k platbě',
             default        => 'Faktura',
         };
         return "$t $vs";
@@ -660,6 +667,7 @@ final class InvoicePdfRenderer
             'proforma'     => 'Proforma',
             'credit_note'  => 'Dobropis',
             'cancellation' => 'Storno',
+            'tax_document' => 'DanovyDoklad',
             default        => 'Faktura',
         };
         return "$dir/$type-$vs.pdf";

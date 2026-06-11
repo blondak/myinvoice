@@ -87,18 +87,32 @@ Tabulka transakcí:
 | Stav | `Spárováno` (zelená) / `Bez shody` (šedá) / `Ignorováno` (oranž.) |
 | Faktura | Pokud spárováno, číslo faktury (klikatelné) |
 
-### 23.4.1 Manuální párování
+### 23.4.1 Částečné platby (více převodů na jednu fakturu)
+
+Příchozí platba se **shodným variabilním symbolem**, ale nižší částkou než
+zbývá uhradit, se zaeviduje jako **částečná úhrada** (záznam v boxu Platby
+detailu faktury) — faktura zůstává pohledávkou se sníženým zůstatkem a badge
+**Částečně uhrazeno**. Další převody se přičítají; jakmile platby pokryjí
+částku k úhradě, faktura se označí jako zaplacená (`paid_at` = datum poslední
+platby). U **zálohové faktury** se k částečné platbě plátci DPH rovnou
+připraví koncept **daňového dokladu k přijaté platbě** (viz § 11.1.2);
+doplatek zálohy, ke které už existuje finální doklad, se eviduje na finál.
+Stejně fungují platby z **e-mailových avíz** ([35. Bankovní účty](35_Bankovni_ucty.md)).
+
+### 23.4.2 Manuální párování
 
 Pro transakce, které se nespárovaly automaticky (typicky chybí VS, nebo
-částka nesedí kvůli částečné platbě, devizovému kurzu, bankovnímu poplatku):
+částka nesedí kvůli devizovému kurzu či bankovnímu poplatku):
 
 1. Klik **Spárovat** → otevře se modal s vyhledávačem.
 2. Najdeš fakturu (číslo / klient / částka).
 3. Vyber a potvrď.
 
-Faktura → status `paid`, `paid_at` = datum transakce. Activity log: `bank.matched_manual`.
+Zaeviduje se platba ve výši transakce — plné pokrytí označí fakturu `paid`
+(`paid_at` = datum transakce), nižší částka je částečná úhrada. Activity log:
+`bank.matched_manual`.
 
-### 23.4.2 Ignorovat transakci
+### 23.4.3 Ignorovat transakci
 
 Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 účty, refundace, …):
@@ -106,7 +120,7 @@ Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 1. Klik **Ignorovat**.
 2. Status → `Ignorováno`. Pro reporting se nepočítá.
 
-### 23.4.3 Vytvoření přijaté faktury z výpisu (doklad o úhradě)
+### 23.4.4 Vytvoření přijaté faktury z výpisu (doklad o úhradě)
 
 U **odchozí (záporné) platby**, ke které ještě nemáš v systému přijatou fakturu,
 můžeš rovnou založit její koncept přímo z výpisu:
@@ -159,11 +173,12 @@ Setup:
 - **Platby kartou** (bez VS) se zkusí spárovat na přijatou fakturu i podle
   **částky + podobnosti názvu** dodavatele (název protistrany na výpisu nemusí
   přesně sedět s názvem dodavatele). Spáruje se jen při jednoznačné shodě;
-  jinak nech na ručním párování / založení dokladu (viz § 23.4.3).
-- **Tolerance ± 0,01** — částečné platby (klient pošle míň) se nespárují
-  automaticky, musíš ručně. Zvaž nastavení tolerance v `cfg.php` →
-  `bank.matching.tolerance`; u bankovních e-mailových avíz ji nastavíš přímo v
-  mapování účtu.
+  jinak nech na ručním párování / založení dokladu (viz § 23.4.4).
+- **Částečné platby** (klient pošle míň, ale VS sedí) se u **vydaných** faktur
+  evidují automaticky jako částečná úhrada (viz § 23.4.1). U **přijatých**
+  faktur se podplatba jen označí k ruční kontrole. Toleranci přesné shody lze
+  ladit v `cfg.php` → `bank.matching.tolerance`; u bankovních e-mailových avíz
+  ji nastavíš přímo v mapování účtu.
 - **Devizový kurz** — pokud klient pošle EUR a faktura je v CZK, transakce
   nebude spárovaná (jiná měna). Manuálně.
 - **Bankovní poplatek** — pokud banka strhla ze 100 EUR poplatek 1.5 EUR

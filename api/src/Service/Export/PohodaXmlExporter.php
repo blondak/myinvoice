@@ -140,9 +140,11 @@ final class PohodaXmlExporter
             // Header
             $hdr = $dom->createElementNS(self::NS_INV, 'inv:invoiceHeader');
             $invType = match ($invoice['invoice_type']) {
-                'proforma'    => 'issuedAdvanceInvoice',
-                'credit_note' => 'issuedCreditNotice',
-                default       => 'issuedInvoice',
+                'proforma'     => 'issuedAdvanceInvoice',
+                'credit_note'  => 'issuedCreditNotice',
+                // Daňový doklad k přijaté platbě (záloze) — Pohoda má vlastní typ.
+                'tax_document' => 'issuedTaxDocument',
+                default        => 'issuedInvoice',
             };
             $this->el($dom, $hdr, self::NS_INV, 'inv:invoiceType', $invType);
 
