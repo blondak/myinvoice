@@ -58,8 +58,11 @@ return [
     'date_format' => 'j. n. Y',
 
     // --- Logo (titulka, dole uprostřed) ----------------------------------
+    // Bílá knockout varianta (bez gradientového badge pozadí) — to by se na
+    // fialové titulce zobrazilo jako světlejší obdélník (hlavně u 'chrome'
+    // rendereru, který SVG gradient renderuje věrně; mPDF gradient zahazuje).
     'logo' => [
-        'svg' => __DIR__ . '/../styles/logo.svg',
+        'svg' => __DIR__ . '/manual-logo-cover.svg',
         'png' => null,
     ],
 
