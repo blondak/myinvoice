@@ -33,17 +33,51 @@ final class PurchaseInvoiceExportService
     }
 
     /**
-     * Pohoda XML wrapper kolem `<dataPack>` s jednou položkou `<dataPackItem>`.
+     * Pohoda `<dataPack>` s jednou položkou `<dataPackItem>` pro jednu přijatou fakturu.
      */
     public function toPohodaXml(int $purchaseInvoiceId, int $supplierId): string
     {
         $invoice = $this->buildInvoiceShape($purchaseInvoiceId, $supplierId);
         $cfg = $this->loadPohodaCfg($supplierId);
-        // Pohoda XML pro **přijatou** fakturu používá <pur:purchase> místo <inv:invoice>.
-        // Pragmatic přístup: existující exporter generuje vystavené ve formátu Pohoda;
-        // pro přijaté ho voláme s flagem `direction='purchase'` v cfg.
+        // Přijatá faktura → exporter generuje <inv:invoice> s invoiceType=received*
+        // a partnerIdentity=dodavatel; přepíná se flagem `direction='purchase'` v cfg.
         $cfg['direction'] = 'purchase';
         return $this->pohoda->buildXml([$invoice], $cfg);
+    }
+
+    /**
+     * Pohoda `<dataPack>` se VŠEMI přijatými fakturami v jednom balíčku (jedna
+     * `<dataPackItem>` na fakturu). Stěžejní: voláme `buildXml()` JEDNOU nad celým
+     * polem — žádné string-wrappování per faktura, takže nevzniká zanořený dataPack.
+     * Vadné faktury (chybný build shape) se přeskočí a vrátí v `errors`.
+     *
+     * @param int[] $purchaseInvoiceIds
+     * @return array{xml:string, included:int, errors:list<string>}
+     */
+    public function toPohodaDataPack(array $purchaseInvoiceIds, int $supplierId): array
+    {
+        $shapes = [];
+        $errors = [];
+        foreach ($purchaseInvoiceIds as $id) {
+            try {
+                $shapes[] = $this->buildInvoiceShape((int) $id, $supplierId);
+            } catch (\Throwable $e) {
+                $errors[] = "#{$id} — " . $e->getMessage();
+            }
+        }
+
+        if ($shapes === []) {
+            return ['xml' => '', 'included' => 0, 'errors' => $errors];
+        }
+
+        $cfg = $this->loadPohodaCfg($supplierId);
+        $cfg['direction'] = 'purchase';
+
+        return [
+            'xml'      => $this->pohoda->buildXml($shapes, $cfg),
+            'included' => count($shapes),
+            'errors'   => $errors,
+        ];
     }
 
     /**
@@ -62,12 +96,15 @@ final class PurchaseInvoiceExportService
 
         // Items mapping — preserve structure (description, quantity, unit_price, vat_rate)
         $items = array_map(function ($it) {
+            $vatRate = (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0);
             return [
                 'description'            => $it['description'] ?? '',
                 'quantity'               => (float) ($it['quantity'] ?? 1),
                 'unit'                   => $it['unit'] ?? 'ks',
                 'unit_price_without_vat' => (float) ($it['unit_price_without_vat'] ?? 0),
-                'vat_rate'               => (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0),
+                'vat_rate'               => $vatRate,
+                // Oba exportéry (Pohoda i ISDOC) čtou sazbu z `vat_rate_snapshot`.
+                'vat_rate_snapshot'      => $vatRate,
                 'total_without_vat'      => (float) ($it['total_without_vat'] ?? 0),
                 'total_vat'              => (float) ($it['total_vat'] ?? 0),
                 'total_with_vat'         => (float) ($it['total_with_vat'] ?? 0),
@@ -101,6 +138,17 @@ final class PurchaseInvoiceExportService
             'supplier'          => $vendorSnapshot,
             'client'            => $ourSnapshot,
             'items'             => $items,
+            // Rekapitulace DPH + souhrny — oba exportéry je čtou z `vat_breakdown`/`totals`
+            // (bez nich byly summary/TaxTotal nulové). Repo je dodává ve find().
+            'vat_breakdown'     => $pi['vat_breakdown'] ?? [],
+            'totals'            => $pi['totals'] ?? [
+                'without_vat' => (float) ($pi['total_without_vat'] ?? 0),
+                'vat'         => (float) ($pi['total_vat'] ?? 0),
+                'with_vat'    => (float) ($pi['total_with_vat'] ?? 0),
+                'rounding'    => (float) ($pi['rounding'] ?? 0),
+            ],
+            'amount_to_pay'      => (float) ($pi['amount_to_pay'] ?? $pi['totals']['amount_to_pay'] ?? 0),
+            'advance_paid_amount' => (float) ($pi['advance_paid_amount'] ?? 0),
             'total_without_vat' => (float) ($pi['totals']['without_vat'] ?? $pi['total_without_vat'] ?? 0),
             'total_vat'         => (float) ($pi['totals']['vat'] ?? $pi['total_vat'] ?? 0),
             'total_with_vat'    => (float) ($pi['totals']['with_vat'] ?? $pi['total_with_vat'] ?? 0),

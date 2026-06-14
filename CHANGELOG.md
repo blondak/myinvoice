@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.26.0] — 2026-06-14
+
+### Fixed
+
+- **Export přijatých faktur do Pohoda XML byl nevalidní vůči oficiálnímu schématu Stormware a konektory ho odmítaly.** Přijatá faktura se exportovala jako *vydaná* — `invoiceType` byl `issuedInvoice` místo `receivedInvoice` a v `partnerIdentity` byl uveden příjemce (vaše firma) místo dodavatele. Hromadný export navíc obaloval každou fakturu do vlastního `<dataPack>`, takže uvnitř `<dataPackItem>` vznikal zanořený `<dataPack>`. Nově se přijaté faktury exportují korektně (`receivedInvoice` / `receivedAdvanceInvoice` / `receivedCreditNotice`, partner = dodavatel) a celé období je v jednom plochém `<dataPack>` s jednou položkou na fakturu.
+- **Rekapitulace DPH a souhrnné částky v Pohoda i ISDOC exportu přijatých faktur byly nulové.** Adaptér přijaté faktury nepředával rozpis DPH ani součty, takže `invoiceSummary` (Pohoda) i `TaxTotal` / `LegalMonetaryTotal` (ISDOC) vycházely prázdné. Nově nesou skutečné hodnoty.
+- **Pohoda export (vydaných i přijatých faktur) neprocházel XSD validací kvůli měnovým blokům souhrnu.** `homeCurrency` obsahoval nepovolený `priceSum` a zaokrouhlení `round` jako prostou hodnotu (schéma vyžaduje strukturu `priceRound`); `foreignCurrency` nesl per-sazbové mezisoučty, které do něj nepatří. Opraveno. Daňový doklad k přijaté platbě se navíc už neexportuje s neexistujícím typem `issuedTaxDocument`, ale jako běžná vydaná faktura (`issuedInvoice`).
+
+### Added
+
+- **Validace exportu proti oficiálním schématům.** Do repozitáře přibyla schémata Pohoda (`api/xsd/pohoda/`) a sada testů, které generované XML pro vydané i přijaté faktury validují proti `invoice.xsd` (Pohoda) a `isdoc-invoice-6.0.2.xsd` (ISDOC).
+
 ## [4.25.0] — 2026-06-12
 
 ### Security
