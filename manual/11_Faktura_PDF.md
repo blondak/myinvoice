@@ -155,7 +155,7 @@ Tlačítko **Odeslat e-mailem** (na detailu faktury). E-mail jde na:
 - `+ zakazka.fakturacni_emaily[]` (až 3 dodatečné adresy)
 
 Předmět + tělo e-mailu se vezme ze šablony `invoice_new` (CZ / EN podle jazyka
-klienta) — viz [34. Nastavení](34_Nastaveni.md).
+klienta) — viz [35. Nastavení](35_Nastaveni.md).
 
 Po odeslání:
 
@@ -206,7 +206,7 @@ Odchozí e-maily lze volitelně podepisovat S/MIME certifikátem. Nastavuje se v
 Podpis se aplikuje až na sestavený e-mail včetně příloh; příjemce ho ověří v
 běžném e-mailovém klientovi.
 
-Detail nastavení je v [kapitole 28. Elektronické podpisy](36_Elektronicke_podpisy.md).
+Detail nastavení je v [kapitole 28. Elektronické podpisy](37_Elektronicke_podpisy.md).
 
 ## 11.5 Historie PDF
 

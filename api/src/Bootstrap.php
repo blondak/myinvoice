@@ -131,6 +131,16 @@ final class Bootstrap
             // Za reverse proxy → audit log a brute-force lockout vidí IP proxy místo
             // reálného klienta. Explicitní injekce Configu to opravuje.
             IpMatcher::class       => fn (ContainerInterface $c) => new IpMatcher($c->get(Config::class)),
+
+            // Kniha jízd — registry parserů detailních výpisů tankování. Pořadí = priorita:
+            // konkrétní vendor parsery → AI fallback → univerzální summary (vždy uspěje).
+            // PŘIDÁNÍ NOVÉ TANKOVACÍ SPOLEČNOSTI: vytvoř třídu implements FuelStatementParser
+            // a vlož ji do tohoto pole PŘED AiFuelStatementParser.
+            \MyInvoice\Service\Logbook\Fuel\FuelStatementParserRegistry::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Logbook\Fuel\FuelStatementParserRegistry([
+                $c->get(\MyInvoice\Service\Logbook\Fuel\AxigonStatementParser::class),
+                $c->get(\MyInvoice\Service\Logbook\Fuel\AiFuelStatementParser::class),
+                $c->get(\MyInvoice\Service\Logbook\Fuel\SummaryFuelParser::class),
+            ]),
         ]);
 
         $container = $builder->build();

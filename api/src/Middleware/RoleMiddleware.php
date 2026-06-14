@@ -74,6 +74,8 @@ final class RoleMiddleware implements MiddlewareInterface
         // Dokumenty — účetní smí zakládat/upravovat/mazat (do koše) + spravovat složky
         '* #^/api/documents(/|$)#',
         '* #^/api/document-folders(/|$)#',
+        // Kniha jízd — účetní smí plnou CRUD (auta, jízdy, tankování, kategorie, import, sken faktur)
+        '* #^/api/logbook(/|$)#',
         // Codebooks read-only přes API (admin endpointy mají zvláštní cestu /api/admin/codebooks)
         'GET #^/api/codebooks(/|$)#',
         // Vlastní podpisové profily účetních; Action vrstva hlídá feature flag i owner_user_id.
@@ -114,6 +116,7 @@ final class RoleMiddleware implements MiddlewareInterface
         'GET #^/api/bank-transactions(/|$)#',
         'GET #^/api/documents(/|$)#',
         'GET #^/api/document-folders(/|$)#',
+        'GET #^/api/logbook(/|$)#',
         'GET #^/api/suppliers(/|$)#',
         'GET #^/api/search$#',
         // Dashboardy / CRM / reporty / daňový optimalizátor (čtení)

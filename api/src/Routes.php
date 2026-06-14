@@ -597,6 +597,42 @@ final class Routes
         $app->get   ('/api/documents/{id:[0-9]+}/preview',    [DocumentFileAction::class, 'preview']);
         $app->get   ('/api/documents/{id:[0-9]+}/thumb',      [DocumentFileAction::class, 'thumb']);
 
+        // Kniha jízd (logbook) — auta, jízdy, tankování, kategorie cest
+        $app->get   ('/api/logbook/cars',                 [\MyInvoice\Action\Logbook\CarsAction::class, 'list']);
+        $app->post  ('/api/logbook/cars',                 [\MyInvoice\Action\Logbook\CarsAction::class, 'create']);
+        $app->get   ('/api/logbook/cars/{id:[0-9]+}',     [\MyInvoice\Action\Logbook\CarsAction::class, 'get']);
+        $app->put   ('/api/logbook/cars/{id:[0-9]+}',     [\MyInvoice\Action\Logbook\CarsAction::class, 'update']);
+        $app->delete('/api/logbook/cars/{id:[0-9]+}',     [\MyInvoice\Action\Logbook\CarsAction::class, 'delete']);
+
+        $app->get   ('/api/logbook/trip-categories',              [\MyInvoice\Action\Logbook\TripCategoriesAction::class, 'list']);
+        $app->post  ('/api/logbook/trip-categories',              [\MyInvoice\Action\Logbook\TripCategoriesAction::class, 'create']);
+        $app->put   ('/api/logbook/trip-categories/{id:[0-9]+}',  [\MyInvoice\Action\Logbook\TripCategoriesAction::class, 'update']);
+        $app->delete('/api/logbook/trip-categories/{id:[0-9]+}',  [\MyInvoice\Action\Logbook\TripCategoriesAction::class, 'delete']);
+
+        $app->post  ('/api/logbook/trips/import',         \MyInvoice\Action\Logbook\ImportTripsAction::class);
+        $app->get   ('/api/logbook/trips/export',         \MyInvoice\Action\Logbook\ExportTripsAction::class);
+        $app->get   ('/api/logbook/trips/purposes',       [\MyInvoice\Action\Logbook\TripsAction::class, 'purposes']);
+        $app->get   ('/api/logbook/trips',                [\MyInvoice\Action\Logbook\TripsAction::class, 'list']);
+        $app->post  ('/api/logbook/trips',                [\MyInvoice\Action\Logbook\TripsAction::class, 'create']);
+        $app->get   ('/api/logbook/trips/{id:[0-9]+}',    [\MyInvoice\Action\Logbook\TripsAction::class, 'get']);
+        $app->put   ('/api/logbook/trips/{id:[0-9]+}',    [\MyInvoice\Action\Logbook\TripsAction::class, 'update']);
+        $app->delete('/api/logbook/trips/{id:[0-9]+}',    [\MyInvoice\Action\Logbook\TripsAction::class, 'delete']);
+
+        $app->get   ('/api/logbook/fuelings/export',      \MyInvoice\Action\Logbook\ExportFuelingsAction::class);
+        $app->get   ('/api/logbook/fuelings',             [\MyInvoice\Action\Logbook\FuelingsAction::class, 'list']);
+        $app->post  ('/api/logbook/fuelings',             [\MyInvoice\Action\Logbook\FuelingsAction::class, 'create']);
+        $app->get   ('/api/logbook/fuelings/{id:[0-9]+}', [\MyInvoice\Action\Logbook\FuelingsAction::class, 'get']);
+        $app->put   ('/api/logbook/fuelings/{id:[0-9]+}', [\MyInvoice\Action\Logbook\FuelingsAction::class, 'update']);
+        $app->delete('/api/logbook/fuelings/{id:[0-9]+}', [\MyInvoice\Action\Logbook\FuelingsAction::class, 'delete']);
+
+        $app->get   ('/api/logbook/summary/export',       [\MyInvoice\Action\Logbook\SummaryAction::class, 'export']);
+        $app->get   ('/api/logbook/summary',              [\MyInvoice\Action\Logbook\SummaryAction::class, 'view']);
+
+        $app->post  ('/api/logbook/fuel-invoices/backfill',           [\MyInvoice\Action\Logbook\FuelInvoicesAction::class, 'backfill']);
+        $app->get   ('/api/logbook/fuel-invoices',                    [\MyInvoice\Action\Logbook\FuelInvoicesAction::class, 'list']);
+        $app->get   ('/api/logbook/fuel-invoices/{id:[0-9]+}/items',  [\MyInvoice\Action\Logbook\FuelInvoicesAction::class, 'items']);
+        $app->post  ('/api/logbook/fuel-invoices/{id:[0-9]+}/assign', [\MyInvoice\Action\Logbook\FuelInvoicesAction::class, 'assign']);
+
         // 404 fallback pro /api/*
         $app->any('/api/{path:.*}', function ($req, $res) {
             return \MyInvoice\Http\Json::error($res, 'not_found', 'Route not found', 404);

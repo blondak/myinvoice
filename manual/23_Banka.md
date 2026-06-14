@@ -12,7 +12,7 @@ spořitelna**, **mBank**, a další.
 > Místo (nebo vedle) výpisů umí systém zpracovávat i **bankovní e-mailová avíza**
 > z IMAP schránky — hodí se, když banka posílá oznámení o příchozí platbě rychleji
 > než pravidelný výpis. Konfigurace bankovních účtů, IMAP schránek a parserů má
-> vlastní kapitolu [Bankovní účty a e-mailová avíza (IMAP)](35_Bankovni_ucty.md)
+> vlastní kapitolu [Bankovní účty a e-mailová avíza (IMAP)](36_Bankovni_ucty.md)
 > v sekci Systém.
 
 ## 23.1 Stažení GPC výpisu z banky
@@ -97,7 +97,7 @@ detailu faktury) — faktura zůstává pohledávkou se sníženým zůstatkem a
 platby). U **zálohové faktury** se k částečné platbě plátci DPH rovnou
 připraví koncept **daňového dokladu k přijaté platbě** (viz § 11.1.2);
 doplatek zálohy, ke které už existuje finální doklad, se eviduje na finál.
-Stejně fungují platby z **e-mailových avíz** ([35. Bankovní účty](35_Bankovni_ucty.md)).
+Stejně fungují platby z **e-mailových avíz** ([36. Bankovní účty](36_Bankovni_ucty.md)).
 
 ### 23.4.2 Manuální párování
 

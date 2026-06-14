@@ -1,9 +1,9 @@
-# 34. Nastavení
+# 35. Nastavení
 
 V hlavním menu **Systém** je rozbalovací podmenu se sekcemi pro konfiguraci
 aplikace:
 
-- **Dodavatelé** — viz [33. Multi-supplier](33_Multi_supplier.md)
+- **Dodavatelé** — viz [34. Multi-supplier](34_Multi_supplier.md)
 - **Bankovní účty** — měny, účty dodavatele, IMAP účty a bankovní e-mailová avíza
 - **Číselníky** — DPH sazby, země, jednotky a další pomocné seznamy
 - **Uživatelé** — správa lidí, kteří se přihlašují
@@ -11,7 +11,7 @@ aplikace:
 - **Activity log** — kdo co změnil
 - **Exporty** — viz [15. Exporty](15_Exporty.md)
 
-## 34.1 Číselníky
+## 35.1 Číselníky
 
 **Systém → Číselníky**.
 
@@ -19,7 +19,7 @@ aplikace:
 
 4 záložky:
 
-### 34.1.1 Měny
+### 35.1.1 Měny
 
 Měny a bankovní účty aktuálního dodavatele jsou nově soustředěné na stránce
 **Systém → Bankovní účty**. Každý řádek představuje jeden bankovní účet v dané
@@ -46,7 +46,7 @@ Na stejné stránce je i konfigurace **bankovních e-mailových avíz**: IMAP ú
 mapování bankovní účet → IMAP účet → parser, parser provideri a přehled
 zpracovaných e-mailů. Detail je v [§ 23.7 Bankovní e-mailová avíza](23_Banka.md).
 
-### 34.1.2 Sazby DPH
+### 35.1.2 Sazby DPH
 
 ![Číselníky — DPH](img/15_ciselniky_dph.webp)
 
@@ -60,12 +60,12 @@ zpracovaných e-mailů. Detail je v [§ 23.7 Bankovní e-mailová avíza](23_Ban
 | Reverse charge | Zatrhneme pro `CZ-RC` |
 | Platnost od | Pro historické faktury (15 % v roce 2023) |
 
-### 34.1.3 Země
+### 35.1.3 Země
 
 Statický číselník — nemělo by být potřeba editovat. Obsahuje 200+ zemí podle
 ISO 3166-1.
 
-### 34.1.4 Jednotky
+### 35.1.4 Jednotky
 
 Číselník měrných jednotek pro položky faktury. Globální (sdílený mezi
 dodavateli), nahrazuje volný textový vstup za dropdown.
@@ -85,7 +85,7 @@ dodavateli), nahrazuje volný textový vstup za dropdown.
 > popisu i bez ceny tiše smažou. Můžeš tedy v editoru přidat víc řádků na
 > zásobu a nepoužité se neuloží.
 
-## 34.2 Uživatelé
+## 35.2 Uživatelé
 
 **Systém → Uživatelé** (jen pro admina).
 
@@ -93,7 +93,7 @@ dodavateli), nahrazuje volný textový vstup za dropdown.
 
 Tabulka uživatelů, kteří se mohou přihlásit. Tlačítko **+ Nový uživatel**.
 
-### 34.2.1 Pole formuláře
+### 35.2.1 Pole formuláře
 
 | Pole | Význam |
 |---|---|
@@ -104,7 +104,7 @@ Tabulka uživatelů, kteří se mohou přihlásit. Tlačítko **+ Nový uživate
 | Jazyk | `cs` / `en` |
 | Aktivní | Vypnutý uživatel nemůže se přihlásit |
 
-### 34.2.2 Role
+### 35.2.2 Role
 
 | Role | Co může |
 |---|---|
@@ -114,13 +114,13 @@ Tabulka uživatelů, kteří se mohou přihlásit. Tlačítko **+ Nový uživate
 
 > 🛈 Rozdíl mezi **accountant** a **readonly** je jediný: zápis. Obě role vidí a
 > exportují stejná data; `readonly` jen nemá žádná tlačítka pro úpravy. Úplná
-> matice oprávnění je v [§ 37.5 RBAC](37_Bezpecnost.md).
+> matice oprávnění je v [§ 38.5 RBAC](38_Bezpecnost.md).
 
 > 🛈 Systém má **guard proti odebrání posledního aktivního admina** — pokud
 > jsi sám admin a zkusíš si snížit roli, vrátí 409. Musí být minimálně 1
 > admin v systému.
 
-## 34.3 Můj profil
+## 35.3 Můj profil
 
 **Pravý horní roh → klik na jméno → Můj profil**. Stejná obrazovka jako
 [§ 7.5 Můj profil](07_Prihlaseni.md) — viz screenshot tam.
@@ -131,9 +131,9 @@ Můžeš si změnit:
 - **Heslo** — vyžaduje původní heslo
 - **2FA** — zapnout / vypnout (vyžaduje heslo + ověření TOTP)
 
-Viz [37. Bezpečnost § 37.2](37_Bezpecnost.md) pro detail TOTP.
+Viz [38. Bezpečnost § 37.2](38_Bezpecnost.md) pro detail TOTP.
 
-## 34.4 E-mailové šablony
+## 35.4 E-mailové šablony
 
 **Systém → E-mail šablony**.
 
@@ -154,7 +154,7 @@ Seznam šablon:
 | `welcome` | Uvítací e-mail novému uživateli |
 | `test` | Pro Test odeslání (debug) |
 
-### 34.4.1 Editor šablony
+### 35.4.1 Editor šablony
 
 Klik na řádek → editor.
 
@@ -167,17 +167,17 @@ Záložky podle jazyka × formátu:
 
 Editor je **CodeMirror** s syntaxí Twig.
 
-### 34.4.2 Předmět
+### 35.4.2 Předmět
 
 Pole nahoře, podporuje placeholders (`{{ varsymbol }}`, …).
 
-### 34.4.3 Test odeslání
+### 35.4.3 Test odeslání
 
 Tlačítko **Test e-mail** dole — pošle vyplněnou šablonu na **tvůj** e-mail
 (přihlášeného admina) s vzorovými daty (faktura `2605001`, klient „Test
 Klient s.r.o.", …).
 
-### 34.4.4 Placeholders
+### 35.4.4 Placeholders
 
 Závisí na typu šablony. `invoice_new`:
 
@@ -191,7 +191,7 @@ Závisí na typu šablony. `invoice_new`:
 | `{{ supplier_name }}` | Dodavatel |
 | `{{ pdf_url }}` | Odkaz pro stažení PDF (pokud máš public link) |
 
-## 34.5 Activity log
+## 35.5 Activity log
 
 **Systém → Activity log**.
 
@@ -218,14 +218,14 @@ Použití:
 > standardně **neničí** activity log, ale lze nastavit retention v
 > `cfg.php → app.activity_log_retention_days`.
 
-## 34.6 Elektronické podpisy
+## 35.6 Elektronické podpisy
 
 Elektronické podpisy mají vlastní stránku **Systém -> Elektronické podpisy**.
 Aktuální konfigurace už není jeden certifikát dodavatele, ale sada
 podpisových profilů a mapování pro jednotlivé výstupy. Detailní postup je v
-[kapitole 28. Elektronické podpisy](36_Elektronicke_podpisy.md).
+[kapitole 28. Elektronické podpisy](37_Elektronicke_podpisy.md).
 
-## 34.7 SMTP log analýza
+## 35.7 SMTP log analýza
 
 **Systém → E-maily → záložka SMTP log analýza** (čtvrtá záložka vedle
 Odeslaných e-mailů, Šablon a Elektronických podpisů). Přístup pouze pro **admin**.
@@ -236,7 +236,7 @@ kam byla zpráva doručena a kde nastal problém. Čte přímo logy MTA (poštov
 serveru) a převádí je na přehledný seznam událostí. Jen čte; nic neodesílá ani
 nemění.
 
-### 34.7.1 Co uvidíš
+### 35.7.1 Co uvidíš
 
 - **Souhrnné karty** — počty doručovacích pokusů, doručeno / odloženo /
   odmítnuto a počet přijatých podání.
@@ -275,7 +275,7 @@ Stavy:
 > prohledá **den odeslání a následující den** pro její příjemce a ukáže per-příjemce
 > stav (doručeno / odloženo / odmítnuto) i jednotlivé pokusy s odpovědí serveru.
 
-### 34.7.2 Typické použití
+### 35.7.2 Typické použití
 
 - **„Došlo to klientovi?"** — fulltext na e-mail příjemce → uvidíš poslední stav
   doručení a odpověď jeho serveru.
@@ -284,7 +284,7 @@ Stavy:
 - **Diagnostika odmítnutí** — `541/554 antispam policy`, `550 unauthenticated`
   ukazují na problém s reputací / SPF / DKIM / DMARC.
 
-### 34.7.3 Nastavení
+### 35.7.3 Nastavení
 
 Konfigurace je v `cfg.php` (vzor v `cfg.sample.php`) v sekci `smtp_log`:
 
@@ -306,7 +306,7 @@ Příklady cest:
 > stačí doplnit nový konektor; konfigurace zůstává stejná, jen se změní
 > `connector`.
 
-## 34.8 Tipy
+## 35.8 Tipy
 
 - **Test šablony** vždy před produkčním nasazením — typo v Twig syntaxi by
   rozbilo odesílání všem klientům.

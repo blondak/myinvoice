@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.27.0] — 2026-06-14
+
+### Added
+
+- **Kniha jízd (nový modul pod *Dokumenty*).** Kompletní daňová evidence vozidel, jízd a tankování na pěti záložkách:
+  - **Automobily** — číselník vozidel (SPZ, značka/model, typ paliva, počáteční stav tachometru, výchozí vozidlo). Auto s navázanými jízdami nebo tankováním nelze smazat (chrání historii).
+  - **Kniha jízd** — evidence jízd (datum, čas, odkud→kam, účel, tachometr od/do, ujeté km, kategorie). Tachometr zahájení se předvyplní posledním známým stavem, ujeté km a koncový stav se dopočítávají obousměrně, účel cesty našeptává dříve zadané hodnoty. **Import z CSV i XLSX** (mapování hlaviček CZ/EN, dopočet vzdálenosti, zakládání chybějících kategorií, dry-run náhled), **export do XLSX a PDF**.
+  - **Tankování** — ruční záznam nebo **automatické vytěžení z přijatých faktur** od dodavatelů označených jako „benzínka". Detailní výpisy **Axigon** se rozpoznávají interním parserem (jednotlivá tankování, místo, množství, částka); na ostatní formáty a starší zhuštěné výpisy navazuje **AI fallback** (BYOK Anthropic klíč), s posledním záchytem v podobě souhrnného záznamu. Architektura parserů je rozšiřitelná — další tankovací společnost = nová třída, beze změny zbytku. Faktura se vytěžuje **jen jednou, ale i zpětně** (jednorázové vytěžení historie), idempotentně bez duplicit.
+  - **Souhrny** — daňové a účetní přehledy za rok: poměr služebních/soukromých km (krácení), roční stav tachometru **počítaný z jízd**, spotřeba l/100 km, kontrola návaznosti tachometru (s detailem skoků), informativní srovnání s paušálem na dopravu a **graf najetých km po měsících proti minulému roku**. Export do XLSX a PDF.
+
+  Tankování je čistě evidenční vrstva nad přijatou fakturou — náklad i DPH účtuje faktura, kniha jízd je jen rozpadá na jízdy a vozidla, takže nevstupuje do žádných statistik ani daňových výstupů dvakrát. Modul je dostupný i přes veřejné REST API (`/api/v1/logbook/*`). Účetní má plný přístup, role „jen čtení" vidí a exportuje.
+
 ## [4.26.2] — 2026-06-14
 
 ### Fixed
