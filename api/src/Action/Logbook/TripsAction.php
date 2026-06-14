@@ -54,6 +54,13 @@ final class TripsAction
         return Json::ok($response, $this->repo->distinctPurposes($supplierId));
     }
 
+    /** Našeptávač míst (odkud / kam) — distinct dříve zadaná místa. */
+    public function places(Request $request, Response $response): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        return Json::ok($response, $this->repo->distinctPlaces($supplierId));
+    }
+
     public function create(Request $request, Response $response): Response
     {
         $supplierId = SupplierGuard::currentId($request);

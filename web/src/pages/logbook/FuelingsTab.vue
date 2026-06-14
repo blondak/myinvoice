@@ -7,9 +7,11 @@ import {
   logbookApi, type Car, type Fueling, type FuelingPayload,
   type FuelInvoice, type FuelInvoiceItem,
 } from '@/api/logbook'
+import { useAuthStore } from '@/stores/auth'
 
 const { t, locale } = useI18n()
 const toast = useToast()
+const auth = useAuthStore()
 const props = defineProps<{ resetToken?: number }>()
 
 const fuelings = ref<Fueling[]>([])
@@ -248,8 +250,8 @@ const sourceBadge: Record<string, string> = {
 
 <template>
   <section>
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-      <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-2">
         <select v-model="filterCar" @change="load" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
           <option value="">{{ t('logbook.all_cars') }}</option>
           <option v-for="c in cars" :key="c.id" :value="c.id">{{ c.registration }}{{ c.name ? ` — ${c.name}` : '' }}</option>
@@ -269,12 +271,12 @@ const sourceBadge: Record<string, string> = {
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 16V4m0 12l-4-4m4 4l4-4"/></svg>
           {{ t('logbook.export') }}
         </button>
-        <button @click="openInvoices"
+        <button v-if="auth.canWrite" @click="openInvoices"
           class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/></svg>
           {{ t('logbook.from_invoices') }}
         </button>
-        <button @click="newFueling" class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5">
+        <button v-if="auth.canWrite" @click="newFueling" class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6"/></svg>
           {{ t('logbook.fueling_new') }}
         </button>
@@ -332,7 +334,7 @@ const sourceBadge: Record<string, string> = {
                 <td class="px-3 py-2 text-right font-mono">{{ fmtMoney(f.amount_with_vat, f.currency) }}</td>
                 <td class="px-3 py-2 text-xs text-neutral-500 truncate max-w-[12rem]">{{ f.station || f.vendor_name || '—' }}</td>
                 <td class="px-3 py-2">
-                  <div class="flex justify-end gap-1.5">
+                  <div v-if="auth.canWrite" class="flex justify-end gap-1.5">
                     <button @click="editFueling(f)" class="cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50">
                       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828z"/></svg>
                       {{ t('common.edit') }}
@@ -367,7 +369,7 @@ const sourceBadge: Record<string, string> = {
               class="inline-block mt-1 text-xs text-primary-600 hover:underline">
               {{ f.source_invoice_number ? `Doklad č. ${f.source_invoice_number}` : t('logbook.invoice_link') }} ↗
             </router-link>
-            <div class="flex gap-2 mt-2">
+            <div v-if="auth.canWrite" class="flex gap-2 mt-2">
               <button @click="editFueling(f)" class="cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828z"/></svg>
                 {{ t('common.edit') }}

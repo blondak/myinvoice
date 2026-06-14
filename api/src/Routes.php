@@ -612,6 +612,7 @@ final class Routes
         $app->post  ('/api/logbook/trips/import',         \MyInvoice\Action\Logbook\ImportTripsAction::class);
         $app->get   ('/api/logbook/trips/export',         \MyInvoice\Action\Logbook\ExportTripsAction::class);
         $app->get   ('/api/logbook/trips/purposes',       [\MyInvoice\Action\Logbook\TripsAction::class, 'purposes']);
+        $app->get   ('/api/logbook/trips/places',         [\MyInvoice\Action\Logbook\TripsAction::class, 'places']);
         $app->get   ('/api/logbook/trips',                [\MyInvoice\Action\Logbook\TripsAction::class, 'list']);
         $app->post  ('/api/logbook/trips',                [\MyInvoice\Action\Logbook\TripsAction::class, 'create']);
         $app->get   ('/api/logbook/trips/{id:[0-9]+}',    [\MyInvoice\Action\Logbook\TripsAction::class, 'get']);

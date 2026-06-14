@@ -143,6 +143,7 @@
     "summary_total": "Celkem za rok",
     "no_summary": "Žádné jízdy pro souhrn.",
     "monthly_km_title": "Najeté km po měsících — {year} vs {prev}",
+    "cumulative_km_title": "Kumulativní km YTD — {year}",
     "summary_pausal_note": "Paušál na dopravu (5 000 / 4 000 Kč/měs) je informativní srovnání — max 3 vozidla, vzájemně se vylučuje se skutečnými výdaji. Hvězdička u litrů = u některých tankování nejsou známé litry, spotřeba je proto orientační. Konečné posouzení konzultuj s daňovým poradcem.",
     "categories_hint": "Číselník kategorií cest (služební/soukromá). Kategorie se zakládají i automaticky při importu z CSV/XLSX.",
     "no_categories": "Zatím žádné kategorie.",

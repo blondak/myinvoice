@@ -143,6 +143,7 @@
     "summary_total": "Year total",
     "no_summary": "No trips to summarize.",
     "monthly_km_title": "Distance per month — {year} vs {prev}",
+    "cumulative_km_title": "Cumulative distance YTD — {year}",
     "summary_pausal_note": "The flat-rate transport allowance (5,000 / 4,000 CZK/month) is an informational comparison — max 3 vehicles, mutually exclusive with actual expenses. Asterisk on liters = some refuellings lack liters, so consumption is approximate. Confirm the final assessment with your tax advisor.",
     "categories_hint": "Trip category codebook (business/private). Categories are also created automatically on CSV/XLSX import.",
     "no_categories": "No categories yet.",

@@ -7,9 +7,11 @@ import {
   logbookApi, type Car, type Trip, type TripPayload,
   type TripCategory, type TripImportReport,
 } from '@/api/logbook'
+import { useAuthStore } from '@/stores/auth'
 
 const { t, locale } = useI18n()
 const toast = useToast()
+const auth = useAuthStore()
 const props = defineProps<{ resetToken?: number }>()
 
 const trips = ref<Trip[]>([])
@@ -24,6 +26,7 @@ const monthFilter = ref<number | ''>('')
 const page = ref(1)
 const perPage = 25
 const purposes = ref<string[]>([])
+const places = ref<string[]>([])
 
 const yearOptions = computed(() => {
   const ys = new Set<number>()
@@ -82,6 +85,7 @@ async function load() {
       categories.value.length ? Promise.resolve(categories.value) : logbookApi.listCategories(false),
     ])
     logbookApi.tripPurposes().then(p => { purposes.value = p }).catch(() => {})
+    logbookApi.tripPlaces().then(p => { places.value = p }).catch(() => {})
   } finally { loading.value = false }
 }
 onMounted(load)
@@ -245,8 +249,8 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
 
 <template>
   <section>
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-      <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-2">
         <select v-model="filterCar" @change="load" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
           <option value="">{{ t('logbook.all_cars') }}</option>
           <option v-for="c in cars" :key="c.id" :value="c.id">{{ c.registration }}{{ c.name ? ` — ${c.name}` : '' }}</option>
@@ -266,12 +270,12 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 16V4m0 12l-4-4m4 4l4-4"/></svg>
           {{ t('logbook.export') }}
         </button>
-        <button @click="importOpen = true; importReport = null"
+        <button v-if="auth.canWrite" @click="importOpen = true; importReport = null"
           class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 4v12m0-12l-4 4m4-4l4 4"/></svg>
           {{ t('logbook.import') }}
         </button>
-        <button @click="newTrip" :disabled="cars.length === 0"
+        <button v-if="auth.canWrite" @click="newTrip" :disabled="cars.length === 0"
           class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5 disabled:opacity-50">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6"/></svg>
           {{ t('logbook.trip_new') }}
@@ -324,7 +328,7 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
                 </td>
                 <td class="px-3 py-2 text-right font-mono">{{ fmtKm(tr.distance_km) }}</td>
                 <td class="px-3 py-2">
-                  <div class="flex justify-end gap-1.5">
+                  <div v-if="auth.canWrite" class="flex justify-end gap-1.5">
                     <button @click="editTrip(tr)" class="cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50">
                       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828z"/></svg>
                       {{ t('common.edit') }}
@@ -352,7 +356,7 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
               <span class="truncate">{{ tr.purpose || '—' }} · {{ tr.car_registration }}</span>
               <span v-if="tr.category_label" class="shrink-0 px-1.5 py-0.5 rounded" :class="tr.category_is_private ? 'bg-warning-50 text-warning-600' : 'bg-success-50 text-success-600'">{{ tr.category_label }}</span>
             </div>
-            <div class="flex gap-2 mt-2">
+            <div v-if="auth.canWrite" class="flex gap-2 mt-2">
               <button @click="editTrip(tr)" class="cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828z"/></svg>
                 {{ t('common.edit') }}
@@ -434,12 +438,15 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.origin') }}</label>
-              <input v-model="draft.origin" type="text" maxlength="255" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+              <input v-model="draft.origin" type="text" maxlength="255" list="trip-places" autocomplete="off" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.destination') }}</label>
-              <input v-model="draft.destination" type="text" maxlength="255" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+              <input v-model="draft.destination" type="text" maxlength="255" list="trip-places" autocomplete="off" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
             </div>
+            <datalist id="trip-places">
+              <option v-for="p in places" :key="p" :value="p" />
+            </datalist>
           </div>
           <div class="flex justify-end gap-2 pt-2">
             <button type="button" @click="open = false" class="cursor-pointer h-9 px-4 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 inline-flex items-center gap-1.5">

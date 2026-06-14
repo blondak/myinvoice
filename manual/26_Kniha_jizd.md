@@ -1,4 +1,4 @@
-# Kniha jízd
+# 26. Kniha jízd
 
 **Kniha jízd** je evidence jízd, vozidel a tankování. Slouží jako *kniha důkazů*
 pro uplatnění nákladů na pohonné hmoty v daních (§ 24 zákona o daních z příjmů,

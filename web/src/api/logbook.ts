@@ -283,6 +283,7 @@ export const logbookApi = {
   // Trips
   listTrips: (params?: Record<string, string | number>) => api.get<Trip[]>('/logbook/trips', { params }).then(r => r.data),
   tripPurposes: () => api.get<string[]>('/logbook/trips/purposes').then(r => r.data),
+  tripPlaces: () => api.get<string[]>('/logbook/trips/places').then(r => r.data),
   getTrip: (id: number) => api.get<Trip>(`/logbook/trips/${id}`).then(r => r.data),
   createTrip: (data: TripPayload) => api.post<Trip>('/logbook/trips', data).then(r => r.data),
   updateTrip: (id: number, data: TripPayload) => api.put<Trip>(`/logbook/trips/${id}`, data).then(r => r.data),

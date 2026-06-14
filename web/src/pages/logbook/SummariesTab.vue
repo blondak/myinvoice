@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import { logbookApi, type LogbookSummary } from '@/api/logbook'
 import MonthlyKmChart from '@/components/charts/MonthlyKmChart.vue'
+import CumulativeKmChart from '@/components/charts/CumulativeKmChart.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -125,9 +126,15 @@ function liters(n: number): string { return n.toLocaleString('cs-CZ', { maximumF
         </div>
       </div>
 
-      <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-4 mt-3">
-        <h3 class="text-sm font-semibold text-neutral-700 mb-3">{{ t('logbook.monthly_km_title', { year: data.year, prev: data.monthly.prev_year }) }}</h3>
-        <MonthlyKmChart :current="data.monthly.current" :previous="data.monthly.previous" :year="data.monthly.year" :prev-year="data.monthly.prev_year" />
+      <div class="grid gap-3 lg:grid-cols-2 mt-3">
+        <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-4">
+          <h3 class="text-sm font-semibold text-neutral-700 mb-3">{{ t('logbook.monthly_km_title', { year: data.year, prev: data.monthly.prev_year }) }}</h3>
+          <MonthlyKmChart :current="data.monthly.current" :previous="data.monthly.previous" :year="data.monthly.year" :prev-year="data.monthly.prev_year" />
+        </div>
+        <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-4">
+          <h3 class="text-sm font-semibold text-neutral-700 mb-3">{{ t('logbook.cumulative_km_title', { year: data.year }) }}</h3>
+          <CumulativeKmChart :current="data.monthly.current" :previous="data.monthly.previous" :year="data.monthly.year" :prev-year="data.monthly.prev_year" />
+        </div>
       </div>
 
       <p class="text-xs text-neutral-400 mt-3">{{ t('logbook.summary_pausal_note') }}</p>

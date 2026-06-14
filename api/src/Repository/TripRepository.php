@@ -118,6 +118,36 @@ final class TripRepository
         return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN, 0));
     }
 
+    /**
+     * Distinct místa (odkud i kam dohromady) pro našeptávač cílů — nejnověji použité první.
+     *
+     * @return list<string>
+     */
+    public function distinctPlaces(int $supplierId, int $limit = 200): array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT place, MAX(last_used) AS last_used, SUM(cnt) AS cnt FROM (
+                 SELECT origin AS place, MAX(trip_date) AS last_used, COUNT(*) AS cnt
+                   FROM trips
+                  WHERE supplier_id = ? AND origin IS NOT NULL AND origin <> ''
+                  GROUP BY origin
+                 UNION ALL
+                 SELECT destination AS place, MAX(trip_date) AS last_used, COUNT(*) AS cnt
+                   FROM trips
+                  WHERE supplier_id = ? AND destination IS NOT NULL AND destination <> ''
+                  GROUP BY destination
+             ) u
+             GROUP BY place
+             ORDER BY last_used DESC, cnt DESC
+             LIMIT ?"
+        );
+        $stmt->bindValue(1, $supplierId, PDO::PARAM_INT);
+        $stmt->bindValue(2, $supplierId, PDO::PARAM_INT);
+        $stmt->bindValue(3, max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN, 0));
+    }
+
     /** @return list<mixed> Pořadí dle INSERT sloupců. */
     private function bind(int $supplierId, array $data, ?int $userId): array
     {
