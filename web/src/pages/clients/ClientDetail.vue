@@ -7,7 +7,7 @@ import { clientsApi, TAX_NUMBER_LABELS, type Client, type BankLookupResult, type
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
 import { purchaseInvoicesApi, type PurchaseInvoice } from '@/api/purchaseInvoices'
 import { recurringApi, type RecurringTemplate } from '@/api/recurring'
-import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
+import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass, taxDateClass } from '@/composables/useFormat'
 import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
 import TopProjectsBarChart from '@/components/charts/TopProjectsBarChart.vue'
 import { useToast } from '@/composables/useToast'
@@ -694,6 +694,7 @@ async function deleteClient() {
             <th class="text-left px-4 py-2.5 font-medium">{{ t('invoice.varsymbol') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('invoice.type') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('invoice.issue_date') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('invoice.tax_date') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('invoice.due_date') }}</th>
             <th class="text-right px-4 py-2.5 font-medium">{{ t('invoice.amount_to_pay') }}</th>
             <th class="text-center px-4 py-2.5 font-medium">{{ t('invoice.status_label') }}</th>
@@ -706,6 +707,7 @@ async function deleteClient() {
             <td class="px-4 py-2.5 font-mono">{{ inv.varsymbol || `#${inv.id}` }}</td>
             <td class="px-4 py-2.5 text-neutral-600">{{ typeLabel(inv.invoice_type) }}</td>
             <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(inv.issue_date) }}</td>
+            <td class="px-4 py-2.5" :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ inv.tax_date ? formatDate(inv.tax_date) : '—' }}</td>
             <td class="px-4 py-2.5">
               <span :class="isOverdue(inv.due_date, inv.status) ? 'text-danger-600 font-medium' : 'text-neutral-600'">
                 {{ formatDate(inv.due_date) }}
@@ -745,6 +747,10 @@ async function deleteClient() {
               </span>
             </span>
           </div>
+          <div v-if="inv.tax_date" class="mt-0.5 text-xs">
+            <span class="text-neutral-400">{{ t('invoice.tax_date') }}:</span>
+            <span :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ formatDate(inv.tax_date) }}</span>
+          </div>
           <div class="mt-2">
             <span class="text-xs px-2 py-0.5 rounded" :class="statusBadgeClass(inv.status)">
               {{ statusLabel(inv.status) }}
@@ -781,6 +787,7 @@ async function deleteClient() {
           <tr>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.vendor_invoice_number') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.issue_date') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.tax_date') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.due_date') }}</th>
             <th class="text-right px-4 py-2.5 font-medium">{{ t('purchase_invoice.totals.with_vat') }}</th>
             <th class="text-center px-4 py-2.5 font-medium">{{ t('invoice.status_label') }}</th>
@@ -791,6 +798,7 @@ async function deleteClient() {
               @click="router.push(`/purchase-invoices/${pi.id}`)">
             <td class="px-4 py-2.5 font-mono">{{ pi.vendor_invoice_number || `#${pi.id}` }}</td>
             <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.issue_date) }}</td>
+            <td class="px-4 py-2.5" :class="taxDateClass(pi.tax_date, pi.issue_date)">{{ pi.tax_date ? formatDate(pi.tax_date) : '—' }}</td>
             <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.due_date) }}</td>
             <td class="px-4 py-2.5 text-right font-mono">{{ formatMoney(pi.total_with_vat, pi.currency || 'CZK') }}</td>
             <td class="px-4 py-2.5 text-center">

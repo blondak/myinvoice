@@ -10,7 +10,7 @@ import {
   type PurchaseInvoiceStatus,
   type PurchaseDocumentKind,
 } from '@/api/purchaseInvoices'
-import { formatMoney, formatDate, formatMonth } from '@/composables/useFormat'
+import { formatMoney, formatDate, formatMonth, taxDateClass } from '@/composables/useFormat'
 import { useHotkey } from '@/composables/useHotkey'
 import { useRowLink } from '@/composables/useRowLink'
 import { useToast } from '@/composables/useToast'
@@ -546,8 +546,8 @@ async function bulkDelete() {
                     </div>
                   </td>
                   <td class="px-4 py-2.5 text-center text-xs text-neutral-600">{{ t(`purchase_invoice.document_kind.${inv.document_kind}`) }}</td>
-                  <td class="px-4 py-2.5 text-center text-xs text-neutral-600">
-                    {{ formatDate(inv.tax_date || inv.issue_date) }}
+                  <td class="px-4 py-2.5 text-center text-xs">
+                    <span :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ formatDate(inv.tax_date || inv.issue_date) }}</span>
                   </td>
                   <td class="px-4 py-2.5 text-center text-xs">
                     <span :class="isOverdue(inv.due_date, inv.status) ? 'text-danger-500 font-medium' : 'text-neutral-600'">
@@ -615,7 +615,7 @@ async function bulkDelete() {
                   </span>
                 </div>
                 <div class="flex items-center justify-between gap-2 mt-1 text-xs text-neutral-500">
-                  <span>{{ formatDate(inv.tax_date || inv.issue_date) }}</span>
+                  <span :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ formatDate(inv.tax_date || inv.issue_date) }}</span>
                   <span :class="isOverdue(inv.due_date, inv.status) ? 'text-danger-500 font-medium' : ''">
                     {{ t('purchase_invoice.fields.due_date') }}: {{ formatDate(inv.due_date) }}
                   </span>

@@ -93,6 +93,18 @@ export function displayStatus(status: string, paymentStatus?: string | null): st
   return status
 }
 
+/**
+ * Drobné barevné odlišení DUZP (tax_date), když se liší od data vystavení:
+ *  - DUZP dříve než vystaveno (nižší)   → amber (text-warning-600)
+ *  - DUZP později než vystaveno (vyšší) → modrá (text-accent-600)
+ *  - shodné / chybějící                 → neutrální
+ * Porovnává ISO řetězce 'YYYY-MM-DD' (lexikograficky = chronologicky), bez parsování.
+ */
+export function taxDateClass(taxDate: string | null | undefined, issueDate: string | null | undefined): string {
+  if (!taxDate || !issueDate || taxDate === issueDate) return 'text-neutral-600'
+  return taxDate < issueDate ? 'text-warning-600' : 'text-accent-600'
+}
+
 export function isOverdue(dueDate: string, status: string): boolean {
   if (status !== 'issued' && status !== 'sent' && status !== 'reminded') return false
   const due = new Date(dueDate)

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { invoicesApi, type MonthGroup, type InvoiceListItem } from '@/api/invoices'
-import { formatMoney, formatDate, formatMonth, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass, displayStatus } from '@/composables/useFormat'
+import { formatMoney, formatDate, formatMonth, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass, displayStatus, taxDateClass } from '@/composables/useFormat'
 import { useHotkey } from '@/composables/useHotkey'
 import { useRowLink } from '@/composables/useRowLink'
 import { useToast } from '@/composables/useToast'
@@ -661,8 +661,8 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
                   <div v-if="inv.project_name" class="text-xs text-neutral-500 truncate max-w-md">{{ inv.project_name }}</div>
                 </td>
                 <td class="px-4 py-2.5 text-center text-xs text-neutral-600">{{ typeLabel(inv.invoice_type) }}</td>
-                <td class="px-4 py-2.5 text-center text-xs text-neutral-600">
-                  {{ formatDate(inv.tax_date || inv.issue_date) }}
+                <td class="px-4 py-2.5 text-center text-xs">
+                  <span :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ formatDate(inv.tax_date || inv.issue_date) }}</span>
                 </td>
                 <td class="px-4 py-2.5 text-center text-xs">
                   <span :class="isOverdue(inv.due_date, inv.status) ? 'text-danger-500 font-medium' : 'text-neutral-600'">
@@ -734,7 +734,7 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
                 </div>
                 <div class="flex items-center justify-between gap-2 mt-2">
                   <div class="text-xs text-neutral-600 whitespace-nowrap">
-                    {{ formatDate(inv.tax_date || inv.issue_date) }}
+                    <span :class="taxDateClass(inv.tax_date, inv.issue_date)">{{ formatDate(inv.tax_date || inv.issue_date) }}</span>
                     <span class="text-neutral-400"> → </span>
                     <span :class="isOverdue(inv.due_date, inv.status) ? 'text-danger-500 font-medium' : ''">
                       {{ formatDate(inv.due_date) }}

@@ -828,6 +828,11 @@ final class BankStatementAction
         $candidates = [];
         foreach ($q->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $invAmt = (float) $r['amount'];
+            // Dobropisy (vydané i přijaté) nesou ZÁPORNOU amount_to_pay (total_with_vat < 0),
+            // jejich úhrada/refundace ale dorazí na účet s opačným znaménkem: přijatý dobropis
+            // = dodavatel vrací → kladný pohyb. Porovnáváme proto magnitudy (|faktura| × |tx|),
+            // jinak by se záporný kandidát na kladný pohyb nikdy netrefil do tolerance.
+            $invMag = abs($invAmt);
             $invCcy = strtoupper((string) $r['currency']);
             $rate   = (float) ($r['exchange_rate'] ?: 0);
             if ($rate <= 0) {
@@ -836,11 +841,11 @@ final class BankStatementAction
 
             $converted = null; // částka přepočtená do měny transakce (jen u cross-currency)
             if ($invCcy === $txCcy) {
-                $expected = $invAmt;
+                $expected = $invMag;
                 $tol = $absTol;
             } elseif ($txCcy === $local) {
                 // Cizoměnová faktura placená v CZK → přepočet kurzem faktury (CZK = částka × kurz).
-                $expected = $invAmt * $rate;
+                $expected = $invMag * $rate;
                 $tol = max($absTol, $expected * $pct);
                 $converted = $expected;
             } else {
