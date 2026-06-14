@@ -314,14 +314,17 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertArrayHasKey('47.047', $sec);
         $this->assertEqualsWithDelta(40000, $sec['47.047']['subtotal_base'], 0.01);
 
-        // Souhrny MUSÍ být oddělené pro uskutečněná (výstup) a přijatá (odpočet) —
-        // sčítat je dohromady nedává smysl. Secondary sekce (43/47) se nezapočítávají.
-        $this->assertEqualsWithDelta(11550, $book['totals']['issued']['vat'], 0.01,
-            'totals.issued = jen daň na výstupu (36.001)');
+        // Souhrny oddělené pro výstup (ř.<40) a odpočet (ř.≥40). Bucket dle ČÍSLA
+        // ŘÁDKU: samovyměření RC (ř.3/ř.10 primary) je na VÝSTUPU, zrcadlo ř.43 na
+        // vstupu → reverse charge se v bilanci vyruší (jako v DPH přiznání). ř.47
+        // (doplňující majetek) se do bilance nezapočítává.
+        $this->assertEqualsWithDelta(15120, $book['totals']['issued']['vat'], 0.01,
+            'totals.issued = daň na výstupu vč. samovyměření RC (36.001 + primary 43.003 + 43.010)');
         $this->assertEqualsWithDelta(14700, $book['totals']['received']['vat'], 0.01,
-            'totals.received = odpočet na vstupu (15.040+43.003+43.010 primary), bez mirror 43.043/47');
-        // Bilance = výstup − odpočet (záporná = nadměrný odpočet).
-        $this->assertEqualsWithDelta(-3150, $book['totals']['vat_balance'], 0.01);
+            'totals.received = odpočet na vstupu (15.040 + mirror 43.043), bez RC primary a bez ř.47');
+        // Bilance = výstup − odpočet. RC se vyruší → zůstává prodej 11550 − tuzemský
+        // odpočet 11130 = 420 (dřív chybných −3150, kdy RC primary padal do odpočtu).
+        $this->assertEqualsWithDelta(420, $book['totals']['vat_balance'], 0.01);
     }
 
     /**

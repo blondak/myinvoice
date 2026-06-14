@@ -542,12 +542,18 @@ final class AiPdfExtractor
         // a applyCnbRate je záměrná).
         $rcClassification = null;
         $rcWarning = null;
-        if ($reverseCharge && !$vendorNonPayer) {
+        // Reverse charge má PŘEDNOST před „neplátce" gate (issue: zahraniční SaaS jako
+        // bez nároku na odpočet): u osoby neusazené v tuzemsku přizná daň příjemce
+        // samovyměřením a SOUČASNĚ má nárok na odpočet (ř.43) — to, že dodavatel není
+        // český plátce, je DŮVOD reverse charge, ne důvod k vyřazení z DPH. (Tuzemský
+        // neplátce sem nespadá: inferReverseCharge je u CZ dodavatele false.)
+        if ($reverseCharge) {
             $country = $this->vendorCountryInfo($vendorId);
             $nature = strtolower(trim((string) ($data['supply_nature'] ?? '')));
             $isGoods = $nature === 'goods';
+            // Služba: EU → 24e (ř.5), 3. země → 24 (ř.12). Zboží: EU → 23 (ř.3), 3. země → 25 (ř.7).
             $rcClassification = $country['is_eu']
-                ? ($isGoods ? '23' : '24')
+                ? ($isGoods ? '23' : '24e')
                 : ($isGoods ? '25' : '24');
             // Základní sazba pro rok dokladu z číselníku daňových konstant (ne natvrdo 21).
             $rcDate = (string) ($data['tax_date'] ?? $data['issue_date'] ?? '');
@@ -575,15 +581,16 @@ final class AiPdfExtractor
             }
 
             $rcLabels = [
-                '23' => 'pořízení zboží z EU — ř. 3 + ř. 43, KH A.2',
-                '24' => 'přijetí služby ze zahraničí',
-                '25' => 'dovoz zboží ze 3. země',
+                '23'  => 'pořízení zboží z EU — ř. 3 + ř. 43, KH A.2',
+                '24'  => 'přijetí služby ze 3. země — ř. 12 + ř. 43',
+                '24e' => 'přijetí služby z EU — ř. 5 + ř. 43',
+                '25'  => 'dovoz zboží ze 3. země — ř. 7 + ř. 43',
             ];
             $rcWarning = 'Reverse charge (' . $rcLabels[$rcClassification] . '): položkám byla'
                 . sprintf(' nastavena tuzemská sazba DPH %g %% a klasifikace ', $rcRate) . $rcClassification
                 . ' — daň se samovyměří až v DPH výkazech, částka k úhradě zůstává bez DPH.'
                 . $duzpNote
-                . ' Zkontrolujte povahu plnění (zboží = kód 23/25, služba = kód 24).';
+                . ' Zkontrolujte povahu plnění (zboží = kód 23/25, služba = kód 24/24e).';
             $this->logger->info('AI extractor: reverse charge defaults applied', [
                 'vendor_id' => $vendorId,
                 'classification' => $rcClassification,
@@ -625,9 +632,12 @@ final class AiPdfExtractor
             // řádky mají tentýž kód nastavený výše.
             'vat_classification_code' => $rcClassification,
             'prices_include_vat'    => $pricesIncludeVat,
-            // Neplátce → bez nároku na odpočet (VatLedgerService řádky s 'none' vyloučí
-            // z DPH přiznání ř.40 i z KH sekce B). Uživatel může v editoru vědomě přepsat.
-            'vat_deduction'         => $vendorNonPayer ? 'none' : 'full',
+            // Reverse charge → nárok na odpočet náleží příjemci ('full'); samovyměřená
+            // daň (ř.3–13) a zrcadlový odpočet (ř.43) se vyruší. Tuzemský neplátce →
+            // bez nároku ('none', VatLedgerService řádky s 'none' vyloučí z přiznání
+            // i KH). U RC tedy 'none' nikdy — to byl důvod, proč zahraniční SaaS
+            // padaly z přiznání úplně. Uživatel může v editoru vědomě přepsat.
+            'vat_deduction'         => $reverseCharge ? 'full' : ($vendorNonPayer ? 'none' : 'full'),
             // Rounding nastavíme až PO recompute z items, ne z AI hodnoty
             // (AI dělá DPH math sama a občas se splete o ±1 haléř — viz user report
             // Vodafone faktury 1025255728, kde AI vrátila total_with_vat=1502,03

@@ -275,7 +275,9 @@ final class PohodaXmlExporter
             $detail = $dom->createElementNS(self::NS_INV, 'inv:invoiceDetail');
             foreach ($invoice['items'] ?? [] as $item) {
                 $row = $dom->createElementNS(self::NS_INV, 'inv:invoiceItem');
-                $this->el($dom, $row, self::NS_INV, 'inv:text', (string) ($item['description'] ?? ''));
+                // Pohoda invoice.xsd omezuje text položky na 90 znaků (facet maxLength) —
+                // delší popisy ořízneme, jinak XSD validace spadne (mb_substr kvůli diakritice).
+                $this->el($dom, $row, self::NS_INV, 'inv:text', mb_substr((string) ($item['description'] ?? ''), 0, 90));
                 $this->el($dom, $row, self::NS_INV, 'inv:quantity', $this->fmt((float) $item['quantity']));
                 $this->el($dom, $row, self::NS_INV, 'inv:unit', (string) ($item['unit'] ?? 'ks'));
                 // CoefficientOfRefundables (1 = celé)

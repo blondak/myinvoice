@@ -5,6 +5,19 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.28.0] — 2026-06-15
+
+### Fixed
+
+- **Přijaté služby ze zahraničí v režimu přenesení daňové povinnosti (reverse charge).** Služby od osob neusazených v tuzemsku (zahraniční dodavatelé bez české registrace k DPH) se importovaly chybně — buď jako „dovoz zboží" (ř. 7), nebo „bez nároku na odpočet", čímž úplně vypadly z přiznání i z vykázaného obratu. Nově se správně samovyměří jako přijetí služby podle § 9 odst. 1 ZDPH (ř. 12/13, resp. ř. 5/6 u EU) a uplatní zrcadlový nárok na odpočet (ř. 43). Daňový dopad je nulový (daň na výstupu = odpočet) — opravuje se zařazení na správné řádky výkazu a zahrnutí dokladů.
+- **Kniha DPH: „Výsledná DPH" nově sedí s přiznáním.** Samovyměřená daň u reverse charge se ve výsledné bilanci chybně načítala na stranu odpočtu, čímž ji podhodnocovala. Nově se bilance sčítá podle čísla řádku DPHDP3 (samovyměření na výstupu, zrcadlový odpočet na vstupu), takže se reverse charge korektně vyruší.
+- **Export do Pohody: ořez textu položky na 90 znaků.** Delší popis položky překračoval limit XSD (`maxLength`) a export neprošel validací.
+
+### Added
+
+- **Rozlišení přijaté služby z EU (ř. 5/6) a ze 3. země / od neusazené osoby (ř. 12/13).** Číselník DPH klasifikací dostal samostatný kód pro přijetí služby z jiného členského státu vedle služby ze 3. země. Importní auto-klasifikace nově u zahraničního dodavatele s nulovou sazbou defaultuje na *službu* (nejčastější případ – digitální předplatná), ne na dovoz zboží. (migrace 0111)
+- **Nástroj pro opravu historických dokladů** `api/bin/backfill-foreign-reverse-charge.php` — dohledá zahraniční reverse-charge doklady naimportované se špatným zařazením (špatný řádek, chybějící odpočet, fiktivně vyčíslená česká DPH u dodavatele bez CZ registrace) a opraví je. Idempotentní; výchozí režim je náhled (dry-run), zápis až s `--apply`, rozsah lze omezit obdobím (`--from`/`--to`).
+
 ## [4.27.3] — 2026-06-14
 
 ### Fixed

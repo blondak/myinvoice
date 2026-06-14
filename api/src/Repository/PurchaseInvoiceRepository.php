@@ -763,9 +763,14 @@ final class PurchaseInvoiceRepository
         $isEu = in_array($iso, $euCountries, true);
         $isForeign = $iso !== 'CZ' && $iso !== '';
 
-        // Zahraniční dodavatel + nulová sazba → EU služby (acquire) / dovoz
+        // Zahraniční dodavatel + nulová sazba → reverse charge SLUŽBA (drtivě
+        // nejčastější případ: digitální předplatná Anthropic/GitHub/Apple/Google).
+        // EU → ř.5 (kód 24e), 3. země / neusazená osoba → ř.12 (kód 24). Pořízení
+        // nebo dovoz ZBOŽÍ (ř.3 / ř.7) se ze samotné sazby nepozná → tam kód vybírá
+        // AI dle povahy plnění (supply_nature) nebo uživatel ručně. Dřív se mimo-EU
+        // 0 % defaultovalo na 25 (ř.7 dovoz zboží), což u služeb bylo věcně špatně.
         if ($isForeign && $r === 0) {
-            return $isEu ? '24' : '25';
+            return $isEu ? '24e' : '24';
         }
         // EU vendor + RC + 21 % → pořízení zboží z JČS (kód 23, ř. 3 + ř. 43 mirror + KH A.2).
         // Vzácnější použití (vendor obvykle fakturuje bez DPH), ale když má 21 % sazbu
