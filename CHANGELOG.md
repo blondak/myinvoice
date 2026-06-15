@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.28.1] — 2026-06-15
+
+### Fixed
+
+- **Po aktualizaci přestalo fungovat menu / přechod na jiné stránky (Docker/Apache).** Prohlížeč si držel v cache starou `index.html`, která odkazovala na JS/CSS chunky se starým hashem — ty po updatu na novou verzi už na serveru neexistovaly, takže lazy-loaded stránky (klienti, zakázky, schvalování, daňová přiznání…) hlásily v konzoli „Failed to fetch dynamically imported module". `index.html` se nově servíruje s `Cache-Control: no-cache` (hashed assety zůstávají `immutable`), takže si prohlížeč po každém nasazení vyzvedne aktuální mapu chunků. IIS (`web.config`) to už řešil; chybělo to jen v `.htaccess`. (issue #140)
+- **Health endpoint `/api/health` hlásil natvrdo verzi `0.1.0`.** Nově vrací skutečnou verzi aplikace ze souboru `VERSION`.
+
+### Added
+
+- **Generátor ukázkových dat doplňuje i knihu jízd.** Po čistém setupu (`api/bin/sample.php` / setup wizard) přibude jedno firemní auto, 15 jízd (služebních i soukromých, se spojitě navazujícím tachometrem) a 6 tankování — pro rychlé vyzkoušení modulu Kniha jízd.
+
 ## [4.28.0] — 2026-06-15
 
 ### Fixed

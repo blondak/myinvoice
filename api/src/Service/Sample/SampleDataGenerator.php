@@ -11,11 +11,13 @@ use PDO;
 
 /**
  * Generuje testovací sample data — 5 klientů, 8 zakázek, 20 faktur, 4 dobropisy,
- * 4 dodavatelé, 12 přijatých faktur a 2 pravidelné fakturace.
+ * 4 dodavatelé, 12 přijatých faktur, 2 pravidelné fakturace a kniha jízd
+ * (1 firemní auto, 15 jízd, 6 tankování).
  * Sdílená logika pro `bin/sample.php` (CLI) i `SetupSampleAction` (HTTP wizard).
  *
  * Vrací: ['clients' => 5, 'projects' => 8, 'invoices' => 20, 'credit_notes' => 4,
- *         'vendors' => 4, 'purchase_invoices' => 12, 'recurring' => 2]
+ *         'vendors' => 4, 'purchase_invoices' => 12, 'recurring' => 2,
+ *         'cars' => 1, 'trips' => 15, 'fuelings' => 6]
  */
 final class SampleDataGenerator
 {
@@ -26,7 +28,7 @@ final class SampleDataGenerator
     ) {}
 
     /**
-     * @return array{clients:int, projects:int, invoices:int, credit_notes:int, vendors:int, purchase_invoices:int, recurring:int}
+     * @return array{clients:int, projects:int, invoices:int, credit_notes:int, vendors:int, purchase_invoices:int, recurring:int, cars:int, trips:int, fuelings:int}
      */
     public function generate(int $supplierId, int $adminUserId): array
     {
@@ -442,6 +444,9 @@ final class SampleDataGenerator
             $recurringCount++;
         }
 
+        // ───── Kniha jízd (1 firemní auto, 15 jízd, 6 tankování) ─────
+        $logbook = $this->seedLogbook($pdo, $supplierId, $adminUserId, $today);
+
         // Sample data nejdou přes InvoiceActions, takže project/client revenue cache by zůstaly prázdné
         // → dashboard a top-clients koláč by hlásily nulu. Recompute všech vygenerovaných entit.
         foreach ($projectIds as $pid) $this->stats->recomputeProject((int) $pid);
@@ -456,7 +461,121 @@ final class SampleDataGenerator
             'vendors'           => count($vendorIds),
             'purchase_invoices' => $purchaseCount,
             'recurring'         => $recurringCount,
+            'cars'              => $logbook['cars'],
+            'trips'             => $logbook['trips'],
+            'fuelings'          => $logbook['fuelings'],
         ];
+    }
+
+    /**
+     * Kniha jízd — 1 firemní auto, 15 jízd a 6 tankování za poslední ~2 měsíce.
+     * Evidenční vrstva (do DPH/statistik/dashboardů NEvstupuje), proto stačí přímé
+     * inserty. Odometer řetězíme spojitě od počátečního stavu auta, tankování
+     * umisťujeme do téhož rozsahu km, ať na sebe přehledy a souhrny sedí.
+     *
+     * @return array{cars:int, trips:int, fuelings:int}
+     */
+    private function seedLogbook(PDO $pdo, int $supplierId, int $adminUserId, \DateTimeImmutable $today): array
+    {
+        // ── Auto (výchozí, firemní) ──
+        $odometerStart = 85000;
+        $startDate = $today->modify('-2 months')->modify('first day of this month')->format('Y-m-d');
+        $pdo->prepare(
+            'INSERT INTO cars (supplier_id, registration, name, brand, model, vin, fuel_type,
+                               odometer_start, odometer_start_date, is_default, is_archived, note, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, "diesel", ?, ?, 1, 0, NULL, ?)'
+        )->execute([
+            $supplierId, '5AB 1234', 'Octavia firemní', 'Škoda', 'Octavia Combi 2.0 TDI',
+            'TMBJJ7NE5L0123456', $odometerStart, $startDate, $adminUserId,
+        ]);
+        $carId = (int) $pdo->lastInsertId();
+
+        // Kategorie cest (business/private) určují daňovou relevanci jízdy. Migrace 0109 je
+        // seeduje per supplier, ale při fresh installu běží PŘED vznikem supplieru (a setup je
+        // neseeduje) → nový tenant je nemá. Idempotentně je proto zajistíme tady; ON DUPLICATE
+        // + LAST_INSERT_ID(id) vrátí id existující řádky bez přepsání případné úpravy uživatele.
+        $ensureCat = function (string $code, string $label, int $isPrivate, int $order) use ($pdo, $supplierId): int {
+            $pdo->prepare(
+                'INSERT INTO trip_categories (supplier_id, code, label, is_private, display_order)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)'
+            )->execute([$supplierId, $code, $label, $isPrivate, $order]);
+            return (int) $pdo->lastInsertId();
+        };
+        $catBusiness = $ensureCat('business', 'Služební', 0, 10);
+        $catPrivate  = $ensureCat('private', 'Soukromá', 1, 20);
+
+        // ── 15 jízd (chronologicky; odometer se řetězí spojitě) ──
+        // [dní zpět, čas od, čas do, odkud, kam, účel, km, soukromá?]
+        $tripDefs = [
+            [68, '08:15', '11:40', 'Praha', 'Brno',            'Schůzka s klientem BlueWave Digital', 205, false],
+            [66, '15:00', '18:20', 'Brno', 'Praha',            'Návrat z jednání',                    205, false],
+            [60, '09:00', '10:35', 'Praha', 'Plzeň',           'Instalace u zákazníka',                95, false],
+            [60, '16:10', '17:45', 'Plzeň', 'Praha',           'Návrat z instalace',                   95, false],
+            [54, '10:30', '11:25', 'Praha', 'Kolín',           'Konzultace IT infrastruktury',         65, false],
+            [50, '08:40', '10:30', 'Praha', 'Hradec Králové',  'Školení zaměstnanců klienta',         115, false],
+            [49, '14:00', '15:50', 'Hradec Králové', 'Praha',  'Návrat ze školení',                   115, false],
+            [44, '11:15', '11:55', 'Praha', 'Benešov',         'Servis serveru u zákazníka',           40, false],
+            [40, '07:50', '09:35', 'Praha', 'Liberec',         'Obchodní jednání — nová zakázka',     105, false],
+            [39, '17:20', '19:05', 'Liberec', 'Praha',         'Návrat z jednání',                    105, false],
+            [32, '09:30', '11:30', 'Praha', 'Karlovy Vary',    'Soukromá cesta',                      130, true],
+            [31, '18:00', '20:00', 'Karlovy Vary', 'Praha',    'Soukromá cesta — návrat',             130, true],
+            [24, '08:25', '10:25', 'Praha', 'Pardubice',       'Předání hotové zakázky',              125, false],
+            [16, '07:30', '11:00', 'Praha', 'Olomouc',         'Konference — prezentace řešení',      280, false],
+            [6,  '13:10', '13:45', 'Praha', 'Kladno',          'Nákup HW vybavení',                    30, false],
+        ];
+
+        $tripStmt = $pdo->prepare(
+            'INSERT INTO trips (supplier_id, car_id, trip_date, time_start, time_end,
+                                odometer_start, odometer_end, distance_km, category_id,
+                                purpose, origin, destination, note, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)'
+        );
+        $odometer = $odometerStart;
+        $tripsCount = 0;
+        foreach ($tripDefs as [$daysBack, $timeStart, $timeEnd, $origin, $destination, $purpose, $km, $isPrivate]) {
+            $odoStart = $odometer;
+            $odoEnd   = $odometer + $km;
+            $odometer = $odoEnd;
+            $tripStmt->execute([
+                $supplierId, $carId, $today->modify("-{$daysBack} days")->format('Y-m-d'),
+                $timeStart, $timeEnd, $odoStart, $odoEnd, $km,
+                $isPrivate ? $catPrivate : $catBusiness,
+                $purpose, $origin, $destination, $adminUserId,
+            ]);
+            $tripsCount++;
+        }
+
+        // ── 6 tankování (nafta; odometer ve stejném rozsahu km jako jízdy) ──
+        // [dní zpět, čas, stanice, litry, cena/l vč. DPH, odometer]
+        $fuelDefs = [
+            [67, '07:55', 'Praha-Zličín / Shell',       48.62, 35.90, 85200],
+            [58, '08:30', 'Plzeň, Borská / OMV',        45.18, 36.40, 85560],
+            [46, '12:05', 'Praha, Strašnice / EuroOil', 50.07, 35.50, 85930],
+            [36, '07:40', 'Liberec / Benzina',          47.83, 37.10, 86250],
+            [22, '09:15', 'Pardubice / MOL',            49.34, 36.80, 86560],
+            [5,  '13:20', 'Praha-Zličín / Shell',       44.57, 38.20, 86790],
+        ];
+
+        $fuelStmt = $pdo->prepare(
+            'INSERT INTO fuelings (supplier_id, car_id, fueled_date, fueled_time, fuel_type, quantity, unit,
+                                   unit_price, amount_without_vat, amount_vat, amount_with_vat, currency,
+                                   odometer, station, source, created_by)
+             VALUES (?, ?, ?, ?, "Nafta", ?, "l", ?, ?, ?, ?, "CZK", ?, ?, "manual", ?)'
+        );
+        $fuelingsCount = 0;
+        foreach ($fuelDefs as [$daysBack, $time, $station, $liters, $pricePerL, $odo]) {
+            $withVat    = round($liters * $pricePerL, 2);
+            $withoutVat = round($withVat / 1.21, 2);
+            $vat        = round($withVat - $withoutVat, 2);
+            $fuelStmt->execute([
+                $supplierId, $carId, $today->modify("-{$daysBack} days")->format('Y-m-d'), $time,
+                $liters, $pricePerL, $withoutVat, $vat, $withVat, $odo, $station, $adminUserId,
+            ]);
+            $fuelingsCount++;
+        }
+
+        return ['cars' => 1, 'trips' => $tripsCount, 'fuelings' => $fuelingsCount];
     }
 
     private function nextPurchaseVarsymbol(PDO $pdo, int $supplierId, string $period): string

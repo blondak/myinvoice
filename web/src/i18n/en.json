@@ -3462,8 +3462,8 @@
     "skip_supplier": "Fill supplier later in Settings",
     "create_admin": "Create admin account",
     "sample_label": "Generate sample data",
-    "sample_hint": "5 clients, 8 projects, 20 invoices and 4 credit notes from the last 2 months. For trying out the app. Can be wiped later via admin/reset.",
-    "sample_done": "Generated: {clients} clients, {projects} projects, {invoices} invoices, {credit_notes} credit notes.",
+    "sample_hint": "5 clients, 8 projects, 20 invoices, 4 credit notes and a vehicle logbook (1 car, 15 trips, 6 fuelings) from the last 2 months. For trying out the app. Can be wiped later via admin/reset.",
+    "sample_done": "Generated: {clients} clients, {projects} projects, {invoices} invoices, {credit_notes} credit notes, {cars} car, {trips} trips, {fuelings} fuelings.",
     "require_totp_label": "Require two-factor authentication (2FA) for all users",
     "require_totp_hint": "After login, every user will be redirected to TOTP setup until they activate 2FA. You can change this later in cfg.local.php (auth.require_totp)."
   },

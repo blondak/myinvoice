@@ -3462,8 +3462,8 @@
     "skip_supplier": "Vyplnit dodavatele později v Nastavení",
     "create_admin": "Vytvořit admin účet",
     "sample_label": "Vygenerovat ukázková data",
-    "sample_hint": "5 klientů, 8 zakázek, 20 faktur a 4 dobropisy za poslední 2 měsíce. Pro vyzkoušení aplikace. Lze později smazat přes admin/reset.",
-    "sample_done": "Vygenerováno: {clients} klientů, {projects} zakázek, {invoices} faktur, {credit_notes} dobropisů.",
+    "sample_hint": "5 klientů, 8 zakázek, 20 faktur, 4 dobropisy a kniha jízd (1 auto, 15 jízd, 6 tankování) za poslední 2 měsíce. Pro vyzkoušení aplikace. Lze později smazat přes admin/reset.",
+    "sample_done": "Vygenerováno: {clients} klientů, {projects} zakázek, {invoices} faktur, {credit_notes} dobropisů, {cars} auto, {trips} jízd, {fuelings} tankování.",
     "require_totp_label": "Vynutit dvoufaktorové ověření (2FA) pro všechny uživatele",
     "require_totp_hint": "Po přihlášení bude každý uživatel přesměrován na nastavení TOTP, dokud 2FA neaktivuje. Volbu lze později změnit v cfg.local.php (auth.require_totp)."
   },
