@@ -9,12 +9,9 @@ final class EmailNoticeTextNormalizer
     public function normalize(string $input): string
     {
         $text = quoted_printable_decode($this->extractBody($input));
-        if (!mb_check_encoding($text, 'UTF-8')) {
-            $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
-            if ($clean !== false) {
-                $text = $clean;
-            }
-        }
+        // issue #58: nevalidní UTF-8 (typicky windows-1250 ČSOB avízo) překóduj,
+        // ne zahoď — jinak by zmizela diakritika a parser by avízo nepoznal.
+        $text = EmailCharsetNormalizer::toUtf8($text);
         $text = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $text) ?? $text;
         $text = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $text) ?? $text;
         if (str_contains($text, '<') && str_contains($text, '>')) {

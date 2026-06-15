@@ -212,7 +212,8 @@ final class BankEmailNoticeScanner
                     'provider_code' => $provider->code,
                     'status' => 'match_failed',
                     'parsed_payload' => $notice->toArray(),
-                    'error_message' => 'Cílový účet avíza není namapovaný na bankovní účet dodavatele.',
+                    'error_message' => 'Cílový účet avíza (' . ($notice->recipientAccount !== '' ? $notice->recipientAccount : 'neuveden')
+                        . ') není namapovaný na žádný bankovní účet dodavatele.',
                 ]);
                 $this->safePostProcess($settings, $message, 'failure');
                 return ['status' => 'match_failed', 'message_id' => $messageId, 'reason' => 'account_mapping_missing'];
