@@ -5,6 +5,16 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.31.0] — 2026-06-15
+
+### Added
+
+- **Náhled na výkaz práce — sdílení rozpracovaných výkazů přes odkaz.** V detailu klienta i zakázky je nové tlačítko **„Poslat odkaz na sledování výkazu práce"**. Klient dostane trvalý odkaz, na kterém vidí vždy **aktuálně otevřené (nevyfakturované) výkazy práce** — počet hodin i průběžnou částku k vyúčtování — ještě než z nich vznikne faktura. U odkazu na klienta se zobrazí všechny jeho otevřené výkazy, u odkazu na zakázku jen výkazy té zakázky. Náhled se aktualizuje sám. Při prvním otevření se návštěvník ověří **jednorázovým kódem z e-mailu** (povolené jsou e-maily klienta, u zakázky i fakturační e-maily zakázky); po ověření si ho prohlížeč zapamatuje (180 dní) a kód už nevyžaduje. **Přihlášený uživatel (admin/účetní) vidí náhled rovnou** bez kódu. Odkaz lze kdykoli zneplatnit. Přibyly dvě e-mailové šablony (odkaz + ověřovací kód), editovatelné v *Nastavení → E-maily*. (migrace 0112)
+
+### Changed
+
+- **Všechna generovaná PDF jsou nově ve formátu PDF/A-3b (archivní standard).** Faktury, přijaté faktury, výkazy práce, Kniha DPH i kniha jízd se generují jako konformní **PDF/A-3b** (ISO 19005-3) pro dlouhodobou archivaci — vložené fonty, barevný profil **sRGB** (CMYK obrázky se převedou automaticky), strukturovaná ISDOC příloha zůstává. **Elektronický podpis (PAdES) archivní konformitu zachová.** Ověřeno referenčním ISO validátorem veraPDF. (PR #143)
+
 ## [4.30.1] — 2026-06-15
 
 ### Changed
