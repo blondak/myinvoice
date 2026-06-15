@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.30.1] — 2026-06-15
+
+### Changed
+
+- **Web dodavatele v patičce dokladu se zobrazuje jako čistá doména.** Z odkazu zmizí `http(s)://` i koncové lomítko (např. `https://mywebdesign.cz/` → `mywebdesign.cz`) a doména je prokliknutelná na plnou https adresu — na faktuře i výkazu práce. Sjednoceno s patičkou e-mailů.
+
 ## [4.30.0] — 2026-06-15
 
 ### Changed

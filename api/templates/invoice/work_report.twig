@@ -83,7 +83,7 @@
 </table>
 
 <div class="footer">
-  <span class="footer-name">{{ supplier.company_name }}</span>{% if supplier.web %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.web }}{% endif %}{% if supplier.email %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.email }}{% endif %}
+  <span class="footer-name">{{ supplier.company_name }}</span>{% if supplier.web %}<span class="footer-dot">&#160;·&#160;</span><a href="{{ supplier.web }}" class="footer-link">{{ supplier.web|replace({'https://': '', 'http://': ''})|trim('/') }}</a>{% endif %}{% if supplier.email %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.email }}{% endif %}
 </div>
 
 </body>
