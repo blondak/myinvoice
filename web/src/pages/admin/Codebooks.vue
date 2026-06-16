@@ -1209,6 +1209,8 @@ watch(tab, (newTab) => {
               <input v-model.number="taxModel.social_min_base_main" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
             <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_min_sec') }}</span>
               <input v-model.number="taxModel.social_min_base_secondary" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_social_sec_threshold') }}</span>
+              <input v-model.number="taxModel.social_secondary_participation_threshold" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
             <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_health_min') }}</span>
               <input v-model.number="taxModel.health_min_base" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
           </div>
