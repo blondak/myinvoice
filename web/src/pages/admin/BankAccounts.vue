@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { bankNameByCode, isKnownBankName } from '@/utils/czBankCodes'
 import {
   settingsApi,
   type BankEmailAccountMapping,
@@ -58,6 +59,14 @@ const bankDraftAccounts = ref<CrpDphAccount[]>([])
 const supplierHasDic = computed(() => /^\d{8,10}$/.test((supplier.value?.dic || '').replace(/\D/g, '')))
 
 const currencyDraft = reactive<Partial<CurrencyAccount>>({})
+// Auto-doplnění názvu banky podle kódu (číselník ČNB). Přepíše jen prázdný
+// nebo z číselníku pocházející název — ručně zadaný text nepřepisuje.
+watch(() => currencyDraft.bank_code, (code) => {
+  const name = bankNameByCode(code)
+  if (name && (!currencyDraft.bank_name || isKnownBankName(currencyDraft.bank_name))) {
+    currencyDraft.bank_name = name
+  }
+})
 const imapDraft = reactive<Partial<BankEmailImapSettings> & { password?: string }>(defaultImapDraft())
 const regexFieldDefinitions = [
   { key: 'variable_symbol', required: true },
