@@ -2637,6 +2637,7 @@
     "tax_f_health_pct": "Health base (% profit)",
     "tax_f_social_min_main": "Min. social base (main)",
     "tax_f_social_min_sec": "Min. social base (secondary)",
+    "tax_f_social_sec_threshold": "Decisive amount soc. (secondary)",
     "tax_f_health_min": "Min. health base",
     "tax_f_credit_taxpayer": "Taxpayer credit",
     "tax_f_credit_spouse": "Spouse credit",
@@ -3553,6 +3554,9 @@
     "limit_vatHigh": "Immediate VAT payer",
     "will_cross_in": "crossing in {month}",
     "wont_cross": "not crossing this year",
+    "limit_social_secondary": "Social insurance limit (secondary activity)",
+    "social_secondary_cross": "projected profit {profit} crosses it in {month} — you will pay social insurance",
+    "social_secondary_ok": "projected profit {profit} stays below — no social insurance",
     "defer_tip": "You will cross 2 M in {month}. Deferring December invoices to January keeps you under the limit (non-VAT + flat tax).",
     "disclaimer": "Indicative calculation per current constants — not tax advice. Income from issued (paid) invoices."
   },

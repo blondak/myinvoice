@@ -2637,6 +2637,7 @@
     "tax_f_health_pct": "Zdrav. základ (% zisku)",
     "tax_f_social_min_main": "Min. základ soc. (hlavní)",
     "tax_f_social_min_sec": "Min. základ soc. (vedlejší)",
+    "tax_f_social_sec_threshold": "Rozhodná částka soc. (vedlejší)",
     "tax_f_health_min": "Min. základ zdrav.",
     "tax_f_credit_taxpayer": "Sleva na poplatníka",
     "tax_f_credit_spouse": "Sleva na manžela/ku",
@@ -3553,6 +3554,9 @@
     "limit_vatHigh": "Okamžitý plátce DPH",
     "will_cross_in": "překročíš v {month}",
     "wont_cross": "letos nepřekročíš",
+    "limit_social_secondary": "Limit soc. pojištění (vedlejší činnost)",
+    "social_secondary_cross": "projekce zisku {profit} ho překročí v {month} — budeš platit sociální pojištění",
+    "social_secondary_ok": "projekce zisku {profit} zůstává pod limitem — sociální pojištění neplatíš",
     "defer_tip": "Limit 2 M překročíš až {month}. Posunutím prosincových faktur do ledna zůstaneš pod limitem (neplátce + paušál).",
     "disclaimer": "Orientační výpočet dle aktuálních konstant — nenahrazuje daňové poradenství. Příjmy z vystavených (zaplacených) faktur."
   },
