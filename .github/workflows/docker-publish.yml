@@ -83,8 +83,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           # GHA cache — per-platform scope, aby se amd64/arm64 navzájem nepřepisovaly.
+          # ignore-error=true: flaky GHA cache backend (občas „error writing layer blob:
+          # not_found" při exportu) nesmí shodit build — image se stejně pushne, jen se
+          # neuloží cache. Bez toho spadl arm64 leg u v4.32.0 a merge se přeskočil.
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
-          cache-to:   type=gha,scope=${{ env.PLATFORM_PAIR }},mode=min
+          cache-to:   type=gha,scope=${{ env.PLATFORM_PAIR }},mode=min,ignore-error=true
 
       - name: Export digest
         run: |
