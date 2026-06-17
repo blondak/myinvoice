@@ -2004,6 +2004,12 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "no_supplier": {
+      "title": "Create your supplier",
+      "intro": "Before you can issue invoices and add clients, you need to create a supplier — your company whose details appear on documents. You skipped this step during the initial setup.",
+      "cta_admin": "Create supplier",
+      "non_admin": "Please ask your administrator to create a supplier in Settings → Codebooks → Suppliers."
+    },
     "welcome": "Welcome to MyInvoice.cz!",
     "tax_net_title": "Taxes {year}",
     "tax_net_projected": "year estimate",

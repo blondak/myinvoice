@@ -641,10 +641,10 @@ onMounted(async () => {
           </a>
           <span aria-hidden="true">·</span>
           <button type="button" @click="supportOpen = true"
-                  class="cursor-pointer hover:text-neutral-700">{{ t('support.author_link') }}</button>
+                  class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.author_link') }}</button>
           <span aria-hidden="true">·</span>
           <button type="button" @click="featureOpen = true"
-                  class="cursor-pointer hover:text-neutral-700">{{ t('support.feature_link') }}</button>
+                  class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.feature_link') }}</button>
         </footer>
       </div>
     </div>

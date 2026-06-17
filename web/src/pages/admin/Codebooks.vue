@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type VatRate, type Country, type Unit } from '@/api/settings'
 import { suppliersApi, type SupplierListItem, type SupplierCreatePayload } from '@/api/suppliers'
@@ -15,6 +16,7 @@ import { useHotkey } from '@/composables/useHotkey'
 import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const route = useRoute()
 const toast = useToast()
 const supplierStore = useSupplierStore()
 const auth = useAuthStore()
@@ -38,7 +40,15 @@ async function loadAll() {
     ])
   } finally { loading.value = false }
 }
-onMounted(loadAll)
+onMounted(async () => {
+  await loadAll()
+  // Onboarding gate (#151): dashboard sem posílá s ?create=supplier → rovnou otevři
+  // formulář pro vytvoření prvního dodavatele.
+  if (route.query.create === 'supplier') {
+    tab.value = 'suppliers'
+    newSupplier()
+  }
+})
 
 // ─── Suppliers (multi-tenant firmy) — embed jako první tab ───────────────
 const supplierDraft = reactive<SupplierCreatePayload>({

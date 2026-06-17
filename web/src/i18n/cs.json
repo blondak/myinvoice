@@ -2004,6 +2004,12 @@
   },
   "dashboard": {
     "title": "Přehled",
+    "no_supplier": {
+      "title": "Vytvořte svého dodavatele",
+      "intro": "Než začnete vystavovat faktury a zakládat klienty, je potřeba vytvořit dodavatele — vaši firmu, jejíž údaje se objeví na dokladech. Tento krok jste v úvodním nastavení přeskočili.",
+      "cta_admin": "Vytvořit dodavatele",
+      "non_admin": "Požádejte prosím správce, aby vytvořil dodavatele v Nastavení → Číselníky → Dodavatelé."
+    },
     "welcome": "Vítej v MyInvoice.cz!",
     "tax_net_title": "Daně {year}",
     "tax_net_projected": "odhad roku",
