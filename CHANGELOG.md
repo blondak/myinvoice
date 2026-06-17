@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.34.0] — 2026-06-17
+
+### Added
+
+- **Automatické doplnění názvu banky podle kódu (číselník ČNB).** Při zadávání bankovního účtu (v počátečním nastavení i ve správě účtů) se po vyplnění **kódu banky** sám doplní její **název** podle oficiálního číselníku platebního styku ČNB (např. `0800` → *Česká spořitelna*). Ručně přepsaný název zůstává — automatika ho přepíše jen když je pole prázdné nebo název sám pochází z číselníku. Bez DB migrace.
+- **Tlačítko „Detail klienta" v detailu zakázky.** Z detailu zakázky vede přímý odkaz na kartu klienta; dostupné i v režimu jen pro čtení.
+
+### Fixed
+
+- **Dávkový import přijatých faktur ve formátu `.isdocx` nově ukládá i originální PDF.** Při importu přes *Import → Přijaté faktury* se z balíčku `.isdocx` (ZIP s `.isdoc` + PDF + `manifest.xml`) dosud načetla jen strukturovaná data, ale **přiložené PDF se zahazovalo** — faktura tak zůstala bez náhledového dokladu. Nově se čitelné PDF archivuje k faktuře stejně jako u nahrání přes dropzone/AI a u skenu inboxu (sjednoceno do jednoho sdíleného úložiště). Týká se i přímo nahraného PDF/A-3 s vloženým ISDOC. Bez DB migrace. (#149)
+
 ## [4.33.0] — 2026-06-16
 
 ### Added
