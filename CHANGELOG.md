@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.34.2] — 2026-06-17
+
+### Fixed
+
+- **Špatný variabilní symbol při importu výpisu GPC/ABO (Fio i ostatní banky).** U plateb, jejichž **variabilní symbol končí nulou**, se při importu bankovního výpisu ve formátu GPC poslední nula (nebo více nul) ztrácela — např. VS `260100010` se uložil jako `26010001`. Příčina: pole VS je v GPC zleva doplněné nulami a parser je ořezával z **obou** stran, takže spolu s vedoucími (výplňovými) nulami zmizely i **významné koncové** nuly. Nově se strhávají pouze vedoucí nuly. Stejná oprava se týká i **konstantního** a **specifického** symbolu. Bez DB migrace. (#150)
+
 ## [4.34.1] — 2026-06-17
 
 ### Changed
