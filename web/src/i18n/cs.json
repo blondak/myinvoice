@@ -3228,8 +3228,9 @@
       "purchases": "přij. fakt.",
       "drafts": "koncepty",
       "proformas": "proformy",
+      "issued": "vystaveno",
       "expected": "očekávané",
-      "pipeline_hint": "Očekávané tržby tohoto měsíce = vystavené + koncepty (vydané faktury) + nespárované proformy. Zatím nevystavené složky se nezapočítávají do trendu ani do tržeb za období."
+      "pipeline_hint": "Hlavní číslo = očekávané tržby měsíce = vystavené + koncepty (vydané faktury) + nespárované proformy. Koncepty a proformy se nezapočítávají do dlouhodobých metrik (Posl. 12 m, YTD, Srovnání období)."
     },
     "compare": {
       "title": "Srovnání období",

@@ -466,18 +466,22 @@ onMounted(loadAll)
             </svg>
           </div>
           <div class="text-2xl font-bold text-neutral-900 font-mono">
-            {{ formatMoney(currentMonthKpi?.revenue || 0, displayCurrency) }}
+            {{ formatMoney(expectedThisMonth, displayCurrency) }}
           </div>
           <div class="text-xs text-neutral-500 mt-1">
-            {{ t('crm.kpi.this_month') }}
+            {{ t('crm.kpi.this_month') }}<span v-if="hasPipeline" class="text-neutral-400"> · {{ t('crm.kpi.expected') }}</span>
             <span v-if="lastMonthKpi" class="ml-2"
-              :class="trendPct(currentMonthKpi?.revenue || 0, lastMonthKpi.revenue) >= 0 ? 'text-success-600' : 'text-danger-500'">
-              {{ trendPct(currentMonthKpi?.revenue || 0, lastMonthKpi.revenue) >= 0 ? '▲' : '▼' }}
-              {{ Math.abs(trendPct(currentMonthKpi?.revenue || 0, lastMonthKpi.revenue)) }}%
+              :class="trendPct(expectedThisMonth, lastMonthKpi.revenue) >= 0 ? 'text-success-600' : 'text-danger-500'">
+              {{ trendPct(expectedThisMonth, lastMonthKpi.revenue) >= 0 ? '▲' : '▼' }}
+              {{ Math.abs(trendPct(expectedThisMonth, lastMonthKpi.revenue)) }}%
             </span>
           </div>
-          <!-- Dopředné tržby: koncepty + nespárované proformy → očekávané celkem (jen když jsou) -->
+          <!-- Rozpad očekávaných tržeb: vystaveno + koncepty + nespárované proformy (jen když jsou dopředné složky) -->
           <div v-if="hasPipeline" class="text-xs mt-3 pt-2 border-t border-neutral-100 space-y-0.5" :title="t('crm.kpi.pipeline_hint')">
+            <div class="flex items-center justify-between gap-2 text-neutral-500">
+              <span>{{ t('crm.kpi.issued') }} <span class="text-neutral-400">({{ currentMonthKpi?.invoice_count || 0 }} {{ t('crm.kpi.invoices') }})</span></span>
+              <span class="font-mono">{{ formatMoney(currentMonthKpi?.revenue || 0, displayCurrency) }}</span>
+            </div>
             <div v-if="pipelineThisMonth.draft" class="flex items-center justify-between gap-2 text-neutral-500">
               <span>+ {{ t('crm.kpi.drafts') }} <span class="text-neutral-400">({{ pipelineThisMonth.draftCount }})</span></span>
               <span class="font-mono">{{ formatMoney(pipelineThisMonth.draft, displayCurrency) }}</span>
@@ -485,10 +489,6 @@ onMounted(loadAll)
             <div v-if="pipelineThisMonth.proforma" class="flex items-center justify-between gap-2 text-neutral-500">
               <span>+ {{ t('crm.kpi.proformas') }} <span class="text-neutral-400">({{ pipelineThisMonth.proformaCount }})</span></span>
               <span class="font-mono">{{ formatMoney(pipelineThisMonth.proforma, displayCurrency) }}</span>
-            </div>
-            <div class="flex items-center justify-between gap-2 font-medium text-neutral-700 pt-0.5">
-              <span>= {{ t('crm.kpi.expected') }}</span>
-              <span class="font-mono">{{ formatMoney(expectedThisMonth, displayCurrency) }}</span>
             </div>
           </div>
           <div class="text-xs text-neutral-400 mt-3 pt-2 border-t border-neutral-100 space-y-0.5">
@@ -506,7 +506,7 @@ onMounted(loadAll)
                 <span v-if="revYtdYoy.show" class="ml-1" :class="revYtdYoy.cls">{{ revYtdYoy.arrow }}{{ revYtdYoy.abs }}%</span>
               </span>
             </div>
-            <div>{{ currentMonthKpi?.invoice_count || 0 }} {{ t('crm.kpi.invoices') }}</div>
+            <div v-if="!hasPipeline">{{ currentMonthKpi?.invoice_count || 0 }} {{ t('crm.kpi.invoices') }}</div>
           </div>
         </div>
 

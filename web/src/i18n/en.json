@@ -3228,8 +3228,9 @@
       "purchases": "exp.",
       "drafts": "drafts",
       "proformas": "proformas",
+      "issued": "issued",
       "expected": "expected",
-      "pipeline_hint": "Expected revenue this month = issued + drafts (sales invoices) + unmatched proformas. The not-yet-issued parts are excluded from the trend and from period revenue."
+      "pipeline_hint": "Headline = expected revenue this month = issued + drafts (sales invoices) + unmatched proformas. Drafts and proformas are excluded from the long-term metrics (Last 12 m, YTD, period comparison)."
     },
     "compare": {
       "title": "Period comparison",
