@@ -568,3 +568,103 @@ vrstvy; staré **tagované** verze smaž explicitně:
 cmd/docker-prune-images.sh --dry-run   # napřed vypiš, co by smazal
 cmd/docker-prune-images.sh             # smaže obsolete (běžící + compose image chrání)
 ```
+
+## 3.11 Instalace přes Portainer / Dockge (GUI, bez příkazové řádky)
+
+Protože je image veřejný na GHCR, jde MyInvoice nasadit i čistě přes webové
+GUI správce kontejnerů — **bez klonování repa, bez SSH, bez `cfg.docker.php`**.
+Veškerá konfigurace se předává proměnnými prostředí (12-factor).
+
+K tomu slouží samostatný compose **`docker-compose.portainer.yml`** (nemá
+`build:` ani bind-mount cfg souboru — jen `image:` z GHCR a `environment:`).
+
+> 🔑 **Povinné proměnné** (vygeneruj a poznač si):
+>
+> ```bash
+> openssl rand -base64 28   # → DB_PASSWORD
+> openssl rand -base64 28   # → DB_ROOT_PASSWORD
+> openssl rand -base64 32   # → MYINVOICE_PEPPER
+> openssl rand -base64 32   # → MYINVOICE_SECRET_KEY (doporučené, jinak fallback z pepperu)
+> ```
+
+### 3.11.1 Portainer — App Template (one-click)
+
+Nejjednodušší cesta. Přidej katalog šablon a nasaď z formuláře:
+
+1. **Settings → App Templates → URL** vlož:
+   ```
+   https://raw.githubusercontent.com/radekhulan/myinvoice/master/portainer-template.json
+   ```
+   a ulož.
+2. **App Templates** → najdi dlaždici **MyInvoice.cz** → klikni.
+3. Vyplň proměnné (povinné DB hesla + pepper; ostatní mají rozumný default) →
+   **Deploy the stack**.
+4. Otevři **http://&lt;host&gt;:8080** → doběhne [setup wizard](06_Setup_wizard.md).
+
+Portainer si compose stáhne z repa sám (`repository.stackfile =
+docker-compose.portainer.yml`), pulne image z GHCR a spustí stack. DB migrace
+se spustí automaticky při startu kontejneru.
+
+### 3.11.2 Portainer — ruční Stack (web editor)
+
+Když nechceš přidávat katalog šablon:
+
+1. **Stacks → Add stack → Web editor**.
+2. Vlož obsah `docker-compose.portainer.yml` (zkopíruj z
+   [repa](https://github.com/radekhulan/myinvoice/blob/master/docker-compose.portainer.yml)).
+3. Dole v **Environment variables** přidej proměnné (`DB_PASSWORD`,
+   `DB_ROOT_PASSWORD`, `MYINVOICE_PEPPER`, případně `MYINVOICE_SECRET_KEY`,
+   `APP_PORT`) → **Deploy the stack**.
+
+Alternativně **Add stack → Repository**: URL `https://github.com/radekhulan/myinvoice`,
+Compose path `docker-compose.portainer.yml`.
+
+### 3.11.3 Dockge
+
+Dockge drží stacky jako reálné soubory na disku, takže pasuje na compose 1:1:
+
+1. **+ Compose** → název stacku (např. `myinvoice`).
+2. Do editoru vlož `docker-compose.portainer.yml`.
+3. Do `.env` panelu doplň proměnné:
+   ```env
+   DB_PASSWORD=...
+   DB_ROOT_PASSWORD=...
+   MYINVOICE_PEPPER=...
+   MYINVOICE_SECRET_KEY=...
+   APP_PORT=8080
+   ```
+4. **Save → Start**. Logy a interaktivní terminál máš přímo v Dockge.
+
+### 3.11.4 HTTPS / produkce
+
+Default compose jede HTTP-friendly cookies (`MYINVOICE_SESSION_COOKIE_SECURE=false`,
+`MYINVOICE_SESSION_COOKIE_NAME=myinvoice_session`) — login funguje hned přes
+`http://host:8080`. Jakmile dáš před stack **HTTPS reverse proxy**
+(viz [§ 3.8](#38-https-tls-terminace)), přepni v proměnných:
+
+```env
+MYINVOICE_APP_URL=https://faktury.firma.cz
+MYINVOICE_SESSION_COOKIE_SECURE=true
+MYINVOICE_SESSION_COOKIE_NAME=__Host-myinvoice_session
+```
+
+a stack překresli (Portainer: *Update the stack* / Dockge: *Restart*). Proxy musí
+posílat `X-Forwarded-Proto: https`, jinak vznikne redirect loop.
+
+### 3.11.5 Aktualizace v GUI
+
+Nová verze = pull novějšího image + recreate, migrace doběhnou při startu:
+
+- **Portainer:** Stacks → MyInvoice → **Update the stack** se zapnutým
+  *Re-pull image and redeploy* (u App Template / git stacku *Pull and redeploy*).
+- **Dockge:** tlačítko **Update** u stacku.
+
+> 💡 V produkci radši **pinni konkrétní verzi** (v compose změň
+> `:latest` na `:4.34.3`) a aktualizuj vědomě — u účetní aplikace nedoporučuju
+> slepý auto-update přes Watchtower na `:latest`. In-app upgrade z UI (Systém →
+> Aktualizace) i host watcher z [§ 3.9](#39-update-watcher-jednoclick-upgrade-z-ui-volitelne)
+> jsou pro Portainer/Dockge zbytečné — update je tu otázkou jednoho tlačítka.
+
+> 🛈 **Redis (volitelné):** stack má `redis` službu pod profilem `redis`.
+> Pro zapnutí přidej do proměnných `MYINVOICE_REDIS_ENABLED=true` a
+> `MYINVOICE_REDIS_HOST=redis` a nasaď s aktivním profilem.

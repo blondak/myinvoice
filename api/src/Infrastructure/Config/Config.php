@@ -274,6 +274,10 @@ final class Config
             // Session
             'MYINVOICE_SESSION_DRIVER'       => ['session.driver', 'string'],
             'MYINVOICE_SESSION_COOKIE_SECURE'=> ['session.cookie_secure', 'bool'],
+            // Cookie name přes ENV kvůli full-ENV deployům (Portainer/Dockge/PaaS):
+            // přes plain HTTP musí být ne-`__Host-` jméno (`__Host-` vyžaduje Secure),
+            // jinak se přihlašovací cookie neuloží. Default je `__Host-myinvoice_session`.
+            'MYINVOICE_SESSION_COOKIE_NAME'  => ['session.cookie_name', 'string'],
             'MYINVOICE_SESSION_SAMESITE'     => ['session.cookie_samesite', 'string'],
 
             // Auth
