@@ -219,8 +219,8 @@ onBeforeUnmount(() => {
     <!-- „…" trigger — light: decentní neutral ghost; dark: vyplněný accent „pill" (drží kontrast na tmavém pozadí) -->
     <button v-if="showTrigger" ref="triggerRef" type="button" @click.stop="toggle"
       :class="['cursor-pointer w-9 h-9 shrink-0 inline-flex items-center justify-center rounded-md ring-1 ring-inset transition-colors',
-               open ? 'bg-neutral-100 text-neutral-700 ring-neutral-400 dark:bg-primary-200 dark:text-primary-800 dark:ring-primary-500/60'
-                    : 'text-neutral-500 ring-neutral-300 hover:bg-neutral-100 hover:text-neutral-700 dark:text-primary-700 dark:bg-primary-100 dark:ring-primary-500/30 dark:hover:bg-primary-200 dark:hover:ring-primary-500/50',
+               open ? 'bg-neutral-100 text-neutral-700 ring-neutral-400 dark:bg-primary-600/40 dark:text-primary-900 dark:ring-primary-500/60'
+                    : 'text-neutral-500 ring-neutral-300 hover:bg-neutral-100 hover:text-neutral-700 dark:text-primary-700 dark:bg-primary-100 dark:ring-primary-500/30 dark:hover:bg-primary-600/30 dark:hover:text-primary-900 dark:hover:ring-primary-500/50',
                triggerDesktop ? '' : 'sm:hidden']"
       :aria-expanded="open" :title="t('common.more_actions')">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path :d="DOTS" /></svg>
