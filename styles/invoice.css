@@ -203,6 +203,9 @@ table.items td {
 table.items tr:nth-child(even) td { background: #FBFAFD; }
 table.items .num { text-align: right; font-family: 'jetbrainsmono', 'DejaVu Sans Mono', monospace; }
 table.items .center { text-align: center; }
+/* DPH sloupec je užší (místo dostal Cena/j) — sazba „21 %" / „12,5 %" o stupínek
+   menší, aby se vešla bez zalomení. */
+table.items .vat { font-size: 8.5pt; }
 
 /* ─── SUMACE ─── */
 .totals {
