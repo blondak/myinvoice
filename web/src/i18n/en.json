@@ -1040,7 +1040,7 @@
     "loading": "Loading…", "save": "Save", "cancel": "Cancel", "add": "Add",
     "delete": "Delete", "edit": "Edit", "back": "← Back", "yes": "Yes", "no": "No",
     "create": "Create", "search": "Search…", "no_data": "No data",
-    "actions": "Actions", "detail": "Detail", "archive": "Archive", "restore": "Restore",
+    "actions": "Actions", "more_actions": "More actions", "advanced": "Advanced", "detail": "Detail", "archive": "Archive", "restore": "Restore",
     "all": "All", "filter": "Filter", "export": "Export", "preview": "Preview", "view": "View",
     "send": "Send", "download": "Download", "confirm": "Confirm", "close": "Close",
     "of": "of", "from": "From", "to": "To", "ok": "OK", "saving": "Saving…", "select_all": "Select all", "unset": "not set",
