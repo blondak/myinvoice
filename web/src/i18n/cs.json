@@ -3174,6 +3174,7 @@
         "new": "Nový export",
         "history": "Poslední exporty",
         "in_progress": "Export už běží — počkej na dokončení.",
+        "delete_confirm": "Opravdu smazat tento hotový export ze seznamu? ZIP soubor se odstraní a nepůjde znovu stáhnout.",
         "status": {
           "queued": "Ve frontě",
           "running": "Probíhá",

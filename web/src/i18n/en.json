@@ -3174,6 +3174,7 @@
         "new": "New export",
         "history": "Recent exports",
         "in_progress": "An export is already running — wait for it to finish.",
+        "delete_confirm": "Really delete this finished export from the list? The ZIP file will be removed and can no longer be downloaded.",
         "status": {
           "queued": "Queued",
           "running": "Running",
