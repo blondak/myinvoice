@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.37.3] — 2026-06-21
+
+### Added
+
+- **Import vydaných faktur z uživatelského exportu Pohody (`responsePack`).** Import dokladů (`Nastavení → Import`) uměl dosud jen Pohoda XML v podobě importního balíku (`dataPack`). Nově přijme i **XML vyexportované přímo z Pohody** — uživatelský export vydaných faktur (kořen `responsePack` se seznamem `listInvoice`, faktury v `lst:invoice`), typicky soubor `VydFaktury.xml`. Rozpoznání formátu i kódování Windows-1250 proběhne automaticky; faktury se založí jako vydané (dohledání odběratele podle IČO/ARES, kontrola duplicit podle variabilního symbolu, rekapitulace DPH ze souhrnu dokladu). Bez DB migrace.
+
 ## [4.37.2] — 2026-06-20
 
 ### Changed
