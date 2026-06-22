@@ -1041,7 +1041,7 @@
     "delete": "Smazat", "edit": "Upravit", "back": "← Zpět", "yes": "Ano", "no": "Ne",
     "create": "Vytvořit", "search": "Hledat…", "no_data": "Žádná data",
     "actions": "Akce", "more_actions": "Další akce", "advanced": "Pokročilé", "detail": "Detail", "archive": "Archivovat", "restore": "Obnovit",
-    "all": "Všechny", "filter": "Filtrovat", "export": "Export", "preview": "Náhled", "view": "Zobrazit",
+    "all": "Všechny", "filter": "Filtrovat", "filters": "Filtry", "export": "Export", "preview": "Náhled", "view": "Zobrazit",
     "send": "Odeslat", "download": "Stáhnout", "confirm": "Potvrdit", "close": "Zavřít",
     "of": "z", "from": "Od", "to": "Do", "ok": "OK", "saving": "Ukládám…", "select_all": "Vybrat vše", "unset": "nevyplněno",
     "deleting": "Mažu…", "saved": "Uloženo.", "deleted": "Smazáno.", "created": "Vytvořeno.",

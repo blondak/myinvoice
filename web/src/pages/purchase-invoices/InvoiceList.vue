@@ -19,6 +19,7 @@ import { useYearOptions } from '@/composables/useYearOptions'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
 import { clientsApi, type Client } from '@/api/clients'
 
 const { t, locale } = useI18n()
@@ -52,6 +53,21 @@ const paymentOrderedFilter = ref<'' | '1' | '0'>('')
 const currencyFilter = ref('')
 const vendorFilter = ref<number | ''>('')
 const vendors = ref<Client[]>([])
+
+// Počet aktivních filtrů pro odznáček na mobilním tlačítku „Filtry" (rok i hledání se nepočítají)
+const activeFilterCount = computed(() => {
+  let n = 0
+  if (statusFilter.value) n++
+  if (kindFilter.value) n++
+  if (vendorFilter.value !== '') n++
+  if (monthFilter.value !== '') n++
+  if (dateFrom.value || dateTo.value) n++
+  if (overdueOnly.value) n++
+  if (unpaidOnly.value) n++
+  if (needsReviewOnly.value) n++
+  if (paymentOrderedFilter.value) n++
+  return n
+})
 
 // Hromadné akce
 const selectedIds = ref<number[]>([])
@@ -401,14 +417,15 @@ async function bulkDelete() {
     </div>
 
     <!-- ═══ Filtry v boxu ═══ -->
-    <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm mb-4 p-3">
-      <div class="flex flex-wrap items-center gap-2">
+    <FilterBar :active-count="activeFilterCount">
+      <template #primary>
         <input
           v-model="search"
           type="search"
           :placeholder="t('purchase_invoice.filters.search_placeholder')"
           class="flex-1 min-w-48 h-9 px-3 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"
         />
+      </template>
         <select v-model="statusFilter" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
           <option value="">{{ t('purchase_invoice.filters.all_statuses') }}</option>
           <option value="draft">{{ t('purchase_invoice.status.draft') }}</option>
@@ -466,8 +483,7 @@ async function bulkDelete() {
           <option value="1">{{ t('purchase_invoice.filters.payment_ordered_yes') }}</option>
           <option value="0">{{ t('purchase_invoice.filters.payment_ordered_no') }}</option>
         </select>
-      </div>
-    </div>
+    </FilterBar>
 
     <!-- ═══ Loading / Error / Empty / Data ═══ -->
     <div v-if="loading" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
