@@ -36,6 +36,45 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         return $this->normalizer->normalize($text);
     }
 
+    /**
+     * Sklopí českou/slovenskou (a běžnou latinkovou) diakritiku na ASCII
+     * („Směr"→„Smer", „Částka"→„Castka", „Kč"→„Kc"). Slouží k diakritiku-
+     * tolerantnímu matchování: přeposlaná avíza chodí občas v legacy kódování
+     * nebo s rozbitou/chybějící diakritikou (#58), takže ani detekce parseru
+     * (`supports()`), ani extrakce polí nesmí stát a padat na jednom konkrétním
+     * accentovaném znaku v patternu. Mapa se sestaví jednou (vč. verzálek).
+     */
+    protected function foldDiacritics(string $text): string
+    {
+        if ($text === '') {
+            return $text;
+        }
+        static $map = null;
+        if ($map === null) {
+            $lower = [
+                'á' => 'a', 'à' => 'a', 'â' => 'a', 'ä' => 'a', 'ã' => 'a', 'å' => 'a',
+                'č' => 'c', 'ć' => 'c', 'ç' => 'c',
+                'ď' => 'd', 'đ' => 'd',
+                'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e', 'ě' => 'e',
+                'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+                'ĺ' => 'l', 'ľ' => 'l', 'ł' => 'l',
+                'ň' => 'n', 'ń' => 'n', 'ñ' => 'n',
+                'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o', 'ø' => 'o',
+                'ŕ' => 'r', 'ř' => 'r',
+                'š' => 's', 'ś' => 's', 'ß' => 'ss',
+                'ť' => 't',
+                'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ů' => 'u',
+                'ý' => 'y', 'ÿ' => 'y',
+                'ž' => 'z', 'ź' => 'z', 'ż' => 'z',
+            ];
+            $map = $lower;
+            foreach ($lower as $from => $to) {
+                $map[mb_strtoupper($from, 'UTF-8')] = mb_strtoupper($to, 'UTF-8');
+            }
+        }
+        return strtr($text, $map);
+    }
+
     protected function compact(string $value): string
     {
         return trim(preg_replace('/\s+/u', ' ', $value) ?? $value);

@@ -2292,6 +2292,8 @@
     "rule_body": "Tělo",
     "provider_saved": "Provider uložen.",
     "provider_created": "Provider vytvořen.",
+    "provider_clone": "Duplikovat",
+    "provider_copy_suffix": "(kopie)",
     "provider_save_failed": "Provider se nepodařilo uložit.",
     "provider_deleted": "Provider smazán.",
     "delete_provider_confirm": "Smazat provider {name}?",

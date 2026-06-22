@@ -231,4 +231,53 @@ TEXT;
         self::assertSame('2010', $parsed->counterpartyBank);
         self::assertSame('111', $parsed->variableSymbol);
     }
+
+    /**
+     * #158: přeposlané avízo dorazí občas s rozbitou / chybějící diakritikou
+     * (legacy kódování, forward přes jiný server). Provider má patterny i body_pattern
+     * s diakritikou, ale tělo přijde ASCII („Smer platby" místo „Směr platby").
+     * Detekce (`supports`) i extrakce polí musí přesto projít.
+     */
+    public function testSupportsAndParsesNoticeWithStrippedDiacritics(): void
+    {
+        $body = <<<TEXT
+Informace o transakci
+Smer platby: odchozi
+Cislo uctu: 6509175329/0800
+Cislo uctu protistrany: 2801836907/2010
+Castka v mene uctu: 1 234,50 Kc
+Variabilni symbol: 555
+Konstantni symbol: 0
+TEXT;
+
+        $provider = new BankEmailNoticeProvider(
+            id: null,
+            supplierId: null,
+            providerRef: 'test:regex-cs',
+            code: 'regex_cs',
+            name: 'Regex ČS test',
+            parserType: 'regex',
+            enabled: true,
+            senderWhitelist: null,
+            subjectPattern: null,
+            bodyPattern: 'Směr\s+platby', // pattern s diakritikou vs. ASCII tělo
+            fieldPatterns: $this->csFieldPatterns(),
+            normalizerConfig: [],
+            system: false,
+        );
+
+        $parser = new RegexBankEmailNoticeParser();
+        $message = $this->csMessage($body);
+
+        self::assertTrue($parser->supports($message, $provider));
+
+        $parsed = $parser->parse($message, $provider);
+
+        self::assertSame('555', $parsed->variableSymbol);
+        self::assertSame(-1234.50, $parsed->amount);          // odchozi → záporná
+        self::assertSame('CZK', $parsed->currency);            // „Kc" → CZK
+        self::assertSame('6509175329/0800', $parsed->recipientAccount);
+        self::assertSame('2801836907', $parsed->counterpartyAccount);
+        self::assertSame('2010', $parsed->counterpartyBank);
+    }
 }

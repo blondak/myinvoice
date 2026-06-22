@@ -2292,6 +2292,8 @@
     "rule_body": "Body",
     "provider_saved": "Provider saved.",
     "provider_created": "Provider created.",
+    "provider_clone": "Duplicate",
+    "provider_copy_suffix": "(copy)",
     "provider_save_failed": "Failed to save provider.",
     "provider_deleted": "Provider deleted.",
     "delete_provider_confirm": "Delete provider {name}?",

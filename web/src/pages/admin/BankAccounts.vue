@@ -518,6 +518,31 @@ function startEditProvider(provider: BankEmailProvider) {
   providerFormOpen.value = true
 }
 
+// Duplikát libovolného (i systémového/globálního) regex provideru jako nový,
+// editovatelný provider dodavatele. Systémový ČS provider sám editovat nejde,
+// ale takhle si z něj uživatel udělá vlastní kopii a doladí ji (např. smaže
+// body_pattern, zvolní diakritiku) a otestuje přes „Test parseru" (#158).
+function startCloneProvider(provider: BankEmailProvider) {
+  if (provider.parser_type !== 'regex') return
+  const patterns = defaultFieldPatterns()
+  for (const field of regexFieldDefinitions) {
+    patterns[field.key] = String(provider.field_patterns?.[field.key] ?? '')
+  }
+  Object.assign(providerDraft, {
+    id: null, // null → uloží se jako nový provider, originál zůstane netknutý
+    name: `${provider.name} ${t('bank_accounts.provider_copy_suffix')}`,
+    code: '',
+    enabled: provider.enabled,
+    sender_whitelist: provider.sender_whitelist ?? '',
+    subject_pattern: provider.subject_pattern ?? '',
+    body_pattern: provider.body_pattern ?? '',
+    field_patterns: patterns,
+    normalizer_config_json: JSON.stringify(provider.normalizer_config ?? {}, null, 2),
+  })
+  syncProviderCode() // dogeneruje unikátní code z názvu kopie
+  providerFormOpen.value = true
+}
+
 function closeProviderForm() {
   Object.assign(providerDraft, defaultRegexProviderDraft())
   providerFormOpen.value = false
@@ -1008,8 +1033,12 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                   <span :class="p.enabled ? 'text-success-600' : 'text-neutral-500'">{{ p.enabled ? t('common.yes') : t('common.no') }}</span>
                 </td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
-                  <button v-if="p.id !== null && p.supplier_id !== null && p.parser_type === 'regex'" type="button" @click="startEditProvider(p)"
+                  <button v-if="p.parser_type === 'regex'" type="button" @click="startCloneProvider(p)"
                     class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs">
+                    {{ t('bank_accounts.provider_clone') }}
+                  </button>
+                  <button v-if="p.id !== null && p.supplier_id !== null && p.parser_type === 'regex'" type="button" @click="startEditProvider(p)"
+                    class="cursor-pointer text-primary-600 hover:text-primary-700 text-xs ml-2">
                     {{ t('common.edit') }}
                   </button>
                   <button v-if="p.id !== null && p.supplier_id !== null" type="button" @click="removeProvider(p)"
