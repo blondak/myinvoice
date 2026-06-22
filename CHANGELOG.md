@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.37.4] — 2026-06-22
+
+### Fixed
+
+- **Bankovní avíza: detekce e-mailu odolná vůči diakritice.** Přeposlaná avíza (forward přes jiný server) chodí občas v jiném kódování nebo s rozbitou/chybějící diakritikou. Parser ale poznával e-mail podle vzorů s diakritikou (`Směr platby`, `Variabilní symbol`…), takže stačilo, aby se cestou rozbilo jediné „ě"/„č", a zpracování spadlo s hláškou „Pro e-mail nebyl nalezen žádný aktivní parser provider" — přitom stejný text vložený ručně do Testu parseru prošel. Nově se detekce i vytěžení polí vyhodnotí **tolerantně k diakritice**: vzor se zkusí nejdřív přesně (u čistého avíza se diakritika v datech zachová) a při neshodě znovu nad textem i vzorem sklopeným na ASCII, takže `Směr platby` i `Smer platby` se vyhodnotí stejně. Bez DB migrace.
+- **Matoucí typ parseru „Regex" u vestavěných providerů.** Fio banka se v tabulce parser providerů zobrazovala jako typ „Regex" stejně jako editovatelný regex provider České spořitelny, ačkoli je to vestavěný kódový parser, který se needituje. Nově se Fio zobrazí jako „Fio banka" a jakýkoli další vestavěný parser jako „Vestavěný parser" — typ „Regex" tak mají už jen skutečné uživatelské (editovatelné a duplikovatelné) providery. Bez DB migrace.
+
+### Added
+
+- **Duplikace parser provideru bankovních avíz.** Systémový provider (např. Česká spořitelna) nejde přímo editovat, protože je společný pro všechny. U každého regex provideru je nově tlačítko **Duplikovat**, které vytvoří plně editovatelnou kopii dodavatele — v ní lze doladit vzory (smazat vzor předmětu/těla, zvolnit diakritiku), otestovat přes Test parseru a v mapování účtu na ni přepnout. Bez DB migrace.
+
 ## [4.37.3] — 2026-06-21
 
 ### Added

@@ -74,6 +74,17 @@ Typy providerů:
 - **Systémový provider** — dodaný aplikací, např. Raiffeisenbank, UniCredit Bank, ČSOB, Česká spořitelna nebo Fio banka.
 - **Regex provider** — vlastní provider dodavatele, konfigurovaný v UI.
 
+Systémový provider se přímo needituje (je společný pro všechny). Když ho chceš
+upravit, použij u něj tlačítko **Duplikovat** — vytvoří se editovatelná kopie,
+ve které si dolaď vzory a otestuj ji přes **Test parseru**. V mapování účtu pak
+přepneš účet z původního providera na svou kopii. Duplikovat lze i vlastní regex
+provider.
+
+Detekce e-mailu i vytěžení polí pracují **tolerantně k diakritice**: pokud avízo
+dorazí v jiném kódování nebo s rozbitou diakritikou (typicky u přeposlaných
+zpráv), vzory `Směr platby` a `Smer platby` se vyhodnotí stejně. Když přesto
+nějaký provider zlobí, můžeš si vzory napsat rovnou bez diakritiky.
+
 U regex provideru nastavuješ:
 
 | Pole | Význam |

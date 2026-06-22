@@ -2294,6 +2294,7 @@
     "provider_created": "Provider created.",
     "provider_clone": "Duplicate",
     "provider_copy_suffix": "(copy)",
+    "parser_builtin": "Built-in parser",
     "provider_save_failed": "Failed to save provider.",
     "provider_deleted": "Provider deleted.",
     "delete_provider_confirm": "Delete provider {name}?",

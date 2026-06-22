@@ -455,11 +455,20 @@ function providerOwnerLabel(provider: BankEmailProvider): string {
   return provider.supplier_id === null ? t('bank_accounts.owner_system') : t('bank_accounts.owner_supplier')
 }
 
+// Jen 'regex' je editovatelný/duplikovatelný uživatelský provider; ostatní jsou
+// vestavěné kódové parsery konkrétní banky (needitují se). Fio dřív v tomhle
+// výčtu chybělo a propadalo na „Regex", takže v tabulce vypadalo stejně jako
+// editovatelný regex provider ČS — proto má teď taky vlastní název a neznámé
+// typy padají na obecný „Vestavěný parser", ne na „Regex".
 function parserTypeLabel(parserType: BankEmailProvider['parser_type']): string {
-  if (parserType === 'raiffeisenbank') return 'Raiffeisenbank'
-  if (parserType === 'unicredit') return 'UniCredit Bank'
-  if (parserType === 'csob') return 'ČSOB'
-  return 'Regex'
+  switch (parserType) {
+    case 'regex': return 'Regex'
+    case 'raiffeisenbank': return 'Raiffeisenbank'
+    case 'unicredit': return 'UniCredit Bank'
+    case 'csob': return 'ČSOB'
+    case 'fio': return 'Fio banka'
+    default: return t('bank_accounts.parser_builtin')
+  }
 }
 
 function providerSelectLabel(provider: BankEmailProvider): string {
