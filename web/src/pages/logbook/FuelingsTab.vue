@@ -530,11 +530,17 @@ const sourceBadge: Record<string, string> = {
       <div class="bg-surface rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 space-y-4">
         <div class="flex items-center justify-between gap-2">
           <h2 class="text-lg font-semibold">{{ t('logbook.from_invoices_title') }}</h2>
-          <button @click="backfillHistory" :disabled="backfilling || invoices.length === 0"
-            class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 disabled:opacity-50 inline-flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0 1 14-3M20 15a8 8 0 0 1-14 3"/></svg>
-            {{ backfilling ? t('logbook.backfill_running') : t('logbook.backfill') }}
-          </button>
+          <div class="flex items-center gap-2">
+            <button @click="backfillHistory" :disabled="backfilling || invoices.length === 0"
+              class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0 1 14-3M20 15a8 8 0 0 1-14 3"/></svg>
+              {{ backfilling ? t('logbook.backfill_running') : t('logbook.backfill') }}
+            </button>
+            <button @click="invOpen = false" :title="t('common.close')" :aria-label="t('common.close')"
+              class="cursor-pointer h-9 w-9 shrink-0 flex items-center justify-center text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-md">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
         </div>
         <p class="text-sm text-neutral-500">{{ t('logbook.from_invoices_hint') }}</p>
         <div class="flex items-start gap-2 text-xs text-warning-700 bg-warning-50 border border-warning-500/40 rounded-md px-3 py-2">
@@ -604,13 +610,6 @@ const sourceBadge: Record<string, string> = {
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="flex justify-end">
-          <button @click="invOpen = false" class="cursor-pointer h-9 px-4 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 inline-flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            {{ t('common.close') }}
-          </button>
         </div>
       </div>
     </div>
