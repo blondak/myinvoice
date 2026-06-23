@@ -52,13 +52,15 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
     {
         $pdf = "%PDF-1.4\nhello invoice\n%%EOF";
         $contentSha = hash('sha256', $pdf);
+        $shard = substr($contentSha, 0, 2);
         $expectedDisk = substr($contentSha, 0, 16) . '.pdf';
+        $expectedRel = 'supplier-7/' . $shard . '/' . $expectedDisk;
 
         $repo = $this->createMock(PurchaseInvoiceRepository::class);
         $repo->expects(self::once())->method('setPdfMetadata')->with(
             42,
             7,
-            'supplier-7/' . $expectedDisk,
+            $expectedRel,
             $contentSha,
             strlen($pdf),
             'faktura.pdf',
@@ -67,7 +69,7 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
         (new PurchaseInvoicePdfArchiver($this->makeConfig(), $repo))
             ->archiveBytes(42, 7, $pdf, 'faktura.pdf');
 
-        $onDisk = $this->archiveRoot . '/supplier-7/' . $expectedDisk;
+        $onDisk = $this->archiveRoot . '/' . $expectedRel;
         self::assertFileExists($onDisk);
         self::assertSame($pdf, file_get_contents($onDisk));
     }
@@ -101,13 +103,15 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
         $pdf = "%PDF-1.4\ninner\n%%EOF";
         $contentSha = hash('sha256', $pdf);
         $isdocxSha = hash('sha256', 'whole-isdocx-bytes');
+        $shard = substr($contentSha, 0, 2);
         $expectedDisk = substr($contentSha, 0, 16) . '.pdf';
+        $expectedRel = 'supplier-3/' . $shard . '/' . $expectedDisk;
 
         $repo = $this->createMock(PurchaseInvoiceRepository::class);
         $repo->expects(self::once())->method('setPdfMetadata')->with(
             5,
             3,
-            'supplier-3/' . $expectedDisk,
+            $expectedRel,
             $isdocxSha,
             strlen($pdf),
             'doc.isdocx',
@@ -116,7 +120,7 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
         (new PurchaseInvoicePdfArchiver($this->makeConfig(), $repo))
             ->archiveBytes(5, 3, $pdf, 'doc.isdocx', $isdocxSha);
 
-        self::assertFileExists($this->archiveRoot . '/supplier-3/' . $expectedDisk);
+        self::assertFileExists($this->archiveRoot . '/' . $expectedRel);
     }
 
     public function testArchiveFileCopiesFromSourcePath(): void
@@ -124,14 +128,16 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
         $src = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'pi-archiver-src-' . bin2hex(random_bytes(4)) . '.pdf';
         file_put_contents($src, "%PDF-1.5\nfrom path\n%%EOF");
         $fileSha = (string) hash_file('sha256', $src);
+        $shard = substr($fileSha, 0, 2);
         $expectedDisk = substr($fileSha, 0, 16) . '.pdf';
+        $expectedRel = 'supplier-2/' . $shard . '/' . $expectedDisk;
 
         try {
             $repo = $this->createMock(PurchaseInvoiceRepository::class);
             $repo->expects(self::once())->method('setPdfMetadata')->with(
                 9,
                 2,
-                'supplier-2/' . $expectedDisk,
+                $expectedRel,
                 $fileSha,
                 filesize($src),
                 basename($src),
@@ -140,7 +146,7 @@ final class PurchaseInvoicePdfArchiverTest extends TestCase
             (new PurchaseInvoicePdfArchiver($this->makeConfig(), $repo))
                 ->archiveFile(9, 2, $src, null, $fileSha, (int) filesize($src));
 
-            self::assertFileExists($this->archiveRoot . '/supplier-2/' . $expectedDisk);
+            self::assertFileExists($this->archiveRoot . '/' . $expectedRel);
         } finally {
             @unlink($src);
         }
