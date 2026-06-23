@@ -66,14 +66,24 @@ final class BankStatementAction
         if (($user['role'] ?? '') !== 'admin') {
             return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         }
-        $root = (string) $this->config->get('bank_import.scan_root', '');
-        if ($root === '' || !is_dir($root)) {
+        $root = trim((string) $this->config->get('bank_import.scan_root', ''));
+        if (!$this->scanConfigured()) {
             return Json::error($response, 'config_missing', 'cfg.bank_import.scan_root není nastaveno nebo adresář neexistuje.', 400);
         }
         $summary = $this->scanner->scan($root);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('bank.scanned', $user['id'] ?? null, null, null, $summary, $ip, $request->getHeaderLine('User-Agent'));
         return Json::ok($response, $summary);
+    }
+
+    /**
+     * Je adresářové skenování bankovních výpisů nakonfigurované? (cfg.bank_import.scan_root
+     * nastaveno na existující adresář). UI podle toho zobrazuje tlačítko „Skenovat adresář".
+     */
+    private function scanConfigured(): bool
+    {
+        $root = trim((string) $this->config->get('bank_import.scan_root', ''));
+        return $root !== '' && is_dir($root);
     }
 
     public function upload(Request $request, Response $response): Response
@@ -225,7 +235,14 @@ final class BankStatementAction
             $r['has_file'] = (bool) $r['has_file'];
             $r['has_pdf'] = (bool) $r['has_pdf'];
         }
-        return Json::ok($response, ['items' => $rows, 'total' => $total, 'page' => $page, 'limit' => $limit]);
+        return Json::ok($response, [
+            'items' => $rows,
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            // Adresářové skenování je nastavené? UI podle toho zobrazí tlačítko „Skenovat adresář".
+            'scan_configured' => $this->scanConfigured(),
+        ]);
     }
 
     /**

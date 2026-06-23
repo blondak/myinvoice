@@ -85,6 +85,8 @@ export interface BankStatementPage {
   total: number
   page: number
   limit: number
+  /** Je v cfg.php nastavené adresářové skenování (bank_import.scan_root)? Řídí tlačítko „Skenovat adresář". */
+  scan_configured: boolean
 }
 
 export const bankApi = {
