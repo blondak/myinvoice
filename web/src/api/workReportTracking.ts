@@ -52,12 +52,29 @@ export interface WrPreviewReport {
   materials: WrPreviewMaterial[]
 }
 
+export interface WrSupplier {
+  name: string
+  company_name: string
+  tagline: string | null
+  street: string | null
+  city: string | null
+  zip: string | null
+  country: string | null
+  ic: string | null
+  dic: string | null
+  is_vat_payer: boolean
+  email: string | null
+  phone: string | null
+  web: string | null
+}
+
 export interface WrPreview {
   scope: 'client' | 'project'
   client_company_name: string
   project_name: string | null
   language: 'cs' | 'en'
   supplier_name: string
+  supplier?: WrSupplier
   accent_color: string | null
   /** Logo dodavatele jako data: URI (jen při zapnutém brandingu), jinak null → MyInvoice. */
   logo_src: string | null
