@@ -112,6 +112,34 @@ Zaeviduje se platba ve výši transakce — plné pokrytí označí fakturu `pai
 (`paid_at` = datum transakce), nižší částka je částečná úhrada. Activity log:
 `bank.matched_manual`.
 
+#### Sloučená úhrada (jedna platba na více faktur)
+
+Když klient zaplatí **víc vystavených faktur jednou platbou** (součet sedí, ale
+variabilní symbol odpovídá jen jedné faktuře — nebo žádné), nabídne modal pod
+vyhledávačem sekci **Sloučená úhrada**. MyInvoice sám hledá **kombinace faktur
+téhož klienta**, jejichž **součet odpovídá částce platby**, ve výchozím okně
+**±7 dní** kolem data platby. Klient se jménem podobným protistraně se nabízí
+první.
+
+1. Klik **Spárovat** → v sekci **Sloučená úhrada** se zobrazí návrhy kombinací
+   (klient, jednotlivé faktury s částkami a datem, celkový součet).
+2. U správné kombinace klik **Spárovat (N faktur)**.
+3. Každá faktura se uhradí svým **plným zbytkem** a označí jako zaplacená;
+   zálohové faktury dostanou koncept finálního dokladu jako u běžné úhrady.
+
+Pomůcky:
+
+- **Hledat v širším okně** — když faktury vystavené dál od sebe (např. ±14 dní),
+  rozšiř okno tlačítkem nad návrhy.
+- **Vyber fakturu a dohledej zbytek** — pokud víš o jedné faktuře, která do platby
+  patří, vyber ji v našeptávači; návrhy se omezí na kombinace, které ji obsahují.
+
+Omezení (záměrná, kvůli správnosti): kombinace jdou jen v rámci **jednoho klienta**
+a součet musí **odpovídat částce platby** (sloučená úhrada = uhradit všechny vybrané
+faktury celé; není to rozpouštění jedné platby na částečné úhrady). Zrušení
+spárování (§ 24.5) smaže **všechny** platby té transakce a vrátí všechny faktury
+zpět mezi pohledávky. Activity log: `bank.tx_manual_match_split`.
+
 ### 24.4.3 Ignorovat transakci
 
 Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními

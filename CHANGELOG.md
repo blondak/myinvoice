@@ -5,6 +5,16 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.40.1] — 2026-06-24
+
+### Added
+
+- **Sloučená úhrada — jedna platba na více faktur.** Když klient zaplatí víc vystavených faktur **jedním převodem** (součet sedí, ale variabilní symbol odpovídá jen jedné faktuře nebo žádné), nabídne modal ručního párování v **Bance** novou sekci **Sloučená úhrada**: MyInvoice sám hledá **kombinace faktur téhož klienta**, jejichž součet odpovídá částce platby (výchozí okno ±7 dní kolem data platby, rozšiřitelné; klient s názvem podobným protistraně se nabízí první). Po potvrzení se každá faktura uhradí svým plným zbytkem a označí jako zaplacená; zálohové faktury dostanou koncept finálního dokladu jako u běžné úhrady. Volitelně lze vybrat jednu fakturu a nechat dohledat zbytek. Kombinace jdou jen v rámci jednoho klienta a součet musí odpovídat částce platby (uhrazení vybraných faktur celých, ne rozpouštění platby na částečné úhrady). Zrušení spárování smaže všechny platby dané transakce a vrátí faktury zpět mezi pohledávky. **Vyžaduje migraci 0119** (uvolnění unikátního klíče na evidenci plateb — jedna bankovní transakce smí nově založit platbu na každou fakturu zvlášť).
+
+### Fixed
+
+- **Bankovní párování: cizoměnová faktura bez kurzu se nepřevádí kurzem 1:1.** Při párování cizoměnové faktury bez vyplněného směnného kurzu na platbu v CZK se dříve mohla použít chybná hodnota 1 : 1; nově se taková faktura k párování nenabídne a sloučenou úhradu odmítne s jasnou hláškou (chybí kurz).
+
 ## [4.40.0] — 2026-06-23
 
 ### Added

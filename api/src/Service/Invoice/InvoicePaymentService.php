@@ -273,22 +273,26 @@ final class InvoicePaymentService
     }
 
     /**
-     * Smaže platbu navázanou na bankovní transakci (unmatch flow). No-op pokud
-     * žádná neexistuje (legacy match z dob před evidencí plateb).
+     * Smaže VŠECHNY platby navázané na bankovní transakci (unmatch flow). No-op pokud
+     * žádná neexistuje (legacy match z dob před evidencí plateb). U sloučené úhrady
+     * (jedna platba → více faktur, migrace 0119) je plateb víc — smažeme každou a každá
+     * si přepočítá svou fakturu (revert ze stavu 'paid').
      *
-     * @return bool true pokud platba existovala a byla smazána
+     * @return bool true pokud aspoň jedna platba existovala a byla smazána
      */
     public function deleteForBankTransaction(int $bankTransactionId): bool
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT id FROM invoice_payments WHERE bank_transaction_id = ?'
+            'SELECT id FROM invoice_payments WHERE bank_transaction_id = ? ORDER BY id'
         );
         $stmt->execute([$bankTransactionId]);
-        $paymentId = $stmt->fetchColumn();
-        if ($paymentId === false) {
+        $paymentIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        if (!$paymentIds) {
             return false;
         }
-        $this->deletePayment((int) $paymentId, skipBankGuard: true);
+        foreach ($paymentIds as $paymentId) {
+            $this->deletePayment((int) $paymentId, skipBankGuard: true);
+        }
         return true;
     }
 
