@@ -90,6 +90,8 @@ export interface SplitSuggestionInvoice {
   currency: string
   /** Částka přepočtená do měny platby (jen u cross-currency, jinak null). */
   converted: number | null
+  /** Faktura je už zaplacená → spárování = rekonciliace existující platby (ne nová úhrada). */
+  is_paid?: boolean
   issue_date: string
   due_date: string | null
 }

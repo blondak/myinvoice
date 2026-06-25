@@ -186,20 +186,25 @@ function widenSplitWindow() {
   loadSplitSuggestions(matchCtx.value, Math.min(60, splitWindow.value + 7), anchorInvoiceId.value)
 }
 
-// Našeptávač kotvy: otevřené vystavené faktury (fulltext varsymbol + klient).
+// Našeptávač kotvy: vystavené faktury vč. zaplacených (fulltext varsymbol + klient).
+// Zaplacené musí jít vybrat kvůli rekonciliaci (split nabízí i 'paid').
 function onAnchorSearch(q: string) {
   if (anchorSearchTimer) clearTimeout(anchorSearchTimer)
   const query = q.trim()
   if (query.length < 2) { anchorOptions.value = []; return }
   anchorLoading.value = true
   anchorSearchTimer = setTimeout(() => {
-    invoicesApi.searchOpen(query, 20)
+    invoicesApi.searchMatchable(query, 20)
       .then(list => {
-        anchorOptions.value = list.map(i => ({
-          value: i.id,
-          label: `${i.varsymbol || '#' + i.id} — ${i.client_company_name}`,
-          secondary: `${formatMoney(i.amount_to_pay - (i.paid_total ?? 0), i.currency)} · ${formatDate(i.due_date || i.issue_date)}`,
-        }))
+        anchorOptions.value = list.map(i => {
+          const owed = i.amount_to_pay - (i.paid_total ?? 0)
+          const shown = owed > 0 ? owed : i.amount_to_pay
+          return {
+            value: i.id,
+            label: `${i.varsymbol || '#' + i.id} — ${i.client_company_name}`,
+            secondary: `${formatMoney(shown, i.currency)} · ${formatDate(i.due_date || i.issue_date)}`,
+          }
+        })
       })
       .catch(() => { anchorOptions.value = [] })
       .finally(() => { anchorLoading.value = false })
@@ -624,6 +629,9 @@ async function rematchStatement() {
                 <li v-for="inv in s.invoices" :key="inv.id" class="flex items-center justify-between gap-2">
                   <span class="font-mono truncate">
                     {{ inv.ref || `#${inv.id}` }}
+                    <span v-if="inv.is_paid"
+                      class="font-sans text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold bg-neutral-200 text-neutral-600 ml-1"
+                      :title="t('bank.split_reconcile_hint')">{{ t('bank.candidate_paid') }}</span>
                     <span class="text-neutral-400 ml-1">· {{ formatDate(inv.due_date || inv.issue_date) }}</span>
                   </span>
                   <span class="font-mono whitespace-nowrap">

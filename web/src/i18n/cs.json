@@ -1968,6 +1968,7 @@
     "split_hint": "Kombinace faktur jednoho klienta, jejichž součet odpovídá této platbě (okno ±{days} dní).",
     "split_widen": "Hledat v širším okně (±{days} dní)",
     "split_none": "Žádná kombinace faktur jednoho klienta nesedí na částku platby.",
+    "split_reconcile_hint": "Faktura je už zaplacená — spárování jen naváže existující platbu na tuto transakci (nevytvoří novou úhradu).",
     "split_unknown_client": "Neznámý klient",
     "split_match": "Spárovat ({count} faktur)",
     "split_anchor_placeholder": "Vyber fakturu a dohledej zbytek…",

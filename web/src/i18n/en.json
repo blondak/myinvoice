@@ -1968,6 +1968,7 @@
     "split_hint": "Combinations of one client's invoices whose sum matches this payment (window ±{days} days).",
     "split_widen": "Search a wider window (±{days} days)",
     "split_none": "No combination of a single client's invoices matches the payment amount.",
+    "split_reconcile_hint": "Invoice is already paid — matching only links its existing payment to this transaction (no new payment is created).",
     "split_unknown_client": "Unknown client",
     "split_match": "Match ({count} invoices)",
     "split_anchor_placeholder": "Pick an invoice and find the rest…",

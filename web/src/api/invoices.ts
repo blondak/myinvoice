@@ -355,6 +355,19 @@ export const invoicesApi = {
       per_page: limit,
     }).then(r => r.data.flatMap(g => g.invoices)),
 
+  /**
+   * Jako searchOpen, ale vč. ZAPLACENÝCH faktur — pro kotvu sloučené úhrady, kde
+   * spárování zaplacené faktury znamená rekonciliaci existující platby (proto musí
+   * jít vybrat i 'paid'). Bez unpaid_only, status zahrnuje 'paid'.
+   */
+  searchMatchable: (q: string, limit = 20): Promise<InvoiceListItem[]> =>
+    invoicesApi.listGrouped({
+      q,
+      status: ['issued', 'sent', 'reminded', 'paid'],
+      type: ['invoice', 'proforma'],
+      per_page: limit,
+    }).then(r => r.data.flatMap(g => g.invoices)),
+
   exportCsv: (filters: ListFilters = {}) => {
     const params = new URLSearchParams()
     if (filters.q) params.set('q', filters.q)

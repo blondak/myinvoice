@@ -362,4 +362,107 @@ final class SplitPaymentTest extends TestCase
             self::assertContains($this->invoiceA, self::invoiceIdsOf($s), 'Každý návrh musí obsahovat kotvu.');
         }
     }
+
+    // ── Rekonciliace ZAPLACENÝCH faktur (split nabízí i 'paid') ──────────────
+
+    /** Dřívější (ne-bankovní) úhrada → faktura 'paid', platba bez bank_transaction_id. */
+    private function markPaidLegacy(int $invoiceId, float $amount): int
+    {
+        $r = $this->payments->recordPayment($invoiceId, $amount, '2099-06-15', [
+            'source' => 'manual', 'created_by' => $this->userId,
+        ]);
+        return (int) $r['payment_id'];
+    }
+
+    public function testActionSplitReconcilesAlreadyPaidInvoices(): void
+    {
+        // A (1000) i B (500) už zaplacené dřívější úhradou (mimo banku).
+        $payA = $this->markPaidLegacy($this->invoiceA, 1000.00);
+        $payB = $this->markPaidLegacy($this->invoiceB, 500.00);
+        self::assertSame('paid', $this->invoiceStatus($this->invoiceA));
+
+        // Sloučená úhrada na zaplacené faktury → rekonciliace (navázat existující platby).
+        $res = $this->callMatch(['invoice_ids' => [$this->invoiceA, $this->invoiceB]]);
+        self::assertSame(200, $res['status'], json_encode($res['body']));
+        self::assertTrue($res['body']['split'] ?? false);
+
+        // Navázané jsou TYTÉŽ platby (ne nové) → shodná id, žádné přibyly.
+        $ids = array_map('intval', $this->db->pdo()->query(
+            "SELECT id FROM invoice_payments WHERE bank_transaction_id = {$this->transactionId} ORDER BY id"
+        )->fetchAll(PDO::FETCH_COLUMN));
+        sort($ids);
+        $expected = [$payA, $payB];
+        sort($expected);
+        self::assertSame($expected, $ids, 'Rekonciliace nesmí vytvořit nové platby, jen navázat existující.');
+
+        // paid_total beze změny → žádné dvojí zdanění/přeplacení.
+        $paidA = (float) $this->db->pdo()->query("SELECT paid_total FROM invoices WHERE id = {$this->invoiceA}")->fetchColumn();
+        self::assertSame(1000.0, $paidA);
+    }
+
+    public function testActionSplitMixedPaidAndUnpaid(): void
+    {
+        // A zaplacená (legacy) → rekonciliace; B nezaplacená → nová bank platba.
+        $payA = $this->markPaidLegacy($this->invoiceA, 1000.00);
+        $res = $this->callMatch(['invoice_ids' => [$this->invoiceA, $this->invoiceB]]);
+
+        self::assertSame(200, $res['status'], json_encode($res['body']));
+        self::assertSame('paid', $this->invoiceStatus($this->invoiceB));
+
+        $rows = $this->db->pdo()->query(
+            "SELECT invoice_id, source FROM invoice_payments
+              WHERE bank_transaction_id = {$this->transactionId} ORDER BY invoice_id"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        self::assertCount(2, $rows);
+        $bySource = [];
+        foreach ($rows as $r) {
+            $bySource[(int) $r['invoice_id']] = (string) $r['source'];
+        }
+        self::assertSame('manual', $bySource[$this->invoiceA] ?? null, 'A = rekonciliovaná původní platba.');
+        self::assertSame('bank', $bySource[$this->invoiceB] ?? null, 'B = nová bankovní platba.');
+    }
+
+    public function testUnmatchUnlinksReconciledPaymentsKeepsPaid(): void
+    {
+        $payA = $this->markPaidLegacy($this->invoiceA, 1000.00);
+        $payB = $this->markPaidLegacy($this->invoiceB, 500.00);
+        $this->callMatch(['invoice_ids' => [$this->invoiceA, $this->invoiceB]]);
+
+        $deleted = $this->payments->deleteForBankTransaction($this->transactionId);
+        self::assertTrue($deleted);
+
+        // Rekonciliované platby se nesmí smazat — jen odpojit; faktury zůstávají 'paid'.
+        $still = (int) $this->db->pdo()->query(
+            "SELECT COUNT(*) FROM invoice_payments WHERE id IN ($payA, $payB)"
+        )->fetchColumn();
+        self::assertSame(2, $still, 'Rekonciliovanou platbu unmatch jen odpojí, nemaže.');
+        $linked = (int) $this->db->pdo()->query(
+            "SELECT COUNT(*) FROM invoice_payments WHERE bank_transaction_id = {$this->transactionId}"
+        )->fetchColumn();
+        self::assertSame(0, $linked);
+        self::assertSame('paid', $this->invoiceStatus($this->invoiceA));
+        self::assertSame('paid', $this->invoiceStatus($this->invoiceB));
+    }
+
+    public function testSuggestionsIncludePaidForReconciliation(): void
+    {
+        $this->markPaidLegacy($this->invoiceA, 1000.00);
+        $this->markPaidLegacy($this->invoiceB, 500.00);
+
+        $suggestions = $this->callSuggestions([]);
+        $hasAB = false;
+        foreach ($suggestions as $s) {
+            $ids = self::invoiceIdsOf($s);
+            sort($ids);
+            $expected = [$this->invoiceA, $this->invoiceB];
+            sort($expected);
+            if ($ids === $expected) {
+                $hasAB = true;
+                foreach ($s['invoices'] as $inv) {
+                    self::assertTrue($inv['is_paid'] ?? false, 'Zaplacená faktura musí nést is_paid.');
+                }
+            }
+        }
+        self::assertTrue($hasAB, 'Návrh A+B musí být i pro zaplacené faktury (rekonciliace).');
+    }
 }

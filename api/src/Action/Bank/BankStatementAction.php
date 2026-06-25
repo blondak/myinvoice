@@ -1009,32 +1009,36 @@ final class BankStatementAction
             $a = $pdo->prepare(
                 "SELECT client_id FROM invoices
                   WHERE id = ? AND supplier_id = ?
-                    AND status IN ('issued','sent','reminded')
-                    AND invoice_type IN ('invoice','proforma')
-                    AND (amount_to_pay - paid_total) > ?"
+                    AND status IN ('issued','sent','reminded','paid')
+                    AND invoice_type IN ('invoice','proforma')"
             );
-            $a->execute([$anchorId, $sid, self::CANDIDATE_AMOUNT_TOLERANCE]);
+            $a->execute([$anchorId, $sid]);
             $anchorClientId = (int) $a->fetchColumn();
             if ($anchorClientId <= 0) {
                 return Json::ok($response, ['suggestions' => [], 'window' => $window, 'max' => $maxInv]);
             }
         }
 
-        // Pool: otevřené vystavené faktury s nenulovým zbytkem v okně ±window dní.
-        // 'paid' NEzahrnujeme (split = uhradit dosud neuhrazené); částku NEfiltrujeme v SQL.
-        $sql = "SELECT i.id, i.client_id, i.varsymbol AS ref, i.amount_to_pay, i.paid_total,
+        // Pool: vystavené faktury v okně ±window dní. Zahrnuje i ZAPLACENÉ — u nich jde
+        // o rekonciliaci (navázat existující platbu na transakci), proto k nim tahám
+        // sumu+počet dosud nenavázaných plateb (bank_transaction_id IS NULL). Částku
+        // NEfiltrujeme v SQL (efektivní příspěvek se počítá v PHP — kvůli cizí měně + paid).
+        $sql = "SELECT i.id, i.client_id, i.varsymbol AS ref, i.amount_to_pay, i.paid_total, i.status,
                        i.exchange_rate, i.issue_date, i.due_date, cur.code AS currency,
-                       c.company_name AS party
+                       c.company_name AS party,
+                       (SELECT COALESCE(SUM(ip.amount), 0) FROM invoice_payments ip
+                         WHERE ip.invoice_id = i.id AND ip.bank_transaction_id IS NULL) AS reconcilable,
+                       (SELECT COUNT(*) FROM invoice_payments ip
+                         WHERE ip.invoice_id = i.id AND ip.bank_transaction_id IS NULL) AS reconcilable_count
                   FROM invoices i
                   JOIN currencies cur ON cur.id = i.currency_id
              LEFT JOIN clients c ON c.id = i.client_id
                  WHERE i.supplier_id = ?
                    AND i.client_id IS NOT NULL
-                   AND i.status IN ('issued','sent','reminded')
+                   AND i.status IN ('issued','sent','reminded','paid')
                    AND i.invoice_type IN ('invoice','proforma')
-                   AND (i.amount_to_pay - i.paid_total) > ?
                    AND (ABS(DATEDIFF(i.due_date, ?)) <= ? OR ABS(DATEDIFF(i.issue_date, ?)) <= ?)";
-        $params = [$sid, self::CANDIDATE_AMOUNT_TOLERANCE, $posted, $window, $posted, $window];
+        $params = [$sid, $posted, $window, $posted, $window];
         if ($anchorClientId > 0) {
             $sql .= " AND i.client_id = ?";
             $params[] = $anchorClientId;
@@ -1049,12 +1053,24 @@ final class BankStatementAction
         $anchorItem = null;
         foreach ($ps->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $remaining = round((float) $r['amount_to_pay'] - (float) $r['paid_total'], 2);
-            if ($remaining <= 0) {
+            $isPaid    = (string) $r['status'] === 'paid' || $remaining <= self::CANDIDATE_AMOUNT_TOLERANCE;
+            if ($isPaid) {
+                // Zaplacená faktura → rekonciliace: efektivní příspěvek = dosud nenavázaná
+                // platba. Nabízíme jen když existuje PRÁVĚ JEDNA (jinak nejednoznačné /
+                // už spárované s jinou transakcí — viz reconcileToBankTransaction).
+                if ((int) ($r['reconcilable_count'] ?? 0) !== 1) {
+                    continue;
+                }
+                $effective = round((float) ($r['reconcilable'] ?? 0), 2);
+            } else {
+                $effective = $remaining;
+            }
+            if ($effective <= 0) {
                 continue;
             }
             $invCcy = strtoupper((string) $r['currency']);
             $rate   = (float) ($r['exchange_rate'] ?: 0);
-            $conv   = $this->remainingInTxCurrency($remaining, $invCcy, $rate, $txCcy);
+            $conv   = $this->remainingInTxCurrency($effective, $invCcy, $rate, $txCcy);
             if ($conv === null) {
                 continue; // cizoměnový účet × jiná měna faktury bez kurzu → nepřevedeme
             }
@@ -1062,10 +1078,11 @@ final class BankStatementAction
             $item = [
                 'id'              => (int) $r['id'],
                 'ref'             => ($r['ref'] ?? '') !== '' ? (string) $r['ref'] : null,
-                'amount'          => $remaining,
+                'amount'          => $effective,
                 'currency'        => $invCcy,
                 'converted'       => round($conv, 2),
                 'is_fx'           => $invCcy !== $txCcy,
+                'is_paid'         => $isPaid,
                 'issue_date'      => $r['issue_date'],
                 'due_date'        => $r['due_date'],
                 'party'           => $r['party'] !== null ? (string) $r['party'] : null,
@@ -1103,25 +1120,28 @@ final class BankStatementAction
                 $combos = $this->findSubsetsSummingTo($rest, $txAmount - $anchorItem['converted'], $tol, 1, $maxInv - 1);
                 foreach ($combos as $combo) {
                     array_unshift($combo, $anchorItem);
-                    $suggestions[] = $this->buildSuggestion($cid, $combo, $txCcy, $cpName, $items[0]['party'] ?? null, $txAmount);
+                    $suggestions[] = $this->buildSuggestion($cid, $combo, $txCcy, $cpName, $items[0]['party'] ?? null, $txAmount, $posted);
                 }
             } else {
                 $combos = $this->findSubsetsSummingTo($items, $txAmount, $tol, 2, $maxInv);
                 foreach ($combos as $combo) {
-                    $suggestions[] = $this->buildSuggestion($cid, $combo, $txCcy, $cpName, $items[0]['party'] ?? null, $txAmount);
+                    $suggestions[] = $this->buildSuggestion($cid, $combo, $txCcy, $cpName, $items[0]['party'] ?? null, $txAmount, $posted);
                 }
             }
         }
 
-        // Řazení: shoda jména protistrany (desc), méně faktur, menší odchylka součtu.
+        // Řazení: shoda jména protistrany (desc), méně faktur, faktury blíž datu platby
+        // (víc kombinací se stejným součtem vzniká, když mají faktury shodné částky —
+        // preferuj tu „nejbližší", ne náhodnou s daleko splatnou fakturou), menší odchylka.
         usort($suggestions, static function (array $a, array $b): int {
             return ($b['_name_sim'] <=> $a['_name_sim'])
                 ?: ($a['count'] <=> $b['count'])
+                ?: ($a['_date_dist'] <=> $b['_date_dist'])
                 ?: ($a['_diff'] <=> $b['_diff']);
         });
         $suggestions = array_slice($suggestions, 0, self::SPLIT_MAX_SUGGESTIONS);
         foreach ($suggestions as &$s) {
-            unset($s['_name_sim'], $s['_diff']);
+            unset($s['_name_sim'], $s['_diff'], $s['_date_dist']);
         }
         unset($s);
 
@@ -1132,18 +1152,28 @@ final class BankStatementAction
      * Sestaví návrh kombinace pro odpověď (+ pomocná pole pro řazení).
      * @param list<array<string,mixed>> $combo
      */
-    private function buildSuggestion(int $clientId, array $combo, string $txCcy, string $cpName, ?string $party, float $target): array
+    private function buildSuggestion(int $clientId, array $combo, string $txCcy, string $cpName, ?string $party, float $target, string $posted): array
     {
         $total = 0.0;
         $invoices = [];
+        $dateDist = 0.0;
+        $postedTs = strtotime($posted) ?: 0;
         foreach ($combo as $it) {
             $total += (float) $it['converted'];
+            $ref = $it['due_date'] ?? $it['issue_date'] ?? null;
+            if ($ref !== null && $postedTs > 0) {
+                $refTs = strtotime((string) $ref);
+                if ($refTs !== false) {
+                    $dateDist += abs($refTs - $postedTs) / 86400;
+                }
+            }
             $invoices[] = [
                 'id'         => $it['id'],
                 'ref'        => $it['ref'],
                 'amount'     => $it['amount'],
                 'currency'   => $it['currency'],
                 'converted'  => $it['is_fx'] ? $it['converted'] : null,
+                'is_paid'    => (bool) ($it['is_paid'] ?? false),
                 'issue_date' => $it['issue_date'],
                 'due_date'   => $it['due_date'],
             ];
@@ -1157,6 +1187,7 @@ final class BankStatementAction
             'invoices'    => $invoices,
             '_name_sim'   => $this->nameSimilarity($cpName, (string) $party),
             '_diff'       => abs(round($total, 2) - $target),
+            '_date_dist'  => round($dateDist, 2),
         ];
     }
 
@@ -1560,7 +1591,11 @@ final class BankStatementAction
         $place = implode(',', array_fill(0, count($invoiceIds), '?'));
         $stmt = $pdo->prepare(
             "SELECT i.id, i.supplier_id, i.invoice_type, i.status, i.client_id,
-                    i.amount_to_pay, i.paid_total, i.exchange_rate, cur.code AS currency
+                    i.amount_to_pay, i.paid_total, i.exchange_rate, cur.code AS currency,
+                    (SELECT COALESCE(SUM(ip.amount), 0) FROM invoice_payments ip
+                      WHERE ip.invoice_id = i.id AND ip.bank_transaction_id IS NULL) AS reconcilable,
+                    (SELECT COUNT(*) FROM invoice_payments ip
+                      WHERE ip.invoice_id = i.id AND ip.bank_transaction_id IS NULL) AS reconcilable_count
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.id IN ($place)"
@@ -1575,7 +1610,9 @@ final class BankStatementAction
         $clientId = null;
         $sumConverted = 0.0;
         $hasFx = false;
-        $toPay = []; // id => [remaining (invoice ccy), type]
+        $toPay = [];      // id => částka k úhradě v měně faktury (jen NEzaplacené → recordPayment)
+        $reconcile = [];  // id => true (ZAPLACENÁ faktura → jen navázat existující platbu)
+        $convById = [];   // id => příspěvek faktury v měně platby (pro re-validaci pod zámkem)
         foreach ($invoiceIds as $iid) {
             $inv = $byId[$iid] ?? null;
             if ($inv === null || (int) $inv['supplier_id'] !== $sid) {
@@ -1585,9 +1622,9 @@ final class BankStatementAction
                 return Json::error($response, 'invalid_type',
                     "Doklad #$iid není faktura ani zálohová faktura.", 409);
             }
-            if (!in_array((string) $inv['status'], ['issued', 'sent', 'reminded'], true)) {
+            if (!in_array((string) $inv['status'], ['issued', 'sent', 'reminded', 'paid'], true)) {
                 return Json::error($response, 'invalid_status',
-                    "Fakturu #$iid v jejím stavu nelze takto uhradit (musí být nezaplacená vystavená).", 409);
+                    "Fakturu #$iid v jejím stavu nelze takto spárovat.", 409);
             }
             $cid = $inv['client_id'] !== null ? (int) $inv['client_id'] : 0;
             if ($cid <= 0) {
@@ -1600,21 +1637,39 @@ final class BankStatementAction
                     'Sloučená úhrada musí být v rámci jednoho klienta.', 409);
             }
             $remaining = round((float) $inv['amount_to_pay'] - (float) $inv['paid_total'], 2);
-            if ($remaining <= 0) {
-                return Json::error($response, 'nothing_to_pay', "Faktura #$iid nemá co uhradit.", 409);
+            $isPaid = (string) $inv['status'] === 'paid' || $remaining <= self::CANDIDATE_AMOUNT_TOLERANCE;
+            if ($isPaid) {
+                // Zaplacená faktura → rekonciliace (navázat existující platbu, žádné dvojí
+                // zdanění/přeplacení). Vyžaduje právě jednu dosud nenavázanou platbu.
+                if ((int) ($inv['reconcilable_count'] ?? 0) !== 1) {
+                    return Json::error($response, 'cannot_reconcile',
+                        "Fakturu #$iid nelze rekonciliovat (nemá právě jednu nenavázanou platbu).", 409);
+                }
+                $contrib = round((float) ($inv['reconcilable'] ?? 0), 2);
+                if ($contrib <= 0) {
+                    return Json::error($response, 'cannot_reconcile',
+                        "Fakturu #$iid nelze rekonciliovat (nulová nenavázaná platba).", 409);
+                }
+                $reconcile[$iid] = true;
+            } else {
+                if ($remaining <= 0) {
+                    return Json::error($response, 'nothing_to_pay', "Faktura #$iid nemá co uhradit.", 409);
+                }
+                $contrib = $remaining;
+                $toPay[$iid] = $remaining;
             }
             $conv = $this->remainingInTxCurrency(
-                $remaining, (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCcy
+                $contrib, (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCcy
             );
             if ($conv === null) {
                 return Json::error($response, 'currency_mismatch',
                     "Fakturu #$iid nelze převést do měny platby (chybí kurz).", 409);
             }
+            $convById[$iid] = round($conv, 2);
             $sumConverted += $conv;
             if (strtoupper((string) $inv['currency']) !== $txCcy) {
                 $hasFx = true;
             }
-            $toPay[$iid] = $remaining;
         }
 
         // Guard: součet zbytků (v měně platby) musí ≈ částka platby.
@@ -1658,6 +1713,12 @@ final class BankStatementAction
                     continue; // platba už existuje (idempotence) — nezahrnuj do součtu
                 }
                 $newCount++;
+                if (isset($reconcile[$iid])) {
+                    // Zaplacená faktura: rekonciliace nemění paid_total, příspěvek je fixní
+                    // (ověřený nad nenavázanou platbou před zámkem). Žádné riziko přeplacení.
+                    $sumLocked += $convById[$iid];
+                    continue;
+                }
                 $rem = $lockedRem[$iid] ?? 0.0;
                 if ($rem <= 0) {
                     $pdo->rollBack();
@@ -1690,6 +1751,14 @@ final class BankStatementAction
             foreach ($invoiceIds as $iid) {
                 if (in_array($iid, $alreadyPaidIds, true)) {
                     continue; // idempotence — platba už existuje (opakované potvrzení)
+                }
+                if (isset($reconcile[$iid])) {
+                    // Zaplacená faktura → navázat existující platbu na transakci (bez nové platby).
+                    $this->payments->reconcileToBankTransaction($iid, $txId, [
+                        'variable_symbol' => isset($txRow['variable_symbol']) ? (string) $txRow['variable_symbol'] : null,
+                        'bank_reference'  => isset($txRow['bank_ref']) ? (string) $txRow['bank_ref'] : null,
+                    ]);
+                    continue;
                 }
                 $recorded = $this->payments->recordPayment($iid, $toPay[$iid], $postedAt, [
                     'source'              => 'bank',
