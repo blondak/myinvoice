@@ -46,6 +46,10 @@ export interface BankTransaction {
   matched_varsymbol?: string | null
   matched_invoice_amount?: number | null
   matched_client_name?: string | null
+  /** Číslo přijaté faktury (vendor_invoice_number, fallback varsymbol), pokud je transakce spárovaná s přijatou. */
+  matched_purchase_ref?: string | null
+  /** Název dodavatele spárované přijaté faktury. */
+  matched_vendor_name?: string | null
   /** Seznam vystavených faktur uhrazených touto transakcí (sloučená úhrada → víc než 1). */
   matched_invoices?: MatchedInvoice[]
   match_status: MatchStatus

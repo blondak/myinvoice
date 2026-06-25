@@ -570,11 +570,18 @@ final class BankStatementAction
         $txStmt = $this->db->pdo()->prepare(
             'SELECT bt.*, i.varsymbol AS matched_varsymbol, i.amount_to_pay AS matched_invoice_amount,
                     i.client_id, c.company_name AS matched_client_name,
-                    (SELECT pm.purchase_invoice_id FROM payment_matches pm
-                      WHERE pm.bank_transaction_id = bt.id ORDER BY pm.id LIMIT 1) AS matched_purchase_invoice_id
+                    pm.purchase_invoice_id AS matched_purchase_invoice_id,
+                    COALESCE(NULLIF(p.vendor_invoice_number, \'\'), p.varsymbol) AS matched_purchase_ref,
+                    vc.company_name AS matched_vendor_name
                FROM bank_transactions bt
           LEFT JOIN invoices i ON i.id = bt.matched_invoice_id
           LEFT JOIN clients c ON c.id = i.client_id
+          LEFT JOIN (SELECT bank_transaction_id, MIN(id) AS min_id
+                       FROM payment_matches GROUP BY bank_transaction_id) pmx
+                 ON pmx.bank_transaction_id = bt.id
+          LEFT JOIN payment_matches pm ON pm.id = pmx.min_id
+          LEFT JOIN purchase_invoices p ON p.id = pm.purchase_invoice_id
+          LEFT JOIN clients vc ON vc.id = p.vendor_id
               WHERE bt.statement_id = ?
            ORDER BY bt.posted_at, bt.id'
         );
@@ -615,6 +622,8 @@ final class BankStatementAction
             $t['amount'] = (float) $t['amount'];
             $t['matched_invoice_id'] = $t['matched_invoice_id'] !== null ? (int) $t['matched_invoice_id'] : null;
             $t['matched_purchase_invoice_id'] = $t['matched_purchase_invoice_id'] !== null ? (int) $t['matched_purchase_invoice_id'] : null;
+            $t['matched_purchase_ref'] = isset($t['matched_purchase_ref']) && $t['matched_purchase_ref'] !== null ? (string) $t['matched_purchase_ref'] : null;
+            $t['matched_vendor_name'] = isset($t['matched_vendor_name']) && $t['matched_vendor_name'] !== null ? (string) $t['matched_vendor_name'] : null;
             $t['matched_invoices'] = $matchedByTx[$t['id']] ?? [];
         }
         unset($t);

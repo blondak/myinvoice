@@ -420,8 +420,13 @@ async function rematchStatement() {
                   class="text-primary-600 hover:underline">
                   {{ tx.matched_varsymbol || `#${tx.matched_invoice_id}` }}
                 </RouterLink>
+                <RouterLink v-else-if="tx.matched_purchase_invoice_id" :to="`/purchase-invoices/${tx.matched_purchase_invoice_id}`"
+                  class="text-primary-600 hover:underline">
+                  {{ tx.matched_purchase_ref || `#${tx.matched_purchase_invoice_id}` }}
+                </RouterLink>
                 <span v-else class="text-neutral-400">—</span>
                 <div v-if="tx.matched_client_name" class="text-neutral-500 text-xs">{{ tx.matched_client_name }}</div>
+                <div v-else-if="tx.matched_vendor_name" class="text-neutral-500 text-xs">{{ tx.matched_vendor_name }}</div>
               </template>
             </td>
             <td class="px-3 py-2 text-center">
@@ -495,6 +500,13 @@ async function rematchStatement() {
               {{ tx.matched_varsymbol || `#${tx.matched_invoice_id}` }}
             </RouterLink>
             <span v-if="tx.matched_client_name" class="text-neutral-500 ml-2">{{ tx.matched_client_name }}</span>
+          </div>
+          <div v-else-if="tx.matched_purchase_invoice_id" class="text-xs">
+            <RouterLink :to="`/purchase-invoices/${tx.matched_purchase_invoice_id}`"
+              class="text-primary-600 hover:underline font-mono">
+              {{ tx.matched_purchase_ref || `#${tx.matched_purchase_invoice_id}` }}
+            </RouterLink>
+            <span v-if="tx.matched_vendor_name" class="text-neutral-500 ml-2">{{ tx.matched_vendor_name }}</span>
           </div>
           <div class="flex flex-wrap gap-2 pt-1">
             <RouterLink v-if="tx.matched_invoice_id" :to="`/invoices/${tx.matched_invoice_id}`"
