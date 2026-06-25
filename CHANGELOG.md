@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.41.0] — 2026-06-25
+
+### Added
+
+- **Bankovní výpis (GPC) přebírá párování z e-mailových avíz.** Když máš zapnutá e-mailová bankovní avíza a později naimportuješ oficiální GPC/ABO výpis se stejnou platbou, MyInvoice nově rozpozná, že jde o **tutéž platbu**, a místo dvojího párování **převezme párování z avíza na oficiální výpis** (GPC je zdroj pravdy). Zachová přitom i **ruční párování** a **sloučenou úhradu na více faktur** — jen se přepne na transakci z výpisu, faktury zůstanou zaplacené a nic se nezapočítá dvakrát (dřív mohla částečná úhrada skončit jako falešný přeplatek). Avízová transakce se rozpáruje. Shoda se hledá podle účtu, částky, variabilního symbolu a data (okno ±5 dní) a jen v rámci jednoho dodavatele; při nejednoznačnosti (víc možných shod) se raději nic neprovede a párování zůstane na tobě. Bez DB migrace.
+- **Smazání avízo-výpisu z jeho detailu.** Výpis vzniklý z e-mailových avíz lze nově smazat přímo v jeho detailu — tlačítko se nabídne adminovi, jakmile na výpisu nezbývá žádná spárovaná položka (typicky poté, co párování převzal oficiální GPC výpis). U avízo-výpisu se zároveň skrývá nahrávání PDF (virtuální výpis žádné originální PDF nemá).
+
 ## [4.40.1] — 2026-06-24
 
 ### Added

@@ -283,7 +283,7 @@ final class BankStatementAction
         // Supplier scope check — stejný pattern jako detail()
         $pdo = $this->db->pdo();
         $owned = $pdo->prepare(
-            "SELECT bs.file_name FROM bank_statements bs
+            "SELECT bs.file_name, bs.source, bs.matched_count FROM bank_statements bs
               WHERE bs.id = ?
                 AND EXISTS (
                   SELECT 1 FROM currencies cur
@@ -294,9 +294,33 @@ final class BankStatementAction
                 )"
         );
         $owned->execute([$id, $sid]);
-        $fileName = $owned->fetchColumn();
-        if ($fileName === false) {
+        $ownedRow = $owned->fetch(\PDO::FETCH_ASSOC);
+        if ($ownedRow === false) {
             return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+        $fileName = (string) $ownedRow['file_name'];
+
+        // Avízo-výpis (e-mailová bankovní avíza) smí jít smazat jen když na něm nezbývá
+        // žádná spárovaná položka — typicky poté, co párování převzal oficiální GPC výpis
+        // (EmailNoticeReconciler). Smazání výpisu se spárovanými transakcemi by jinak
+        // osiřelo zaplacené faktury (invoice_payments.bank_transaction_id je ON DELETE
+        // SET NULL → platba zůstane, ztratí ale vazbu; payment_matches CASCADE → vazba
+        // přijaté faktury zmizí úplně). U GPC chování neměníme.
+        // Počítáme ŽIVĚ (ne uložený matched_count) — odolné vůči stale hodnotě.
+        if ((string) $ownedRow['source'] === 'email_notice') {
+            $matchedLive = (int) $pdo->query(
+                "SELECT COUNT(*) FROM bank_transactions
+                  WHERE statement_id = " . (int) $id . "
+                    AND match_status IN ('auto_exact','auto_partial','manual')"
+            )->fetchColumn();
+            if ($matchedLive > 0) {
+                return Json::error(
+                    $response,
+                    'has_matches',
+                    'Avízo-výpis má spárované položky. Nejdřív je rozpáruj (nebo nech převzít oficiálním GPC výpisem).',
+                    409
+                );
+            }
         }
 
         $pdo->prepare('DELETE FROM bank_statements WHERE id = ?')->execute([$id]);
@@ -399,6 +423,14 @@ final class BankStatementAction
         $sid = SupplierGuard::currentId($request);
         if (!$this->statementOwned($id, $sid)) {
             return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+
+        // Avízo-výpis (virtuální, složený z e-mailových bankovních avíz) nemá originální
+        // PDF — přikládání PDF u něj nedává smysl. UI tlačítko skrývá, server pro jistotu blokuje.
+        $srcStmt = $this->db->pdo()->prepare('SELECT source FROM bank_statements WHERE id = ?');
+        $srcStmt->execute([$id]);
+        if ((string) $srcStmt->fetchColumn() === 'email_notice') {
+            return Json::error($response, 'unsupported', 'K avízo-výpisu nelze přikládat PDF.', 400);
         }
 
         $file = $request->getUploadedFiles()['file'] ?? null;

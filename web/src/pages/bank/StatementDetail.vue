@@ -132,6 +132,25 @@ async function onDeletePdf() {
   }
 }
 
+// Smazání avízo-výpisu (e-mailová bankovní avíza). Nabízí se jen když na něm
+// nezbývá žádná spárovaná položka — typicky poté, co párování převzal oficiální
+// GPC výpis. Backend mazání je admin-only a guarduje matched_count > 0.
+const deletingStatement = ref(false)
+async function onDeleteStatement() {
+  if (!statement.value) return
+  if (!confirm(t('bank.statement_delete_confirm'))) return
+  deletingStatement.value = true
+  try {
+    await bankApi.delete(statement.value.id)
+    toast.success(t('bank.statement_deleted'))
+    router.push({ name: 'bank-statements' })
+  } catch (err) {
+    toast.error(apiErrorMessage(err, t('bank.statement_delete_failed')))
+  } finally {
+    deletingStatement.value = false
+  }
+}
+
 function statusBadge(s: string): string {
   if (s === 'auto_exact') return 'bg-success-50 text-success-600'
   if (s === 'auto_partial') return 'bg-warning-50 text-warning-600'
@@ -360,7 +379,7 @@ async function rematchStatement() {
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             PDF
           </a>
-          <label v-if="auth.canWrite && !statement.has_pdf"
+          <label v-if="auth.canWrite && !statement.has_pdf && statement.source !== 'email_notice'"
              :title="t('bank.pdf_upload_hint')"
              class="cursor-pointer h-8 px-3 text-xs border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md font-medium inline-flex items-center gap-1.5">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -379,6 +398,13 @@ async function rematchStatement() {
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15" />
             </svg>
             {{ rematching ? t('bank.rematch_running') : t('bank.rematch') }}
+          </button>
+          <button v-if="auth.isAdmin && statement.source === 'email_notice' && statement.matched_count === 0"
+            type="button" @click="onDeleteStatement" :disabled="deletingStatement"
+            :title="t('bank.statement_delete_hint')"
+            class="cursor-pointer h-8 px-3 text-xs border border-danger-500/40 text-danger-600 hover:bg-danger-50 disabled:opacity-50 rounded-md font-medium inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+            {{ deletingStatement ? '…' : t('bank.statement_delete') }}
           </button>
         </div>
       </header>

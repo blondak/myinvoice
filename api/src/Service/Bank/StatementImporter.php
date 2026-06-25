@@ -16,6 +16,9 @@ final class StatementImporter
         private readonly Connection $db,
         private readonly GpcParser $parser,
         private readonly StatementMatcher $matcher,
+        // Cross-source dedup GPC ← e-mailové avízo: převezme párování (i manuální/split)
+        // z už spárované avízo-transakce místo dvojího párování téže platby.
+        private readonly EmailNoticeReconciler $reconciler,
     ) {}
 
     /**
@@ -90,6 +93,16 @@ final class StatementImporter
                 $tx['description'], $tx['bank_ref'],
             ]);
             $txId = (int) $pdo->lastInsertId();
+
+            // Cross-source dedup: pokud tato platba už dorazila e-mailovým avízem a je
+            // spárovaná, převezmi párování (i manuální/split) na oficiální GPC transakci
+            // místo dvojího párování (jinak falešný přeplatek). GPC = zdroj pravdy.
+            $takeover = $this->reconciler->takeOverFromEmailNotice($txId);
+            if ($takeover !== null) {
+                $matched++;
+                continue;
+            }
+
             $r = $this->matcher->match($txId);
             if (in_array($r['status'], ['auto_exact', 'auto_partial'], true)) {
                 $matched++;
