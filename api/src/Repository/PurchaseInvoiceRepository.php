@@ -750,8 +750,8 @@ final class PurchaseInvoiceRepository
         // Reverse charge + země dodavatele — určuje klasifikační kód:
         //   CZ vendor → '40'/'41'/'42' (tuzemsko podle sazby)
         //   CZ vendor + RC → '5' (přenesená povinnost)
-        //   EU vendor s 0% → '24' (přijetí služby z EU) — typický pro Anthropic, GitHub apod.
-        //   non-EU vendor s 0% → '25' (dovoz ze 3. země)
+        //   EU vendor s 0% → '24e' (přijetí služby z EU, ř.5) — typický pro Microsoft Ireland apod.
+        //   non-EU vendor s 0% → '24' (přijetí služby ze 3. země, ř.12) — Anthropic, GitHub apod.
         $metaStmt = $pdo->prepare(
             'SELECT pi.reverse_charge, co.iso2,
                     COALESCE(pi.tax_date, pi.issue_date) AS doc_date
@@ -804,14 +804,14 @@ final class PurchaseInvoiceRepository
      *     12% standard  → '41' (přijaté plnění tuzemsko — snížená)
      *     0%            → null (osvobozeno bez nároku — user si vybere)
      *   EU vendor (DE, SK, AT, IE, …):
-     *     0% → '24' (přijetí služby z EU — typický pro Anthropic, GitHub, Microsoft Ireland)
+     *     0% → '24e' (přijetí služby z EU, ř.5 — typický pro Microsoft Ireland)
      *     21%/12% → tuzemsko sazby (vendor v EU vykazuje českou DPH — vzácné)
      *   Non-EU vendor (US, UK, atd.):
-     *     0% → '25' (dovoz ze 3. země)
+     *     0% → '24' (přijetí služby ze 3. země / od neusazené osoby, ř.12 — Anthropic, GitHub)
      *     jinak tuzemsko sazby
      *
-     * Pro pořízení zboží z EU ('23' místo služby '24') si user změní ručně —
-     * default 0%+EU mapujeme na služby, což je častější CZ IT use case.
+     * Pro pořízení zboží z EU ('23') či dovoz zboží ze 3. země ('25') si user
+     * změní ručně — default 0%+zahraničí mapujeme na SLUŽBY, což je častější CZ IT use case.
      * AI import sem u RC dokladů nespadne: nastavuje explicitní kód (23/24/25 dle
      * supply_nature) + tuzemskou sazbu 21 % už v AiPdfExtractoru (issue #116).
      */
