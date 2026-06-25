@@ -5,6 +5,14 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.41.1] — 2026-06-25
+
+### Fixed
+
+- **Kontrolní hlášení: přijatá zahraniční služba v reverse charge patří do oddílu A.2, ne B.1 (#164).** Přijatá služba z EU nebo ze 3. země v režimu přenesení daňové povinnosti (např. Google Cloud, Microsoft Ireland, Anthropic, GitHub) se v kontrolním hlášení (DPHKH1) chybně exportovala do oddílu **B.1**, který je určen jen pro tuzemský režim přenesení (§ 92a) a kde portál *Moje daně* vyžaduje **české číselné DIČ** — portál proto hlášení odmítl (chybný formát DIČ dodavatele, chybějící datum a daň). Nově míří správně do oddílu **A.2** (přeshraniční samovyměřená plnění podle § 24 a § 25), kde se uvádí kód státu a VAT ID dodavatele. Přiznání k DPH (řádky 5/12 + zrcadlový odpočet 43) bylo přitom správně už dříve — chyba byla jen v exportu kontrolního hlášení. **Vyžaduje migraci 0120** (oprava zařazení kódů `24`/`24e` do oddílu A.2); promítne se automaticky i do již zaúčtovaných dokladů, bez nutnosti cokoli překlasifikovat.
+- **Kontrolní hlášení: VAT ID dodavatele z EU si zachová písmena.** Identifikace dodavatele v oddílu A.2 (`vatid_dod`) se dříve ořezávala jen na číslice, takže irské VAT ID `IE3668997OH` skončilo jako `3668997`. Nově se zachová alfanumerická kmenová část bez kódu země (`3668997OH`), jak portál u řady států vyžaduje (Irsko, Rakousko, Nizozemsko aj.). Kód státu u Řecka se navíc správně uvádí jako `EL` (ne ISO `GR`).
+- **Kontrolní hlášení: dovoz zboží ze 3. země se do hlášení neuvádí.** Dovoz zboží ze 3. země (kód `25`) se dříve také chybně dostal do oddílu B.1; nově se z kontrolního hlášení správně vynechává (vykazuje se jen v přiznání k DPH na řádcích 7/8 + odpočet 43/44).
+
 ## [4.41.0] — 2026-06-25
 
 ### Added
