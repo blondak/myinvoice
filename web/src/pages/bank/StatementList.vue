@@ -1,21 +1,57 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { bankApi, type BankStatement, type ImportResult } from '@/api/bank'
+import { bankApi, type BankStatement, type BankAccountOption, type ImportResult } from '@/api/bank'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
+import FilterBar from '@/components/ui/FilterBar.vue'
 
-const { t, locale } = useI18n()
+const { t, tm, rt, locale } = useI18n()
 const toast = useToast()
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const router = useRouter()
+const route = useRoute()
 const statements = ref<BankStatement[]>([])
 const loading = ref(false)
+
+// Filtry rok / měsíc / účet — stejný design jako přehled faktur. Rok defaultně aktuální.
+const DEFAULT_YEAR = new Date().getFullYear()
+const yearFilter = ref<number | ''>(DEFAULT_YEAR)
+const monthFilter = ref<number | ''>('')
+const accountFilter = ref<string>('')
+const years = ref<number[]>([])
+const accounts = ref<BankAccountOption[]>([])
+
+// `tm()` vrací raw pole zpráv, `rt()` zformátuje jednotlivé položky (interpolace).
+const monthOptions = computed(() => (tm('common.months_short') as unknown as string[]).map(m => rt(m)))
+// Dropdown roků: z dat doplněný o aktuální + aktuálně zvolený (kdyby v datech nebyl).
+const yearOptions = computed(() => {
+  const set = new Set<number>(years.value)
+  set.add(DEFAULT_YEAR)
+  if (typeof yearFilter.value === 'number') set.add(yearFilter.value)
+  return [...set].sort((a, b) => b - a)
+})
+const activeFilterCount = computed(() => {
+  let n = 0
+  if (monthFilter.value !== '') n++
+  if (accountFilter.value !== '') n++
+  return n
+})
+function accountLabel(a: BankAccountOption): string {
+  return a.label ? `${a.account_number} — ${a.label}` : a.account_number
+}
+// „Filtr je aktivní" = zúžení oproti zobrazení všeho (rok ≠ vše / měsíc / účet).
+const filtersActive = computed(() => yearFilter.value !== '' || monthFilter.value !== '' || accountFilter.value !== '')
+function resetFilters() {
+  yearFilter.value = ''
+  monthFilter.value = ''
+  accountFilter.value = ''
+}
 const uploading = ref(false)
 const scanning = ref(false)
 // Tlačítko „Skenovat adresář" jen když je v cfg.php nastavený bank_import.scan_root.
@@ -46,10 +82,17 @@ const rangeTo = computed(() => Math.min(page.value * perPage.value, total.value)
 async function load() {
   loading.value = true
   try {
-    const r = await bankApi.list(page.value)
+    const r = await bankApi.list({
+      page: page.value,
+      year: yearFilter.value,
+      month: monthFilter.value,
+      account: accountFilter.value || undefined,
+    })
     statements.value = r.items
     total.value = r.total
     perPage.value = r.limit
+    years.value = r.years
+    accounts.value = r.accounts
     scanConfigured.value = r.scan_configured
   } finally { loading.value = false }
 }
@@ -57,7 +100,51 @@ function goToPage(p: number) {
   const np = Math.min(Math.max(1, p), totalPages.value)
   if (np !== page.value) { page.value = np; load() }
 }
-onMounted(load)
+
+// Filtry ↔ URL query (stejný pattern jako přehledy faktur — reset na menu link click).
+let suppressUrlSync = false
+function loadFiltersFromQuery(q: typeof route.query) {
+  yearFilter.value = typeof q.year === 'string' && q.year !== ''
+    ? (q.year === 'all' ? '' : Number(q.year))
+    : DEFAULT_YEAR
+  monthFilter.value = typeof q.month === 'string' && q.month !== '' ? Number(q.month) : ''
+  accountFilter.value = typeof q.account === 'string' ? q.account : ''
+}
+function syncFiltersToUrl() {
+  if (suppressUrlSync) return
+  const q: Record<string, string> = {}
+  if (yearFilter.value === '') q.year = 'all'
+  else if (yearFilter.value !== DEFAULT_YEAR) q.year = String(yearFilter.value)
+  if (monthFilter.value !== '') q.month = String(monthFilter.value)
+  if (accountFilter.value) q.account = accountFilter.value
+  router.replace({ query: q })
+}
+
+watch([yearFilter, monthFilter, accountFilter], () => {
+  page.value = 1
+  syncFiltersToUrl()
+  load()
+})
+// Vyčištění roku (vše) zruší i měsíční filtr (měsíc dává smysl jen ve zvoleném roce).
+watch(yearFilter, (y) => { if (y === '') monthFilter.value = '' })
+
+// Reset filtrů při kliku na menu (route.query je prázdná).
+watch(() => route.query, (newQ) => {
+  if (Object.keys(newQ).length === 0) {
+    suppressUrlSync = true
+    yearFilter.value = DEFAULT_YEAR
+    monthFilter.value = ''
+    accountFilter.value = ''
+    page.value = 1
+    load()
+    setTimeout(() => { suppressUrlSync = false }, 0)
+  }
+})
+
+onMounted(() => {
+  loadFiltersFromQuery(route.query)
+  load()
+})
 
 // E-mailová avíza jsou měsíční agregát (statement_date = 1. den měsíce), proto
 // u nich nedává smysl ukazovat konkrétní datum — zobrazíme název měsíce
@@ -173,6 +260,26 @@ async function onFileSelected(e: Event) {
       </div>
     </div>
 
+    <!-- Filtry rok / měsíc / účet -->
+    <FilterBar :active-count="activeFilterCount">
+      <select v-model="yearFilter"
+        class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+        <option value="">{{ t('bank.all_years') }}</option>
+        <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+      </select>
+      <select v-model="monthFilter" :disabled="yearFilter === ''"
+        class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm disabled:opacity-50"
+        :title="t('bank.month_filter')">
+        <option :value="''">{{ t('bank.all_months') }}</option>
+        <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
+      </select>
+      <select v-if="accounts.length > 1" v-model="accountFilter"
+        class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+        <option value="">{{ t('bank.all_accounts') }}</option>
+        <option v-for="a in accounts" :key="a.account_number" :value="a.account_number">{{ accountLabel(a) }}</option>
+      </select>
+    </FilterBar>
+
     <div v-if="lastResult" class="rounded-md px-4 py-2 text-sm mb-4"
       :class="lastResult.duplicate ? 'bg-warning-50 border border-warning-500/40 text-warning-600' : 'bg-success-50 border border-success-500/40 text-success-600'">
       <span v-if="lastResult.duplicate">{{ t('bank.import_duplicate', { id: lastResult.statement_id }) }}</span>
@@ -186,7 +293,12 @@ async function onFileSelected(e: Event) {
     <div v-if="loading" class="text-center text-neutral-500 py-12 text-sm">{{ t('common.loading') }}</div>
 
     <div v-else-if="!statements.length" class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-12 text-center text-neutral-500">
-      {{ t('bank.no_data') }}
+      <template v-if="filtersActive">
+        {{ t('bank.no_data_filtered') }}
+        <button type="button" @click="resetFilters"
+          class="cursor-pointer ml-1 text-primary-600 hover:text-primary-700 underline">{{ t('bank.show_all') }}</button>
+      </template>
+      <template v-else>{{ t('bank.no_data') }}</template>
     </div>
 
     <div v-else class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">

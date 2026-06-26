@@ -119,18 +119,40 @@ export interface ImportResult {
   duplicate: boolean
 }
 
+/** Účet pro filtr v přehledu výpisů (distinct account_number + jeho label z currencies). */
+export interface BankAccountOption {
+  account_number: string
+  label: string | null
+}
+
 export interface BankStatementPage {
   items: BankStatement[]
   total: number
   page: number
   limit: number
+  /** Roky přítomné ve výpisech (pro filtr rok), descending. */
+  years: number[]
+  /** Účty přítomné ve výpisech (pro filtr na číslo účtu). */
+  accounts: BankAccountOption[]
   /** Je v cfg.php nastavené adresářové skenování (bank_import.scan_root)? Řídí tlačítko „Skenovat adresář". */
   scan_configured: boolean
 }
 
+export interface BankListParams {
+  page?: number
+  year?: number | ''
+  month?: number | ''
+  account?: string
+}
+
 export const bankApi = {
-  list: (page = 1) =>
-    api.get<BankStatementPage>('/bank-statements', { params: { page } }).then(r => r.data),
+  list: (params: BankListParams = {}) =>
+    api.get<BankStatementPage>('/bank-statements', { params: {
+      page: params.page ?? 1,
+      ...(params.year !== undefined && params.year !== '' ? { 'filter[year]': params.year } : {}),
+      ...(params.month !== undefined && params.month !== '' ? { 'filter[month]': params.month } : {}),
+      ...(params.account ? { 'filter[account]': params.account } : {}),
+    } }).then(r => r.data),
   get: (id: number) => api.get<BankStatementDetail>(`/bank-statements/${id}`).then(r => r.data),
   upload: (file: File) => {
     const fd = new FormData()

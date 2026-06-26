@@ -196,8 +196,16 @@ final class BankStatementAction
         // normalizované hodnoty (REGEXP_REPLACE non-digits + TRIM leading zeros).
         $sid = SupplierGuard::currentId($request);
         $limit = 50;
-        $page = max(1, (int) ($request->getQueryParams()['page'] ?? 1));
+        $qp = $request->getQueryParams();
+        $page = max(1, (int) ($qp['page'] ?? 1));
         $offset = ($page - 1) * $limit; // int (page castnuto) → bezpečně inline do LIMIT/OFFSET
+
+        // Volitelné filtry rok/měsíc (statement_date) + číslo účtu. statement_date je
+        // u avíz-výpisů 1. den měsíce, takže YEAR()/MONTH() funguje i pro ně.
+        $filter  = (array) ($qp['filter'] ?? []);
+        $year    = isset($filter['year'])  && $filter['year']  !== '' ? (int) $filter['year']  : null;
+        $month   = isset($filter['month']) && $filter['month'] !== '' ? (int) $filter['month'] : null;
+        $account = isset($filter['account']) ? trim((string) $filter['account']) : '';
 
         // Společný scope filtr (account_number/bank_code z currencies dodavatele).
         $scopeSql = "EXISTS (
@@ -207,8 +215,21 @@ final class BankStatementAction
                        = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
                      AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
               )";
-        $countStmt = $this->db->pdo()->prepare("SELECT COUNT(*) FROM bank_statements bs WHERE $scopeSql");
-        $countStmt->execute([$sid]);
+
+        // Filtr WHERE fragment + parametry (sdílený mezi COUNT a výběrem řádků). Účet
+        // porovnáváme normalizovaně (stejně jako scope), ať padding/lomítko nevadí.
+        $filterSql = '';
+        $filterParams = [];
+        if ($year !== null)  { $filterSql .= ' AND YEAR(bs.statement_date) = ?';  $filterParams[] = $year; }
+        if ($month !== null) { $filterSql .= ' AND MONTH(bs.statement_date) = ?'; $filterParams[] = $month; }
+        if ($account !== '') {
+            $filterSql .= " AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''), '[^0-9]', ''))
+                              = TRIM(LEADING '0' FROM REGEXP_REPLACE(?, '[^0-9]', ''))";
+            $filterParams[] = $account;
+        }
+
+        $countStmt = $this->db->pdo()->prepare("SELECT COUNT(*) FROM bank_statements bs WHERE $scopeSql$filterSql");
+        $countStmt->execute(array_merge([$sid], $filterParams));
         $total = (int) $countStmt->fetchColumn();
 
         // account_label: vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank")
@@ -225,17 +246,11 @@ final class BankStatementAction
                         AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
                       LIMIT 1) AS account_label
                FROM bank_statements bs
-              WHERE EXISTS (
-                  SELECT 1 FROM currencies cur
-                   WHERE cur.supplier_id = ?
-                     AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
-                       = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
-                     AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
-              )
+              WHERE $scopeSql$filterSql
               ORDER BY bs.statement_date DESC, bs.id DESC
               LIMIT $limit OFFSET $offset"
         );
-        $stmt->execute([$sid, $sid]);
+        $stmt->execute(array_merge([$sid, $sid], $filterParams));
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['id'] = (int) $r['id'];
@@ -246,11 +261,48 @@ final class BankStatementAction
             $r['has_file'] = (bool) $r['has_file'];
             $r['has_pdf'] = (bool) $r['has_pdf'];
         }
+        unset($r);
+
+        // Volby pro filtry (počítané přes CELÝ scope, ne přes aktuální filtr — ať
+        // dropdowny nemizí podle zvoleného roku/účtu). Roky z statement_date,
+        // účty distinct + jejich label.
+        $yearsStmt = $this->db->pdo()->prepare(
+            "SELECT DISTINCT YEAR(bs.statement_date) AS y
+               FROM bank_statements bs WHERE $scopeSql AND bs.statement_date IS NOT NULL
+              ORDER BY y DESC"
+        );
+        $yearsStmt->execute([$sid]);
+        $years = array_values(array_filter(array_map(
+            static fn ($y) => (int) $y,
+            $yearsStmt->fetchAll(\PDO::FETCH_COLUMN)
+        )));
+
+        $accStmt = $this->db->pdo()->prepare(
+            "SELECT bs.account_number,
+                    (SELECT cur.label FROM currencies cur
+                      WHERE cur.supplier_id = ?
+                        AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                          = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                        AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                      LIMIT 1) AS label
+               FROM bank_statements bs
+              WHERE $scopeSql AND bs.account_number IS NOT NULL AND bs.account_number <> ''
+              GROUP BY bs.account_number
+              ORDER BY bs.account_number"
+        );
+        $accStmt->execute([$sid, $sid]);
+        $accounts = array_map(static fn ($a) => [
+            'account_number' => (string) $a['account_number'],
+            'label'          => $a['label'] !== null ? (string) $a['label'] : null,
+        ], $accStmt->fetchAll(\PDO::FETCH_ASSOC));
+
         return Json::ok($response, [
             'items' => $rows,
             'total' => $total,
             'page' => $page,
             'limit' => $limit,
+            'years' => $years,
+            'accounts' => $accounts,
             // Adresářové skenování je nastavené? UI podle toho zobrazí tlačítko „Skenovat adresář".
             'scan_configured' => $this->scanConfigured(),
         ]);
