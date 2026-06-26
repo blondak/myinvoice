@@ -13,6 +13,7 @@ import { invoicesApi } from '@/api/invoices'
 import ClientFormModal from '@/components/modals/ClientFormModal.vue'
 import type { Client } from '@/api/clients'
 import { useAuthStore } from '@/stores/auth'
+import { formatAccountNumber } from '@/utils/bankAccount'
 
 const { t, locale } = useI18n()
 const toast = useToast()
@@ -327,7 +328,8 @@ async function rematchStatement() {
       <span v-else>{{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}</span>
     </h1>
     <p class="text-sm text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-      <span>{{ t('bank.account') }}<span class="font-mono">{{ statement.account_number }}</span></span>
+      <span class="text-neutral-500">{{ t('bank.account') }}</span>
+      <span class="font-mono font-semibold text-neutral-800">{{ formatAccountNumber(statement.account_number) }}</span>
       <span v-if="statement.account_label" class="text-neutral-400">— {{ statement.account_label }}</span>
       <span v-if="statement.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ statement.currency }}</span>
       <span>· {{ statement.file_name }}</span>

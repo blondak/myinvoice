@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import FilterBar from '@/components/ui/FilterBar.vue'
+import { formatAccountNumber } from '@/utils/bankAccount'
 
 const { t, tm, rt, locale } = useI18n()
 const toast = useToast()
@@ -43,7 +44,8 @@ const activeFilterCount = computed(() => {
   return n
 })
 function accountLabel(a: BankAccountOption): string {
-  return a.label ? `${a.account_number} — ${a.label}` : a.account_number
+  const num = formatAccountNumber(a.account_number)
+  return a.label ? `${num} — ${a.label}` : num
 }
 // „Filtr je aktivní" = zúžení oproti zobrazení všeho (rok ≠ vše / měsíc / účet).
 const filtersActive = computed(() => yearFilter.value !== '' || monthFilter.value !== '' || accountFilter.value !== '')
@@ -336,7 +338,7 @@ async function onFileSelected(e: Event) {
               </span>
             </td>
             <td class="px-3 py-2 text-xs">
-              <div class="font-mono">{{ s.account_number }}</div>
+              <div class="font-mono">{{ formatAccountNumber(s.account_number) }}</div>
               <div v-if="s.account_label" class="text-neutral-400 mt-0.5">{{ s.account_label }}</div>
             </td>
             <td class="px-3 py-2">
@@ -399,7 +401,7 @@ async function onFileSelected(e: Event) {
             </div>
             <div class="font-mono text-sm font-semibold whitespace-nowrap">{{ formatMoney(s.curr_balance, s.currency ?? 'CZK') }}</div>
           </div>
-          <div class="font-mono text-xs text-neutral-500 mt-0.5">{{ s.account_number }}</div>
+          <div class="font-mono text-xs text-neutral-500 mt-0.5">{{ formatAccountNumber(s.account_number) }}</div>
           <div v-if="s.account_label" class="text-xs text-neutral-400">{{ s.account_label }}</div>
           <div class="text-xs text-neutral-500 truncate mt-0.5">{{ s.file_name }}</div>
           <div class="flex items-baseline justify-between gap-2 mt-2">
