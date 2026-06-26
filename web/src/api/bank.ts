@@ -6,6 +6,8 @@ export interface BankStatement {
   source?: 'gpc' | 'email_notice'
   file_name: string
   account_number: string
+  /** Kód banky (4místný), pokud je u výpisu evidovaný — pro zobrazení „účet / kód". */
+  bank_code?: string | null
   /** Vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank"), pokud match. */
   account_label: string | null
   currency: string | null
@@ -122,6 +124,7 @@ export interface ImportResult {
 /** Účet pro filtr v přehledu výpisů (distinct account_number + jeho label z currencies). */
 export interface BankAccountOption {
   account_number: string
+  bank_code?: string | null
   label: string | null
 }
 

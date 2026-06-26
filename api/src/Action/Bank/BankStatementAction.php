@@ -235,7 +235,7 @@ final class BankStatementAction
         // account_label: vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank")
         // přes scalar subselect (LIMIT 1 — sup. může mít jen 1 záznam per account_number+bank_code).
         $stmt = $this->db->pdo()->prepare(
-            "SELECT bs.id, bs.source, bs.file_name, bs.account_number, bs.currency, bs.statement_date, bs.statement_number,
+            "SELECT bs.id, bs.source, bs.file_name, bs.account_number, bs.bank_code, bs.currency, bs.statement_date, bs.statement_number,
                     bs.prev_balance, bs.curr_balance, bs.transaction_count, bs.matched_count, bs.imported_at,
                     (bs.file_content IS NOT NULL) AS has_file,
                     (bs.pdf_content IS NOT NULL) AS has_pdf, bs.pdf_name,
@@ -277,22 +277,33 @@ final class BankStatementAction
             $yearsStmt->fetchAll(\PDO::FETCH_COLUMN)
         )));
 
+        // Dedup podle NORMALIZOVANÉHO účtu (ne surové account_number) — tentýž účet
+        // přijde z avíza i z GPC s jiným formátováním (padding/inline kód banky),
+        // takže GROUP BY na surovou hodnotu ho ukazoval 2×. ROW_NUMBER vybere jeden
+        // reprezentativní záznam; preferuje variantu s vyplněným kódem banky.
         $accStmt = $this->db->pdo()->prepare(
-            "SELECT bs.account_number,
-                    (SELECT cur.label FROM currencies cur
-                      WHERE cur.supplier_id = ?
-                        AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
-                          = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
-                        AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
-                      LIMIT 1) AS label
-               FROM bank_statements bs
-              WHERE $scopeSql AND bs.account_number IS NOT NULL AND bs.account_number <> ''
-              GROUP BY bs.account_number
-              ORDER BY bs.account_number"
+            "SELECT t.account_number, t.bank_code, t.label FROM (
+                SELECT bs.account_number, bs.bank_code,
+                       (SELECT cur.label FROM currencies cur
+                         WHERE cur.supplier_id = ?
+                           AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                             = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                           AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                         LIMIT 1) AS label,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''), '[^0-9]', ''))
+                           ORDER BY (bs.bank_code IS NULL), bs.id DESC
+                       ) AS rn
+                  FROM bank_statements bs
+                 WHERE $scopeSql AND bs.account_number IS NOT NULL AND bs.account_number <> ''
+            ) t
+            WHERE t.rn = 1
+            ORDER BY t.account_number"
         );
         $accStmt->execute([$sid, $sid]);
         $accounts = array_map(static fn ($a) => [
             'account_number' => (string) $a['account_number'],
+            'bank_code'      => $a['bank_code'] !== null ? (string) $a['bank_code'] : null,
             'label'          => $a['label'] !== null ? (string) $a['label'] : null,
         ], $accStmt->fetchAll(\PDO::FETCH_ASSOC));
 

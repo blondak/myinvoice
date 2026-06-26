@@ -329,7 +329,7 @@ async function rematchStatement() {
     </h1>
     <p class="text-sm text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
       <span class="text-neutral-500">{{ t('bank.account') }}</span>
-      <span class="font-mono font-semibold text-neutral-800">{{ formatAccountNumber(statement.account_number) }}</span>
+      <span class="font-mono font-semibold text-neutral-800">{{ formatAccountNumber(statement.account_number, statement.bank_code) }}</span>
       <span v-if="statement.account_label" class="text-neutral-400">— {{ statement.account_label }}</span>
       <span v-if="statement.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ statement.currency }}</span>
       <span>· {{ statement.file_name }}</span>
@@ -356,7 +356,7 @@ async function rematchStatement() {
       </div>
     </div>
 
-    <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+    <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden mt-4">
       <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
           {{ t('bank.transactions') }}
