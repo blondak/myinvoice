@@ -576,7 +576,7 @@ final class PurchaseInvoiceRepository
         }
         $sql = "SELECT pi.id, pi.vendor_invoice_number, pi.varsymbol, pi.document_kind,
                        pi.vendor_id, pi.issue_date, pi.due_date,
-                       pi.total_with_vat, pi.amount_to_pay,
+                       pi.total_with_vat, pi.amount_to_pay, pi.rounding,
                        (pi.pdf_path IS NOT NULL AND pi.pdf_path <> '') AS has_pdf,
                        pi.payment_account_number, pi.payment_bank_code, pi.payment_iban, pi.payment_bic,
                        pi.payment_variable_symbol, pi.payment_constant_symbol,
@@ -596,6 +596,7 @@ final class PurchaseInvoiceRepository
             $r['vendor_id']      = (int) $r['vendor_id'];
             $r['total_with_vat'] = (float) $r['total_with_vat'];
             $r['amount_to_pay']  = (float) $r['amount_to_pay'];
+            $r['rounding']       = (float) ($r['rounding'] ?? 0);
             $r['has_pdf']        = (bool) $r['has_pdf'];
         }
         return $rows;
