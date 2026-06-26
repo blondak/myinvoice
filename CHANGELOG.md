@@ -5,6 +5,20 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.42.0] — 2026-06-26
+
+### Added
+
+- **Kniha jízd — výchozí kategorie jízd.** U kategorií cest (Kniha jízd → Kategorie) lze nově jednu označit jako **výchozí** — ta se pak automaticky předvyplní při zakládání nové jízdy. Per dodavatele smí být výchozí vždy jen jedna (jako u aut). V přehledu kategorií ji označuje štítek „výchozí". **Vyžaduje migraci 0121.**
+- **Banka — filtr podle roku, měsíce a účtu.** Přehled bankovních výpisů má nově filtr na **rok** a **měsíc** a na **konkrétní účet**, ve stejném designu jako přehledy faktur (sbalitelná lišta filtrů, synchronizace do URL, reset při kliknutí na položku menu). Výchozí je aktuální rok; volby účtů jsou seřazené stejně jako v *Nastavení → bankovní účty*.
+- **Banka — přehlednější číslo účtu.** Číslo účtu se zobrazuje bez zbytečných vodicích nul a s kódem banky (např. `123456789 / 0300`) — v přehledu výpisů, ve filtru i v detailu výpisu, kde je navíc zvýrazněné. U účtů vedených jako IBAN se nic neořezává ani nedoplňuje.
+
+### Fixed
+
+- **Banka — úhrada přijaté faktury z e-mailového avíza se správně označí jako spárovaná.** Odchozí platba na přijatou fakturu dorazivší e-mailovým avízem se ve zpracovaných e-mailech chybně hlásila jako **„nespárováno" (match_failed)**, přestože transakce spárovaná byla a faktura zaplacená — kontrola brala jen vydané faktury. Nově se za úspěch považuje i spárování na přijatou fakturu (a e-mail se neoznačí jako selhání). Navíc se **auto-spárování platby zapíše do aktivity dokladu** (vystavené i přijaté faktury), takže je přímo v těle faktury vidět, čím a kdy byla zaplacená.
+- **Banka — kód banky se normalizuje napříč zdroji.** GPC/ABO import dříve kód banky neukládal (na rozdíl od e-mailových avíz, která si ho načtou z textu), takže se ve filtru zobrazoval jen u některých účtů a tentýž účet se mohl v nabídce objevit dvakrát. Nově se kód banky bere autoritativně z konfigurovaného účtu, GPC import ho rovnou ukládá a migrace dorovná i starší výpisy. **Vyžaduje migraci 0122.**
+- **Platební příkazy — QR tlačítko čitelné v tmavém režimu.** Aktivní (rozkliknuté) tlačítko *QR kód* u přijatých faktur mělo v tmavém režimu bílý text na světlém podkladu a text zanikal.
+
 ## [4.41.1] — 2026-06-25
 
 ### Fixed
