@@ -1953,6 +1953,13 @@ paths:
       description: |
         Multipart upload. Server detekuje formát z obsahu a parsuje transakce.
         Auto-matching proti otevřeným fakturám se spustí po `POST /scan`.
+
+        GPC/ABO hlavička neobsahuje měnu. Pokud jedno číslo účtu evidujete ve více
+        měnách (např. Raiffeisenbank: CZK/EUR/USD = jedno číslo), je nutné zvolit
+        cílový měnový účet přes `account_id`. Když `account_id` chybí a číslo je
+        víceznačné, server vrátí `409` s kódem `ambiguous_account_currency` a polem
+        `candidates` (seznam měnových variant). Při jednoznačném čísle je `account_id`
+        nepovinné (zpětně kompatibilní).
       requestBody:
         required: true
         content:
@@ -1965,6 +1972,11 @@ paths:
                   type: string
                   format: binary
                   description: GPC, CSV (FIO/KB/MB formáty) nebo ABO výpis
+                account_id:
+                  type: integer
+                  description: |
+                    Cílový měnový účet (`currencies.id`). Povinné jen u víceměnového účtu
+                    se sdíleným číslem účtu (jinak server vrátí 409 `ambiguous_account_currency`).
       responses:
         '201':
           description: Naparsováno
@@ -1973,6 +1985,19 @@ paths:
               schema: { $ref: '#/components/schemas/BankStatement' }
         '400':
           description: Neznámý formát / poškozený soubor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            Číslo účtu není registrované u dodavatele (`wrong_supplier_account`),
+            nebo má více měnových variant a chybí `account_id` (`ambiguous_account_currency`
+            — `error.candidates` nese seznam `{account_id, code, label}`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Zvolený `account_id` neodpovídá číslu účtu výpisu / dodavateli (`invalid_account`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
