@@ -5,7 +5,15 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.42.0] — 2026-06-26
+## [4.43.0] — 2026-06-28
+
+### Added
+
+- **Pravidelné fakturace — měnový účet u GPC importu se sdíleným číslem účtu (#167).** Když máš jeden bankovní účet vedený ve více měnách (stejné číslo účtu pro CZK/EUR/USD), GPC/ABO výpis sám o sobě měnu nenese. Při importu proto nově zvolíš měnu účtu (a konkrétní účet), takže se výpis spáruje se správným měnovým účtem; při nejednoznačnosti import vrátí výzvu k upřesnění místo tichého zařazení.
+
+### Changed
+
+- **Pravidelné fakturace — režim „Na začátku období" uzavírá koncept až den po konci období.** U šablon s otevřeným konceptem (*Na začátku období*) cron dosud uzavíral a vystavoval koncept přímo v den `next_run_date` (typicky poslední den měsíce). Pokud běžel ráno, nestihla se do faktury započítat práce zapsaná do výkazu **týž poslední den**. Nově se uzávěrka posune o **1 den** za konec období (koncept zůstává otevřený celý poslední den a vystaví se až následující den) — **datum vystavení i DUZP přitom zůstávají na konci období** (`next_run_date`), faktura tedy nese stejné datum jako dřív, jen fyzicky vznikne o den později. Týká se jen režimu *Na začátku období*; standardní *Až při vystavení* se nemění. Bez DB migrace.
 
 ### Added
 

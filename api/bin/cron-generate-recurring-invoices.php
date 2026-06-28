@@ -91,7 +91,7 @@ if ($dryRun) {
     foreach ($candidates as $t) {
         $mode = (string) ($t['draft_open_mode'] ?? 'at_issue');
         $nextRun = (string) $t['next_run_date'];
-        $action = ($mode === 'period_start' && $nextRun > $today) ? 'OPEN-DRAFT' : 'ISSUE';
+        $action = ($mode === 'period_start' && $nextRun >= $today) ? 'OPEN-DRAFT' : 'ISSUE';
         printf(
             "  [DRY] #%d \"%s\" client=%s freq=%s next=%s mode=%s → %s (auto_issue=%d auto_send=%d)\n",
             (int) $t['id'],
@@ -122,8 +122,12 @@ foreach ($candidates as $t) {
     $mode = (string) ($t['draft_open_mode'] ?? 'at_issue');
     $nextRun = (string) $t['next_run_date'];
     try {
-        if ($mode === 'period_start' && $nextRun > $today) {
-            // OPEN fáze — jsme uvnitř fakturovaného období, ještě ne v den vystavení.
+        if ($mode === 'period_start' && $nextRun >= $today) {
+            // OPEN fáze — jsme uvnitř fakturovaného období VČETNĚ jeho posledního dne
+            // (next_run_date). Koncept držíme otevřený i v den konce období, ať se do něj
+            // stihne zapsat i práce z posledního dne; uzávěrka (issuePeriod) proběhne až
+            // následující den (next_run_date < dnes). Datum vystavení i DUZP konceptu
+            // přitom zůstávají na next_run_date (konec období) — viz openDraft/issuePeriod.
             // Otevři koncept (idempotentní), ať má uživatel kam psát vícepráce.
             $r = $generator->openDraft($tplId, null, '', $ua);
             if ($r['created']) {
@@ -133,7 +137,8 @@ foreach ($candidates as $t) {
             }
             // pokud created=false (koncept už existuje), tiše přeskoč
         } elseif ($mode === 'period_start') {
-            // ISSUE fáze pro period_start — uzavři otevřený koncept a vystav.
+            // ISSUE fáze pro period_start — den po konci období (next_run_date < dnes).
+            // Uzavři otevřený koncept a vystav (issue_date/DUZP zůstávají na next_run_date).
             $r = $generator->issuePeriod($tplId, null, '', $ua);
             $report['generated']++;
             if ($r['issued']) $report['issued']++;
