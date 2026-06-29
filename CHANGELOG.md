@@ -5,6 +5,16 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.43.2] — 2026-06-29
+
+### Fixed
+
+- **OpenAPI — opravené cesty pravidelných fakturací (`/api/v1/recurring`).** Endpointy pravidelných fakturací byly v `openapi.yaml` zdokumentované dvakrát: jednou správně pod veřejnou cestou `/api/v1/recurring*` a jednou jako starší zbytek pod `/api/recurring*` (bez `/v1/` prefixu). Druhá varianta byla pro konzumenty veřejného API nepoužitelná (token na cestu bez `/v1/` odmítne ApiScopeMiddleware) a zároveň rozbíjela strojové parsování specifikace (`duplicated mapping key`). Stará kopie byla odstraněna, zůstává jediná korektní definice pod `/api/v1/`. Bez dopadu na běh aplikace (jen dokumentace API).
+
+### Changed
+
+- **Manuál — instalace nativní: stažení hotového balíčku místo buildu + sekce Aktualizace.** Kapitola *Instalace — Nativní* nově upozorňuje, že místo buildu ze zdrojáků (Composer + Node/pnpm) stačí stáhnout hotový **production bundle** z GitHub Releases (obsahuje `api/vendor/`, `web/dist/` i vyrenderovaný manuál) — přibyla sekce *4.6 Alternativa: hotový balíček (bez buildu)*. Doplněna i sekce *4.7 Aktualizace* (build ze zdrojáků vs. bundle) s odkazy na kapitolu Aktualizace.
+
 ## [4.43.1] — 2026-06-28
 
 ### Changed
