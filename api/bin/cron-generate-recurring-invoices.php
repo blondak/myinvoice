@@ -149,6 +149,25 @@ foreach ($candidates as $t) {
                 !empty($r['sent_to']) ? ' → ' . implode(', ', $r['sent_to']) : '',
                 $r['new_next_run_date'] ?? '?',
                 $r['template_status'] === 'expired' ? ', EXPIRED' : '');
+
+            // Po uzávěrce rovnou otevři koncept DALŠÍHO období, pokud už začalo
+            // (draftOpenDate <= dnes) — u end-of-month šablon je to 1. den nového
+            // měsíce, takže 1.7. proběhne „uzavři červen (k 30.6.) → otevři červenec"
+            // v jednom běhu a koncept je k dispozici hned od 1. dne období, ne až
+            // další den. Idempotentní (openDraft si existující koncept nevytvoří
+            // znovu). Přeskoč u expirované šablony (end_date prošel).
+            $newNext = $r['new_next_run_date'] ?? null;
+            if ($r['template_status'] !== 'expired'
+                && $newNext !== null
+                && RecurringInvoiceGenerator::draftOpenDate($newNext) <= $today
+            ) {
+                $open = $generator->openDraft($tplId, null, '', $ua);
+                if ($open['created']) {
+                    $report['opened']++;
+                    printf("  ⊕ #%d \"%s\" → koncept #%d otevřen (vystavení: %s)\n",
+                        $tplId, (string) $t['name'], $open['invoice_id'], $newNext);
+                }
+            }
         } else {
             // Legacy at_issue — open+issue v jednom kroku (původní chování).
             $r = $generator->generate($tplId, null, null, '', $ua);

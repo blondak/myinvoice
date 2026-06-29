@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.43.1] — 2026-06-28
+
+### Changed
+
+- **Pravidelné fakturace — nový koncept dalšího období se otevře hned po uzávěrce předchozího.** Navazuje na 4.43.0: u režimu *Na začátku období* cron po uzavření a vystavení předchozího období (den po jeho konci, se zpětným datem k poslednímu dni) **rovnou otevře koncept dalšího období**, pokud už začalo. V praxi tak 1. den měsíce proběhne v jednom běhu „uzavři minulé období (k poslednímu dni) → otevři nové" a uživatel má koncept k zápisu víceprací k dispozici **hned od 1. dne období** (dřív až následující den). Idempotentní, jen pro *Na začátku období*, bez DB migrace.
+
 ## [4.43.0] — 2026-06-28
 
 ### Added
