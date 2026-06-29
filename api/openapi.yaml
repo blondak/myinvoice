@@ -2002,30 +2002,37 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
-  /api/v1/bank-statements/scan:
+  /api/v1/bank-statements/{id}/rematch:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+        description: ID výpisu (např. z odpovědi `/bank-statements/upload`).
     post:
       tags: [Bank]
-      summary: Auto-matching transakcí proti otevřeným fakturám
+      summary: Přepáruje nespárované transakce výpisu proti fakturám
       description: |
-        Pro všechny `unmatched` transakce zkusí najít fakturu podle:
+        Auto-matching nad transakcemi výpisu **přímo v databázi** — žádný
+        souborový import ani konfigurace serveru se nepoužívá. Vhodné po nahrání
+        výpisu přes `/bank-statements/upload`, nebo když uživatel ex-post doplnil
+        faktury, které by se daly napárovat.
+
+        Projde transakce výpisu ve stavu `unmatched` a `auto_partial` a pro každou
+        zkusí najít fakturu podle:
         - variabilního symbolu (přesný match) — preferovaná cesta,
         - částky + protiúčtu (fallback).
 
-        Pokud najde unikátní match, transakce se označí `matched`, faktura
-        `paid` s `paid_at = transaction.posted_at`. Multi-match transakce
-        zůstávají nepřiřazené pro manuální rozhodnutí.
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                statement_id:
-                  type: integer
-                  format: int64
-                  description: Pokud chybí, scan-uje všechny unmatched napříč všemi výpisy
+        Příchozí platba se páruje na vystavenou fakturu, odchozí na přijatou.
+        Při unikátní shodě se transakce označí jako spárovaná a faktura `paid`
+        s `paid_at = transaction.posted_at`; transakce s více kandidáty zůstávají
+        nepřiřazené pro manuální rozhodnutí. Stavy `auto_exact`, `manual`
+        a `ignored` zůstávají nedotčené.
+
+        Pozn.: hromadný **import výpisů z adresáře na serveru** (`scan_root`) je
+        hostitelská/cron záležitost a není součástí veřejného API — výpisy se přes
+        API nahrávají endpointem `/bank-statements/upload`.
       responses:
         '200':
           description: OK
@@ -2034,11 +2041,19 @@ paths:
               schema:
                 type: object
                 properties:
-                  matched_count: { type: integer }
-                  multi_match_count:
+                  considered:
                     type: integer
-                    description: Transakce s víc kandidáty (nepárované, vyžadují ruční rozhodnutí)
-                  remaining_unmatched: { type: integer }
+                    description: Počet transakcí, které se přepárovávaly (unmatched + auto_partial).
+                  newly_matched:
+                    type: integer
+                    description: Nově přesně spárované (auto_exact).
+                  newly_partial:
+                    type: integer
+                    description: Nově částečně spárované (auto_partial — částka v širší toleranci).
+                  still_unmatched:
+                    type: integer
+                    description: Po přepárování stále nespárované.
+        '404': { description: "Výpis nenalezen nebo nepatří current supplier" }
 
   /api/v1/codebooks/countries:
     get:
