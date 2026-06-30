@@ -49,6 +49,7 @@ final class ApiScopeMiddleware implements MiddlewareInterface
         '#^/api/openapi\.yaml$#',
         '#^/api/docs$#',
         '#^/api/reference$#',
+        '#^/api/scalar$#',
         '#^/api/auth/api-me$#',
         // Byznys zdroje
         '#^/api/clients(/|$)#',

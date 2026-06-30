@@ -170,6 +170,7 @@ final class Routes
         $app->get('/api/openapi.yaml', [OpenApiAction::class, 'spec']);
         $app->get('/api/docs',         [OpenApiAction::class, 'docs']);       // Swagger UI (Try it out)
         $app->get('/api/reference',    [OpenApiAction::class, 'reference']);  // Redoc (pretty static)
+        $app->get('/api/scalar',       [OpenApiAction::class, 'scalar']);     // Scalar (moderní reference)
 
         // Admin — kontrola a upgrade nové verze (M9, issue „Kontrola a upgrade")
         $app->get  ('/api/admin/update/status',  [UpdateAction::class, 'status']);
