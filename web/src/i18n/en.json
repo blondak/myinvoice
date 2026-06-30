@@ -1456,6 +1456,7 @@
     "doc_proforma": "Proforma invoice",
     "doc_credit_note": "Credit note (correction)",
     "credit_note_warning": "⚠ Manual credit note — if it relates to a specific invoice, issue it via Cancel / credit note in that invoice's detail.",
+    "type_change_renumber": "⚠ Changing the type renumbers the document — the current number {varsymbol} is released back to its series and a new number from the target type's series is assigned.",
     "client": "Client",
     "select_client": "Select client…",
     "project": "Project",

@@ -1456,6 +1456,7 @@
     "doc_proforma": "Zálohová faktura (proforma)",
     "doc_credit_note": "Opravný daňový doklad (dobropis)",
     "credit_note_warning": "⚠ Dobropis ručně — pokud se vztahuje k jiné faktuře, vystav ho přes Storno / dobropis v detailu té faktury.",
+    "type_change_renumber": "⚠ Změna typu přečísluje doklad — stávající číslo {varsymbol} se uvolní z původní řady a uloží se nové číslo z řady cílového typu.",
     "client": "Klient",
     "select_client": "Vybrat klienta…",
     "project": "Zakázka",
