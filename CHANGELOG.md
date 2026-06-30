@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **iDoklad import — přijaté účtenky/paragony (`ReceivedReceipts`).** Import z iDokladu dosud stahoval jen `ReceivedInvoices` (přijaté faktury) a koncový bod `ReceivedReceipts` přeskakoval — přijaté účtenky/paragony se tak vůbec nepřenesly. Nově se importují do `purchase_invoices` s `document_kind='receipt'` (řídí se přes nový parametr `include_receipts`, default zapnuto). Mapování zohledňuje odlišnosti účtenky od faktury: účtenka nemá splatnost (`DateOfMaturity`) ani DUZP (`DateOfTaxing`) → `issue_date`/`tax_date`/`due_date` se odvodí z `DateOfIssue`, a číslo dokladu dodavatele je `ExternalDocumentNumber` (fallback `DocumentNumber`). Hotovostní účtenka bez kontaktu (`Partner` = null) se **naváže na sběrného systémového dodavatele „Hotovostní nákup (účtenka)"** (aby se náklad neztratil) a importuje se **bez nároku na odpočet DPH** (`vat_deduction='none'`) s upozorněním k doplnění dodavatele — u plátce tak nevzniká chybný odpočet, u neplátce je to bez dopadu. Dedup přes `idoklad_id` i `(vendor, číslo, datum)` zůstává — opakovaný import nepřidává duplicity. Položkové ceny i rekapitulace DPH se skládají z autoritativních per-řádkových `Prices` stejně jako u přijatých faktur (řeší i ceny s DPH na účtenkách). Účtenka je hrazená na místě, takže se importuje rovnou jako **zaplacená** (`paid_at` = datum vystavení), pokud iDoklad nevrátí konkrétnější stav úhrady.
+
 ## [4.43.4] — 2026-07-01
 
 ### Fixed
