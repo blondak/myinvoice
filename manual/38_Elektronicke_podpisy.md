@@ -283,6 +283,10 @@ neprovede a použije se nastavená politika chyby. V režimu **Podepsat a varova
 se e-mail podepíše, ale do activity logu se zapíše varování s původním
 odesílatelem, e-mailem certifikátu a použitým profilem.
 
+Pokud je v **Odesílacím e-mailovém profilu** vybraný konkrétní S/MIME profil,
+má pro daný e-mail přednost před obecným mapováním profilu ve výstupu. Díky tomu
+může jedna odesílací identita držet pohromadě `From`, DKIM identitu a certifikát.
+
 S/MIME podpis e-mail nešifruje. Obsah zprávy zůstává čitelný stejně jako u
 běžného e-mailu, jen je opatřen elektronickým podpisem.
 

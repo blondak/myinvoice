@@ -7,6 +7,7 @@ namespace MyInvoice\Service\Mail;
 use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\EmailProfileRepository;
 use MyInvoice\Repository\EmailTemplateRepository;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\Signing\Email\EmailSigningService;
@@ -14,6 +15,13 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Mailer as SymfonyMailer;
 use Symfony\Component\Mailer\Transport;
+use Symfony\Component\Mailer\Transport\Smtp\Auth\CramMd5Authenticator;
+use Symfony\Component\Mailer\Transport\Smtp\Auth\LoginAuthenticator;
+use Symfony\Component\Mailer\Transport\Smtp\Auth\PlainAuthenticator;
+use Symfony\Component\Mailer\Transport\Smtp\Auth\XOAuth2Authenticator;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Crypto\DkimSigner;
 use Symfony\Component\Mime\Email;
@@ -34,6 +42,8 @@ final class Mailer
 {
     private ?SymfonyMailer $mailer = null;
     private mixed $transport = null;
+    /** @var array<string,TransportInterface> */
+    private array $profileTransports = [];
     private ?Environment $twig = null;
     private ?array $supplierFooter = null;
 
@@ -43,6 +53,7 @@ final class Mailer
         private readonly Connection $db,
         private readonly EmailTemplateRepository $templates,
         private readonly ?EmailSigningService $emailSigning = null,
+        private readonly ?EmailProfileRepository $emailProfiles = null,
     ) {}
 
     /**
@@ -52,6 +63,7 @@ final class Mailer
      * @param string[]      $bcc
      * @param array<int,array{path:string,name:string,contentType:string}> $attachments
      * @param ?int          $userId Přihlášený uživatel pro výběr user podpisového profilu.
+     * @param array<string,mixed>|null $emailProfileOverride Explicitní profil pro test konfigurace.
      * @return string Krátký SMTP server response z poslední odpovědi (např.
      *               „250 2.0.0 Ok: queued as ABCDEF"). Plný transcript jde
      *               do log/myinvoice-*.log na úrovni info.
@@ -66,6 +78,7 @@ final class Mailer
         array $bcc = [],
         array $attachments = [],
         ?int $userId = null,
+        ?array $emailProfileOverride = null,
     ): string {
         $twig = $this->twig();
 
@@ -122,14 +135,23 @@ final class Mailer
         $globalFromEmail = (string) $this->config->get('smtp.from_email');
         $globalFromName  = (string) $this->config->get('smtp.from_name');
         $supplier = is_array($vars['supplier'] ?? null) ? $vars['supplier'] : null;
+        $emailProfile = $emailProfileOverride ?? $this->defaultEmailProfile($supplier);
         $fromName = $globalFromName;
         if ($supplier !== null) {
             $supName = (string) ($supplier['display_name'] ?? $supplier['company_name'] ?? '');
             if ($supName !== '') $fromName = $supName;
         }
+        $fromEmail = $globalFromEmail;
+        if ($emailProfile !== null) {
+            $fromEmail = (string) $emailProfile['from_email'];
+            $profileFromName = trim((string) ($emailProfile['from_name'] ?? ''));
+            if ($profileFromName !== '') {
+                $fromName = $profileFromName;
+            }
+        }
 
         $email = (new Email())
-            ->from(new Address($globalFromEmail, $fromName))
+            ->from(new Address($fromEmail, $fromName))
             ->subject((string) $vars['subject'])
             ->html($html)
             ->text($text);
@@ -159,10 +181,19 @@ final class Mailer
         foreach ($cc as $addr)  $email->addCc($addr);
         foreach ($bcc as $addr) $email->addBcc($addr);
 
-        // Reply-To: per-supplier override (supplier.email) > globální cfg.smtp.reply_to_email
+        // Reply-To: email profile controls its own fallback. Without profile:
+        // supplier.email > cfg.smtp.reply_to_email.
         $replyEmail = '';
         $replyName  = '';
-        if ($supplier !== null && !empty($supplier['email']) && filter_var($supplier['email'], FILTER_VALIDATE_EMAIL)) {
+        if ($emailProfile !== null) {
+            if (($emailProfile['reply_to_enabled'] ?? false)
+                && !empty($emailProfile['reply_to_email'])
+                && filter_var($emailProfile['reply_to_email'], FILTER_VALIDATE_EMAIL)
+            ) {
+                $replyEmail = (string) $emailProfile['reply_to_email'];
+                $replyName = (string) ($emailProfile['reply_to_name'] ?? '');
+            }
+        } elseif ($supplier !== null && !empty($supplier['email']) && filter_var($supplier['email'], FILTER_VALIDATE_EMAIL)) {
             $replyEmail = (string) $supplier['email'];
             $replyName  = (string) ($supplier['display_name'] ?? $supplier['company_name'] ?? '');
         } else {
@@ -189,22 +220,40 @@ final class Mailer
         $envelope = new Envelope($snapshot->getSender(), $snapshot->getRecipients());
 
         if ($this->emailSigning !== null) {
-            $email = $this->emailSigning->signIfEnabled($email, $code, $supplier, $userId);
+            $email = $this->emailSigning->signIfEnabled(
+                $email,
+                $code,
+                $supplier,
+                $userId,
+                $emailProfile !== null ? ($emailProfile['signing_profile_id'] ?? null) : null,
+            );
         }
 
         // DKIM signer
         if ($this->config->get('smtp.dkim.enabled', false)) {
             $keyPath = (string) $this->config->get('smtp.dkim.private_key_path', '');
-            if (is_file($keyPath)) {
+            if ($emailProfile !== null) {
+                $dkimDomain = (string) ($emailProfile['dkim_domain'] ?? '');
+                $dkimSelector = (string) ($emailProfile['dkim_selector'] ?? '');
+                $dkimEnabled = ($emailProfile['dkim_enabled'] ?? false)
+                    && $dkimDomain !== ''
+                    && $dkimSelector !== '';
+            } else {
+                $dkimDomain = (string) $this->config->get('smtp.dkim.domain');
+                $dkimSelector = (string) $this->config->get('smtp.dkim.selector');
+                $dkimEnabled = $dkimDomain !== '' && $dkimSelector !== '';
+            }
+
+            if ($dkimEnabled && is_file($keyPath)) {
                 $signer = new DkimSigner(
                     'file://' . $keyPath,
-                    (string) $this->config->get('smtp.dkim.domain'),
-                    (string) $this->config->get('smtp.dkim.selector'),
+                    $dkimDomain,
+                    $dkimSelector,
                     [],
                     (string) $this->config->get('smtp.dkim.passphrase', ''),
                 );
                 $email = $signer->sign($email);
-            } else {
+            } elseif ($dkimEnabled) {
                 $this->logger->warning('DKIM enabled, ale private key neexistuje: ' . $keyPath);
             }
         }
@@ -212,13 +261,21 @@ final class Mailer
         // POZOR: high-level `Symfony\Component\Mailer\Mailer::send()` vrací void
         // (od 5.x). Pro získání SentMessage s debug transcriptem musíme volat
         // transport->send() napřímo. Stejný transport instance jako $this->mailer().
-        $sent = $this->transport()->send($email, $envelope);
+        $transport = $this->transport($emailProfile);
+        try {
+            $sent = $transport->send($email, $envelope);
+        } finally {
+            if (!$this->keepaliveEnabled($emailProfile) && method_exists($transport, 'stop')) {
+                $transport->stop();
+            }
+        }
         $debug = $sent !== null ? $sent->getDebug() : '';
         $smtpResponse = $this->extractLastServerResponse($debug);
 
         $this->logger->info('mail.sent', [
             'template'      => $code,
             'locale'        => $locale,
+            'email_profile' => $emailProfile !== null ? ($emailProfile['code'] ?? null) : null,
             'to'            => $to,
             'cc'            => $cc,
             'bcc'           => $bcc,
@@ -230,6 +287,28 @@ final class Mailer
         ]);
 
         return $smtpResponse;
+    }
+
+    /**
+     * @param array<string,mixed>|null $supplier
+     * @return array<string,mixed>|null
+     */
+    private function defaultEmailProfile(?array $supplier): ?array
+    {
+        if ($this->emailProfiles === null || $supplier === null || empty($supplier['id'])) {
+            return null;
+        }
+
+        try {
+            return $this->emailProfiles->defaultProfile((int) $supplier['id'], true);
+        } catch (\Throwable $e) {
+            $this->logger->warning('mail.email_profile_lookup_failed', [
+                'supplier_id' => (int) $supplier['id'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -267,45 +346,187 @@ final class Mailer
         return $this->mailer;
     }
 
-    private function transport(): \Symfony\Component\Mailer\Transport\TransportInterface
+    /**
+     * @param array<string,mixed>|null $emailProfile
+     */
+    private function transport(?array $emailProfile = null): TransportInterface
     {
+        if ($this->usesProfileTransport($emailProfile)) {
+            if ($this->keepaliveEnabled($emailProfile)) {
+                $key = $this->profileTransportCacheKey($emailProfile);
+                if (!isset($this->profileTransports[$key])) {
+                    $this->profileTransports[$key] = $this->buildTransport($emailProfile);
+                }
+
+                return $this->profileTransports[$key];
+            }
+
+            return $this->buildTransport($emailProfile);
+        }
+
         if ($this->transport === null) {
-            $this->transport = Transport::fromDsn($this->buildDsn());
+            $this->transport = $this->buildTransport();
         }
         return $this->transport;
     }
 
-    private function buildDsn(): string
+    /**
+     * @param array<string,mixed>|null $emailProfile
+     */
+    private function usesProfileTransport(?array $emailProfile): bool
     {
-        $host = (string) $this->config->get('smtp.host');
-        $port = (int) $this->config->get('smtp.port', 25);
-        $authEnabled = (bool) $this->config->get('smtp.auth_enabled', false);
-        $user = (string) $this->config->get('smtp.user', '');
-        $pass = (string) $this->config->get('smtp.pass', '');
-        $encryption = (string) $this->config->get('smtp.encryption', '');
-        $verifyPeer = (bool) $this->config->get('smtp.verify_peer', true);
+        return $emailProfile !== null
+            && in_array((string) ($emailProfile['transport_type'] ?? 'global'), ['smtp', 'sendmail'], true);
+    }
 
-        $userPart = '';
+    /**
+     * @param array<string,mixed>|null $emailProfile
+     */
+    private function buildTransport(?array $emailProfile = null): TransportInterface
+    {
+        if ($emailProfile !== null && ($emailProfile['transport_type'] ?? 'global') === 'smtp') {
+            return $this->smtpTransport(
+                (string) ($emailProfile['smtp_host'] ?? ''),
+                (int) ($emailProfile['smtp_port'] ?? 587),
+                (bool) ($emailProfile['smtp_auth_enabled'] ?? false),
+                (string) ($emailProfile['smtp_auth_type'] ?? 'PLAIN'),
+                (string) ($emailProfile['smtp_username'] ?? ''),
+                (string) ($emailProfile['smtp_password'] ?? ''),
+                (string) ($emailProfile['smtp_encryption'] ?? 'tls'),
+                (bool) ($emailProfile['smtp_verify_peer'] ?? true),
+                (bool) ($emailProfile['smtp_verify_peer_name'] ?? true),
+                (bool) ($emailProfile['smtp_allow_self_signed'] ?? false),
+                isset($emailProfile['smtp_timeout']) ? (int) $emailProfile['smtp_timeout'] : 30,
+            );
+        }
+
+        if ($emailProfile !== null && ($emailProfile['transport_type'] ?? 'global') === 'sendmail') {
+            $command = trim((string) ($emailProfile['sendmail_command'] ?? ''));
+            return Transport::fromDsn($this->sendmailDsn($command));
+        }
+
+        return $this->smtpTransport(
+            (string) $this->config->get('smtp.host'),
+            (int) $this->config->get('smtp.port', 25),
+            (bool) $this->config->get('smtp.auth_enabled', false),
+            (string) $this->config->get('smtp.auth_type', 'PLAIN'),
+            (string) $this->config->get('smtp.user', ''),
+            (string) $this->config->get('smtp.pass', ''),
+            (string) $this->config->get('smtp.encryption', ''),
+            (bool) $this->config->get('smtp.verify_peer', true),
+            (bool) $this->config->get('smtp.verify_peer_name', true),
+            (bool) $this->config->get('smtp.allow_self_signed', false),
+            (int) $this->config->get('smtp.timeout', 30),
+        );
+    }
+
+    private function smtpTransport(
+        string $host,
+        int $port,
+        bool $authEnabled,
+        string $authType,
+        string $user,
+        string $pass,
+        string $encryption,
+        bool $verifyPeer,
+        bool $verifyPeerName,
+        bool $allowSelfSigned,
+        int $timeout,
+    ): EsmtpTransport {
+        $tls = match ($encryption) {
+            'ssl' => true,
+            '', 'none' => false,
+            default => null,
+        };
+
+        $transport = new EsmtpTransport(
+            $host,
+            $port,
+            $tls,
+            null,
+            $this->logger,
+            null,
+            $authEnabled ? $this->smtpAuthenticators($authType) : [],
+        );
+        $transport->setAutoTls($encryption !== '' && $encryption !== 'none');
+        $transport->setRequireTls($encryption === 'tls');
+
         if ($authEnabled && $user !== '') {
-            $userPart = rawurlencode($user) . ':' . rawurlencode($pass) . '@';
+            $transport->setUsername($user);
+            $transport->setPassword($pass);
         }
 
-        $params = [];
-        // encryption: ssl (port 465 implicit TLS), tls (STARTTLS), '' = plain
-        if ($encryption === 'tls') {
-            // STARTTLS — Symfony to defaultně udělá pro port 587
-        }
-        if ($encryption === '') {
-            // Plain — disable peer verify implicitly
-            $verifyPeer = false;
-        }
-        if (!$verifyPeer) {
-            $params[] = 'verify_peer=0';
+        $stream = $transport->getStream();
+        if ($stream instanceof SocketStream) {
+            $stream->setTimeout(max(1, min(300, $timeout)));
+            $streamOptions = $stream->getStreamOptions();
+            if ($encryption !== '' && $encryption !== 'none') {
+                $streamOptions['ssl']['verify_peer'] = $verifyPeer;
+                $streamOptions['ssl']['verify_peer_name'] = $verifyPeer && $verifyPeerName;
+                $streamOptions['ssl']['allow_self_signed'] = $allowSelfSigned;
+            }
+            $stream->setStreamOptions($streamOptions);
         }
 
-        $query = $params ? '?' . implode('&', $params) : '';
+        return $transport;
+    }
 
-        return sprintf('smtp://%s%s:%d%s', $userPart, $host, $port, $query);
+    /**
+     * @return list<object>
+     */
+    private function smtpAuthenticators(string $authType): array
+    {
+        return match (strtoupper($authType)) {
+            'LOGIN' => [new LoginAuthenticator()],
+            'CRAM-MD5' => [new CramMd5Authenticator()],
+            'XOAUTH2' => [new XOAuth2Authenticator()],
+            default => [new PlainAuthenticator()],
+        };
+    }
+
+    private function sendmailDsn(string $command): string
+    {
+        if ($command === '') {
+            return 'sendmail://default';
+        }
+
+        return 'sendmail://default?command=' . rawurlencode($command);
+    }
+
+    /**
+     * @param array<string,mixed>|null $emailProfile
+     */
+    private function keepaliveEnabled(?array $emailProfile): bool
+    {
+        if ($emailProfile !== null && ($emailProfile['transport_type'] ?? 'global') === 'smtp') {
+            return (bool) ($emailProfile['smtp_keepalive'] ?? false);
+        }
+
+        return (bool) $this->config->get('smtp.keepalive', false);
+    }
+
+    /**
+     * @param array<string,mixed> $emailProfile
+     */
+    private function profileTransportCacheKey(array $emailProfile): string
+    {
+        $identity = [
+            'id' => $emailProfile['id'] ?? null,
+            'transport_type' => $emailProfile['transport_type'] ?? 'global',
+            'smtp_host' => $emailProfile['smtp_host'] ?? null,
+            'smtp_port' => $emailProfile['smtp_port'] ?? null,
+            'smtp_encryption' => $emailProfile['smtp_encryption'] ?? null,
+            'smtp_auth_enabled' => $emailProfile['smtp_auth_enabled'] ?? null,
+            'smtp_auth_type' => $emailProfile['smtp_auth_type'] ?? null,
+            'smtp_username' => $emailProfile['smtp_username'] ?? null,
+            'smtp_password' => $emailProfile['smtp_password'] ?? null,
+            'smtp_verify_peer' => $emailProfile['smtp_verify_peer'] ?? null,
+            'smtp_verify_peer_name' => $emailProfile['smtp_verify_peer_name'] ?? null,
+            'smtp_allow_self_signed' => $emailProfile['smtp_allow_self_signed'] ?? null,
+            'smtp_timeout' => $emailProfile['smtp_timeout'] ?? null,
+        ];
+
+        return hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
     }
 
     private function twig(): Environment
@@ -515,6 +736,7 @@ final class Mailer
             'cs' => [
                 'password_reset'    => 'Obnova hesla — MyInvoice.cz',
                 'login_otp'         => 'Ověřovací kód pro přihlášení — MyInvoice.cz',
+                'email_profile_test'=> 'Test odesílacího profilu — MyInvoice.cz',
                 'invoice_send'      => 'Faktura — MyInvoice.cz',
                 'invoice_payment_thanks' => 'Poděkování za úhradu — MyInvoice.cz',
                 'invoice_reminder'  => 'Upomínka — MyInvoice.cz',
@@ -526,6 +748,7 @@ final class Mailer
             'en' => [
                 'password_reset'    => 'Password reset — MyInvoice.cz',
                 'login_otp'         => 'Sign-in verification code — MyInvoice.cz',
+                'email_profile_test'=> 'Sending profile test — MyInvoice.cz',
                 'invoice_send'      => 'Invoice — MyInvoice.cz',
                 'invoice_payment_thanks' => 'Thank you for your payment — MyInvoice.cz',
                 'invoice_reminder'  => 'Reminder — MyInvoice.cz',

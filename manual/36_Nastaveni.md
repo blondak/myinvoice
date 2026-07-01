@@ -225,10 +225,58 @@ Aktuální konfigurace už není jeden certifikát dodavatele, ale sada
 podpisových profilů a mapování pro jednotlivé výstupy. Detailní postup je v
 [kapitole 28. Elektronické podpisy](38_Elektronicke_podpisy.md).
 
-## 36.7 SMTP log analýza
+## 36.7 Odesílací e-mailové profily
 
-**Systém → E-maily → záložka SMTP log analýza** (čtvrtá záložka vedle
-Odeslaných e-mailů, Šablon a Elektronických podpisů). Přístup pouze pro **admin**.
+**Systém → E-maily → záložka Odesílací profily** definuje identitu, pod kterou
+aplikace posílá odchozí e-maily aktuálního dodavatele.
+
+Profil obsahuje:
+
+- **From e-mail** a **From jméno** — adresa a jméno v hlavičce odesílatele,
+- volitelnou volbu **Konfigurovat Reply-To** — po zapnutí lze vyplnit odpovědní
+  adresu a jméno; když není zapnutá, profil hlavičku `Reply-To` do e-mailu
+  nevkládá a odpovědi tak směřují na `From` z profilu,
+- volitelný **S/MIME profil** — certifikát, který se použije pro podepsané
+  e-mailové výstupy; formulář hlídá shodu certifikační e-mailové identity s
+  `From e-mailem` a umí `From` z certifikátu předvyplnit,
+- volitelnou volbu **Konfigurovat DKIM** — po zapnutí je nutné vyplnit DKIM
+  doménu i selector pro tento profil; když není zapnutá, profil DKIM podpis
+  nepoužije,
+- **Transport** — výchozí globální `cfg.php`, vlastní SMTP účet nebo lokální
+  `sendmail`; u vlastního SMTP lze nastavit server, port, šifrování, typ
+  autentizace, TLS validaci, timeout a držení spojení, SMTP heslo/token se
+  ukládá šifrovaně,
+- přepínače **Výchozí profil** a **Aktivní**.
+
+Povinná pole jsou ve formuláři označená hvězdičkou. Před uložením i před
+odesláním testu aplikace zkontroluje aktuálně zobrazené povinné položky
+(`Reply-To`, DKIM a SMTP autentizace podle zapnutých voleb) a bez jejich
+vyplnění akci nespustí.
+
+Ve formuláři profilu i u každého uloženého profilu je akce **Test**, která
+pošle krátký testovací e-mail na e-mail přihlášeného uživatele, případně na
+e-mail dodavatele nebo globální `cfg.php → smtp.from_email`. Test ve formuláři
+použije aktuálně vyplněné hodnoty bez uložení do databáze. Test použije přímo
+vybraný profil, i když není výchozí, takže ověřuje jeho `From`, `Reply-To`,
+DKIM/S/MIME i transport. Po testu formulář zobrazí buď chybu vrácenou serverem,
+nebo informaci, že transport e-mail přijal, včetně poslední SMTP/transport
+odpovědi, pokud ji backend získal.
+
+Když existuje aktivní výchozí profil, používá ho `Mailer` pro všechny odchozí
+e-maily daného dodavatele. Pokud žádný aktivní výchozí profil není, chování je
+stejné jako bez profilů: `From` se bere z globální SMTP konfigurace a jméno
+odesílatele z dodavatele. Fallback na e-mail dodavatele nebo globální
+`cfg.php → smtp.reply_to_*` se pro `Reply-To` použije jen v tomto režimu bez
+aktivního profilu. Stejně tak globální DKIM doména/selector z `cfg.php` platí
+jen bez aktivního profilu; profil s vypnutým DKIM se nepodepisuje.
+
+Privátní DKIM klíč je stále globální v `cfg.php`. Odesílací profil může kromě
+identity zprávy změnit i samotný transport, pokud je potřeba posílat pro různé
+domény přes různé SMTP účty nebo lokální MTA.
+
+## 36.8 SMTP log analýza
+
+**Systém → E-maily → záložka SMTP log analýza**. Přístup pouze pro **admin**.
 
 Zatímco *Odeslané e-maily* ukazují, co se aplikace pokusila poslat (z pohledu
 aplikace), tahle záložka ukazuje, **co se reálně stalo na poštovním serveru** —
@@ -236,7 +284,7 @@ kam byla zpráva doručena a kde nastal problém. Čte přímo logy MTA (poštov
 serveru) a převádí je na přehledný seznam událostí. Jen čte; nic neodesílá ani
 nemění.
 
-### 36.7.1 Co uvidíš
+### 36.8.1 Co uvidíš
 
 - **Souhrnné karty** — počty doručovacích pokusů, doručeno / odloženo /
   odmítnuto a počet přijatých podání.
@@ -275,7 +323,7 @@ Stavy:
 > prohledá **den odeslání a následující den** pro její příjemce a ukáže per-příjemce
 > stav (doručeno / odloženo / odmítnuto) i jednotlivé pokusy s odpovědí serveru.
 
-### 36.7.2 Typické použití
+### 36.8.2 Typické použití
 
 - **„Došlo to klientovi?"** — fulltext na e-mail příjemce → uvidíš poslední stav
   doručení a odpověď jeho serveru.
@@ -284,7 +332,7 @@ Stavy:
 - **Diagnostika odmítnutí** — `541/554 antispam policy`, `550 unauthenticated`
   ukazují na problém s reputací / SPF / DKIM / DMARC.
 
-### 36.7.3 Nastavení
+### 36.8.3 Nastavení
 
 Konfigurace je v `cfg.php` (vzor v `cfg.sample.php`) v sekci `smtp_log`:
 

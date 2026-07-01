@@ -47,7 +47,13 @@ final class EmailSigningService
     /**
      * @param array<string,mixed>|null $supplier
      */
-    public function signIfEnabled(Message $message, string $templateCode, ?array $supplier, ?int $userId = null): Message
+    public function signIfEnabled(
+        Message $message,
+        string $templateCode,
+        ?array $supplier,
+        ?int $userId = null,
+        mixed $emailProfileSigningProfileId = null,
+    ): Message
     {
         $outputType = self::TEMPLATE_OUTPUT_TYPES[$templateCode] ?? null;
         $supplierId = (int) ($supplier['id'] ?? 0);
@@ -61,6 +67,10 @@ final class EmailSigningService
         }
 
         $profile = $this->selectProfile($supplierId, $outputSetting, $userId);
+        $emailProfileSigningProfileId = (int) ($emailProfileSigningProfileId ?? 0);
+        if ($emailProfileSigningProfileId > 0) {
+            $profile = $this->profileById($supplierId, $emailProfileSigningProfileId);
+        }
         if ($profile === null) {
             return $this->handleUnconfigured($message, $outputType, $outputSetting, $supplierId, $userId);
         }
@@ -77,6 +87,7 @@ final class EmailSigningService
                     'status' => 'warning',
                     'backend' => 'smime',
                     'profile_code' => $profile['profile']['code'] ?? null,
+                    'email_profile_signing_profile_id' => $emailProfileSigningProfileId > 0 ? $emailProfileSigningProfileId : null,
                 ], null, null, $supplierId);
             }
 
@@ -86,6 +97,7 @@ final class EmailSigningService
                 'status' => 'signed',
                 'backend' => 'smime',
                 'profile_code' => $profile['profile']['code'] ?? null,
+                'email_profile_signing_profile_id' => $emailProfileSigningProfileId > 0 ? $emailProfileSigningProfileId : null,
                 'from_email' => $this->messageFromEmail($message),
                 'identity_policy' => $identityPolicy,
                 'certificate_subject' => $profile['credential']['certificate_subject'] ?? null,
@@ -101,6 +113,7 @@ final class EmailSigningService
                 'status' => $policy->failClosed() ? 'failed' : 'fallback_unsigned',
                 'backend' => 'smime',
                 'profile_code' => $profile['profile']['code'] ?? null,
+                'email_profile_signing_profile_id' => $emailProfileSigningProfileId > 0 ? $emailProfileSigningProfileId : null,
                 'from_email' => $this->messageFromEmail($message),
                 'identity_policy' => $identityPolicy,
                 'certificate_email' => $profile['credential']['certificate_email'] ?? null,

@@ -314,6 +314,12 @@ export interface SigningProfile {
   pdf_tsa_username: string | null
   has_pdf_tsa_password: boolean
   pdf_reason: string | null
+  has_certificate?: boolean
+  certificate_subject?: string | null
+  certificate_email?: string | null
+  certificate_valid_from?: string | null
+  certificate_valid_to?: string | null
+  certificate_is_active?: boolean
   is_active: boolean
   created_by: number | null
   created_at: string
@@ -333,6 +339,82 @@ export interface SigningProfilePayload {
   pdf_tsa_password?: string | null
   pdf_reason?: string | null
   is_active?: boolean
+}
+
+export interface EmailProfile {
+  id: number
+  supplier_id: number
+  name: string
+  code: string
+  from_email: string
+  from_name: string | null
+  reply_to_email: string | null
+  reply_to_name: string | null
+  reply_to_enabled: boolean
+  signing_profile_id: number | null
+  signing_profile_name: string | null
+  signing_profile_code: string | null
+  dkim_domain: string | null
+  dkim_selector: string | null
+  dkim_enabled: boolean
+  transport_type: 'global' | 'smtp' | 'sendmail'
+  smtp_host: string | null
+  smtp_port: number | null
+  smtp_encryption: 'none' | 'tls' | 'ssl'
+  smtp_auth_enabled: boolean
+  smtp_auth_type: 'LOGIN' | 'PLAIN' | 'CRAM-MD5' | 'XOAUTH2'
+  smtp_username: string | null
+  has_smtp_password: boolean
+  smtp_verify_peer: boolean
+  smtp_verify_peer_name: boolean
+  smtp_allow_self_signed: boolean
+  smtp_timeout: number | null
+  smtp_keepalive: boolean
+  sendmail_command: string | null
+  is_default: boolean
+  is_active: boolean
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface EmailProfilePayload {
+  name: string
+  code: string
+  from_email: string
+  from_name?: string | null
+  reply_to_email?: string | null
+  reply_to_name?: string | null
+  reply_to_enabled?: boolean
+  signing_profile_id?: number | null
+  dkim_domain?: string | null
+  dkim_selector?: string | null
+  dkim_enabled?: boolean
+  transport_type?: 'global' | 'smtp' | 'sendmail'
+  smtp_host?: string | null
+  smtp_port?: number | null
+  smtp_encryption?: 'none' | 'tls' | 'ssl'
+  smtp_auth_enabled?: boolean
+  smtp_auth_type?: 'LOGIN' | 'PLAIN' | 'CRAM-MD5' | 'XOAUTH2'
+  smtp_username?: string | null
+  smtp_password?: string | null
+  smtp_verify_peer?: boolean
+  smtp_verify_peer_name?: boolean
+  smtp_allow_self_signed?: boolean
+  smtp_timeout?: number | null
+  smtp_keepalive?: boolean
+  sendmail_command?: string | null
+  is_default?: boolean
+  is_active?: boolean
+}
+
+export interface EmailProfileTestResult {
+  sent_to: string[]
+  sent_at: string
+  smtp_response: string
+  is_test: boolean
+  is_draft?: boolean
 }
 
 export type SigningCredentialPassphrasePolicy = 'encrypted_store' | 'passphrase_file' | 'prompt_on_use'
@@ -494,6 +576,19 @@ export const settingsApi = {
   deleteUnit: (id: number) => api.delete(`/settings/units/${id}`).then(r => r.data),
 
   // Email branding (M16)
+  listEmailProfiles: () =>
+    api.get<EmailProfile[]>('/settings/email-profiles').then(r => r.data),
+  createEmailProfile: (payload: EmailProfilePayload) =>
+    api.post<EmailProfile>('/settings/email-profiles', payload).then(r => r.data),
+  updateEmailProfile: (id: number, payload: Partial<EmailProfilePayload>) =>
+    api.put<EmailProfile>(`/settings/email-profiles/${id}`, payload).then(r => r.data),
+  testEmailProfile: (id: number) =>
+    api.post<EmailProfileTestResult>(`/settings/email-profiles/${id}/test`, {}).then(r => r.data),
+  testEmailProfileDraft: (payload: EmailProfilePayload, id?: number | null) =>
+    api.post<EmailProfileTestResult>('/settings/email-profiles/test', id ? { ...payload, id } : payload).then(r => r.data),
+  deleteEmailProfile: (id: number) =>
+    api.delete<{ deleted: boolean }>(`/settings/email-profiles/${id}`).then(r => r.data),
+
   uploadEmailLogo: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
