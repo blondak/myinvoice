@@ -87,7 +87,7 @@ final class EmailSigningServiceTest extends TestCase
             'secret',
             'fallback_unsigned',
             $this->once(),
-            [],
+            ['smime_identity_policy' => 'strict_match'],
             'signer@example.test',
             function (string $action, mixed ...$args) use (&$events): void {
                 $events[] = ['action' => $action, 'payload' => $args[3] ?? null];
@@ -112,7 +112,7 @@ final class EmailSigningServiceTest extends TestCase
     public function testStrictIdentityMismatchThrowsWhenFailurePolicyFailClosed(): void
     {
         $fixture = $this->p12Fixture('secret');
-        $service = $this->service($fixture['path'], 'secret', 'secret', 'fail_closed', $this->once());
+        $service = $this->service($fixture['path'], 'secret', 'secret', 'fail_closed', $this->once(), ['smime_identity_policy' => 'strict_match']);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('S/MIME podpis e-mailu selhal.');
@@ -134,6 +134,7 @@ final class EmailSigningServiceTest extends TestCase
             'secret',
             'fail_closed',
             $this->once(),
+            ['smime_identity_policy' => 'strict_match'],
             defaultProfileId: 0,
         );
 

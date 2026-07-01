@@ -352,8 +352,11 @@ final class EmailSigningService
     {
         $config = $this->identityConfig($outputSetting);
 
-        $policy = (string) ($config['smime_identity_policy'] ?? self::IDENTITY_POLICY_STRICT_MATCH);
-        return in_array($policy, self::IDENTITY_POLICIES, true) ? $policy : self::IDENTITY_POLICY_STRICT_MATCH;
+        // Default = warning_only: zachovává původní chování (podepíše, jen zaloguje
+        // varování při neshodě From↔certifikát) pro NOVÉ i STÁVAJÍCÍ profily, které
+        // politiku explicitně nezvolily. strict_match / *_override jsou opt-in přes UI.
+        $policy = (string) ($config['smime_identity_policy'] ?? self::IDENTITY_POLICY_WARNING_ONLY);
+        return in_array($policy, self::IDENTITY_POLICIES, true) ? $policy : self::IDENTITY_POLICY_WARNING_ONLY;
     }
 
     /**

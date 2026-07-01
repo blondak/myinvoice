@@ -510,8 +510,10 @@ function signingOutputBadges(outputType: string): string[] {
 }
 
 function smimeIdentityPolicy(setting: PdfSignatureOutputSetting): EmailSmimeIdentityPolicy {
+  // Default warning_only = shodné s backendem: podepíše i při neshodě From↔cert,
+  // jen zaloguje varování. strict_match / *_override jsou vědomý opt-in.
   const policy = setting.signature_config?.smime_identity_policy
-  return isEmailSmimeIdentityPolicy(policy) ? policy : 'strict_match'
+  return isEmailSmimeIdentityPolicy(policy) ? policy : 'warning_only'
 }
 
 function setSmimeIdentityPolicy(setting: PdfSignatureOutputSetting, policy: EmailSmimeIdentityPolicy) {
@@ -523,7 +525,7 @@ function setSmimeIdentityPolicy(setting: PdfSignatureOutputSetting, policy: Emai
 
 function onSmimeIdentityPolicyChange(setting: PdfSignatureOutputSetting, event: Event) {
   const value = (event.target as HTMLSelectElement | null)?.value
-  setSmimeIdentityPolicy(setting, isEmailSmimeIdentityPolicy(value) ? value : 'strict_match')
+  setSmimeIdentityPolicy(setting, isEmailSmimeIdentityPolicy(value) ? value : 'warning_only')
 }
 
 function isEmailSmimeIdentityPolicy(value: unknown): value is EmailSmimeIdentityPolicy {
