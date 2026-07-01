@@ -12,11 +12,20 @@ use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Signing\Pdf\PdfSignaturePolicy;
 use MyInvoice\Service\Signing\SigningPassphraseProviderInterface;
 use Symfony\Component\Mime\Crypto\SMimeSigner;
+use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Header\MailboxHeader;
+use Symfony\Component\Mime\Header\MailboxListHeader;
 use Symfony\Component\Mime\Message;
 
 final class EmailSigningService
 {
     private const USAGE = 'email_smime';
+    private const IDENTITY_POLICY_STRICT_MATCH = 'strict_match';
+    private const IDENTITY_POLICY_WARNING_ONLY = 'warning_only';
+    private const IDENTITY_POLICIES = [
+        self::IDENTITY_POLICY_STRICT_MATCH,
+        self::IDENTITY_POLICY_WARNING_ONLY,
+    ];
 
     private const TEMPLATE_OUTPUT_TYPES = [
         'invoice_send' => 'email_invoice_send',
@@ -57,14 +66,28 @@ final class EmailSigningService
         }
 
         $policy = new PdfSignaturePolicy($this->failurePolicy($outputSetting));
+        $identityPolicy = $this->identityPolicy($outputSetting);
         try {
+            $identityWarning = $this->validateIdentity($message, $profile, $identityPolicy);
             $signed = $this->signWithProfile($message, $profile);
+            if ($identityWarning !== null) {
+                $this->activity->log('signing.email_identity_warning', $userId, 'supplier', $supplierId, $identityWarning + [
+                    'output_type' => $outputType,
+                    'usage' => self::USAGE,
+                    'status' => 'warning',
+                    'backend' => 'smime',
+                    'profile_code' => $profile['profile']['code'] ?? null,
+                ], null, null, $supplierId);
+            }
+
             $this->activity->log('signing.email_signed', $userId, 'supplier', $supplierId, [
                 'output_type' => $outputType,
                 'usage' => self::USAGE,
                 'status' => 'signed',
                 'backend' => 'smime',
                 'profile_code' => $profile['profile']['code'] ?? null,
+                'from_email' => $this->messageFromEmail($message),
+                'identity_policy' => $identityPolicy,
                 'certificate_subject' => $profile['credential']['certificate_subject'] ?? null,
                 'certificate_email' => $profile['credential']['certificate_email'] ?? null,
                 'certificate_fingerprint' => $profile['credential']['certificate_fingerprint'] ?? null,
@@ -78,6 +101,9 @@ final class EmailSigningService
                 'status' => $policy->failClosed() ? 'failed' : 'fallback_unsigned',
                 'backend' => 'smime',
                 'profile_code' => $profile['profile']['code'] ?? null,
+                'from_email' => $this->messageFromEmail($message),
+                'identity_policy' => $identityPolicy,
+                'certificate_email' => $profile['credential']['certificate_email'] ?? null,
                 'error' => $this->sanitizeError($e->getMessage()),
                 'failure_policy' => $policy->failurePolicy,
             ], null, null, $supplierId);
@@ -295,6 +321,91 @@ final class EmailSigningService
         ], null, null, $supplierId);
 
         return $message;
+    }
+
+    /**
+     * @param array<string,mixed> $outputSetting
+     */
+    private function identityPolicy(array $outputSetting): string
+    {
+        $config = $outputSetting['signature_config'] ?? [];
+        if (!is_array($config)) {
+            return self::IDENTITY_POLICY_STRICT_MATCH;
+        }
+
+        $policy = (string) ($config['smime_identity_policy'] ?? self::IDENTITY_POLICY_STRICT_MATCH);
+        return in_array($policy, self::IDENTITY_POLICIES, true) ? $policy : self::IDENTITY_POLICY_STRICT_MATCH;
+    }
+
+    /**
+     * @param array{profile:array<string,mixed>,credential:array<string,mixed>,password_enc:string} $profile
+     * @return array<string,mixed>|null
+     */
+    private function validateIdentity(Message $message, array $profile, string $identityPolicy): ?array
+    {
+        $fromEmail = $this->messageFromEmail($message);
+        $certificateEmail = $this->normalizedEmail($profile['credential']['certificate_email'] ?? null);
+        $normalizedFrom = $this->normalizedEmail($fromEmail);
+
+        $reason = null;
+        $error = null;
+        if ($normalizedFrom === null) {
+            $reason = 'missing_from';
+            $error = 'S/MIME podpis vyžaduje hlavičku From.';
+        } elseif ($certificateEmail === null) {
+            $reason = 'missing_certificate_email';
+            $error = 'S/MIME certifikát neobsahuje e-mailovou identitu pro kontrolu odesílatele.';
+        } elseif ($normalizedFrom !== $certificateEmail) {
+            $reason = 'email_mismatch';
+            $error = 'S/MIME certifikát neodpovídá odesílateli From.';
+        }
+
+        if ($reason === null) {
+            return null;
+        }
+
+        $payload = [
+            'reason' => $reason,
+            'identity_policy' => $identityPolicy,
+            'from_email' => $fromEmail,
+            'certificate_email' => $profile['credential']['certificate_email'] ?? null,
+            'error' => $error,
+        ];
+
+        if ($identityPolicy === self::IDENTITY_POLICY_WARNING_ONLY) {
+            return $payload;
+        }
+
+        throw new \RuntimeException($error);
+    }
+
+    private function messageFromEmail(Message $message): ?string
+    {
+        if ($message instanceof Email) {
+            $from = $message->getFrom();
+            return $from[0]->getAddress() ?? null;
+        }
+
+        $header = $message->getHeaders()->get('From');
+        if ($header instanceof MailboxListHeader) {
+            $addresses = $header->getAddresses();
+            return $addresses[0]->getAddress() ?? null;
+        }
+        if ($header instanceof MailboxHeader) {
+            return $header->getAddress()->getAddress();
+        }
+
+        return null;
+    }
+
+    private function normalizedEmail(mixed $email): ?string
+    {
+        if (!is_string($email)) {
+            return null;
+        }
+
+        $email = trim($email);
+        return $email !== '' ? strtolower($email) : null;
     }
 
     /**

@@ -44,6 +44,8 @@ const showSigningProfileForm = ref(false)
 const editingSigningProfile = ref<number | null>(null)
 const signingProfileTsaEnabled = ref(false)
 const signingProfileOwnerMode = ref<'supplier' | 'current_user' | 'other_user'>('supplier')
+type EmailSmimeIdentityPolicy = 'strict_match' | 'warning_only'
+
 const signingProfileDraft = reactive<SigningProfilePayload & { owner_user_id: number | null; is_active: boolean }>({
   owner_user_id: null,
   name: '',
@@ -501,6 +503,22 @@ function signingOutputBadges(outputType: string): string[] {
   return [signingOutputUsage(outputType) === 'email_smime' ? 'S/MIME' : 'PDF']
 }
 
+function smimeIdentityPolicy(setting: PdfSignatureOutputSetting): EmailSmimeIdentityPolicy {
+  return setting.signature_config?.smime_identity_policy === 'warning_only' ? 'warning_only' : 'strict_match'
+}
+
+function setSmimeIdentityPolicy(setting: PdfSignatureOutputSetting, policy: EmailSmimeIdentityPolicy) {
+  setting.signature_config = {
+    ...(setting.signature_config || {}),
+    smime_identity_policy: policy,
+  }
+}
+
+function onSmimeIdentityPolicyChange(setting: PdfSignatureOutputSetting, event: Event) {
+  const value = (event.target as HTMLSelectElement | null)?.value
+  setSmimeIdentityPolicy(setting, value === 'warning_only' ? 'warning_only' : 'strict_match')
+}
+
 function signingProfileName(profileId: number | null): string {
   if (profileId === null) return t('settings.signing_output_profile_none')
   return signingProfiles.value.find(profile => profile.id === profileId)?.name || `#${profileId}`
@@ -872,6 +890,7 @@ async function testPdfOutputSetting(setting: PdfSignatureOutputSetting) {
                   <th class="px-3 py-2 text-left font-medium">{{ t('settings.signing_output_profile') }}</th>
                   <th class="px-3 py-2 text-left font-medium">{{ t('settings.signing_output_user_fallback') }}</th>
                   <th class="px-3 py-2 text-left font-medium">{{ t('settings.signing_output_failure_policy') }}</th>
+                  <th class="px-3 py-2 text-left font-medium">{{ t('settings.signing_output_identity_policy') }}</th>
                   <th class="px-3 py-2 w-40"></th>
                 </tr>
               </thead>
@@ -925,6 +944,16 @@ async function testPdfOutputSetting(setting: PdfSignatureOutputSetting) {
                       <option value="fail_closed">{{ t('settings.signing_output_policy_fail_closed') }}</option>
                       <option value="skip_when_unconfigured">{{ t('settings.signing_output_policy_skip_when_unconfigured') }}</option>
                     </select>
+                  </td>
+                  <td class="px-3 py-2">
+                    <select v-if="signingOutputUsage(setting.output_type) === 'email_smime'"
+                      :value="smimeIdentityPolicy(setting)"
+                      @change="onSmimeIdentityPolicyChange(setting, $event)"
+                      class="h-8 w-48 px-2 border border-neutral-300 rounded-md bg-surface text-xs">
+                      <option value="strict_match">{{ t('settings.signing_output_identity_strict_match') }}</option>
+                      <option value="warning_only">{{ t('settings.signing_output_identity_warning_only') }}</option>
+                    </select>
+                    <span v-else class="text-neutral-400">{{ t('settings.signing_output_identity_policy_not_applicable') }}</span>
                   </td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">
                     <button @click="savePdfOutputSetting(setting)" type="button"

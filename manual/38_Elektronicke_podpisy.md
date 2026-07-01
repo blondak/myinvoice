@@ -271,8 +271,17 @@ Nastavení funguje stejně jako u PDF výstupů:
 - zvolí **Profil dodavatele** nebo **Přihlášený uživatel**,
 - při strategii **Přihlášený uživatel** si uživatel nastaví vlastní výchozí
   profil v **Mapování podpisových profilů**,
+- u S/MIME identity zvolí, zda se musí e-mail v certifikátu přesně shodovat
+  s hlavičkou **From**, nebo zda se při neshodě e-mail podepíše a zapíše se
+  audit warning,
 - při chybě se použije politika **Vrátit nepodepsané** nebo
   **Zastavit s chybou**.
+
+Výchozí politika S/MIME identity je striktní shoda. Pokud certifikát neobsahuje
+e-mailovou identitu nebo se liší od skutečného odesílatele ve **From**, podpis se
+neprovede a použije se nastavená politika chyby. V režimu **Podepsat a varovat**
+se e-mail podepíše, ale do activity logu se zapíše varování s původním
+odesílatelem, e-mailem certifikátu a použitým profilem.
 
 S/MIME podpis e-mail nešifruje. Obsah zprávy zůstává čitelný stejně jako u
 běžného e-mailu, jen je opatřen elektronickým podpisem.
@@ -306,6 +315,7 @@ Správa i použití podpisů se zapisuje do activity logu. Typické události:
 | `signing.failed` | Podepisování selhalo. Podle politiky se buď vrátilo nepodepsané PDF, nebo operace skončila chybou. |
 | `signing.skipped` | Podepisování bylo přeskočeno, například kvůli vypnutému výstupu nebo chybějící konfiguraci. |
 | `signing.email_signed` | Odchozí e-mail byl úspěšně podepsán S/MIME. |
+| `signing.email_identity_warning` | S/MIME podpis proběhl v režimu varování, přestože e-mail v certifikátu neodpovídá hlavičce From. |
 | `signing.email_failed` | S/MIME podpis e-mailu selhal. |
 | `signing.email_skipped` | S/MIME podpis e-mailu byl přeskočen, například kvůli chybějící konfiguraci. |
 
