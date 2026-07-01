@@ -11,6 +11,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Signing\Pdf\PdfSignaturePolicy;
 use MyInvoice\Service\Signing\SigningPassphraseProviderInterface;
+use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Crypto\SMimeSigner;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Header\MailboxHeader;
@@ -22,9 +23,13 @@ final class EmailSigningService
     private const USAGE = 'email_smime';
     private const IDENTITY_POLICY_STRICT_MATCH = 'strict_match';
     private const IDENTITY_POLICY_WARNING_ONLY = 'warning_only';
+    private const IDENTITY_POLICY_SAME_DOMAIN_OVERRIDE = 'same_domain_override';
+    private const IDENTITY_POLICY_ALLOWLIST_OVERRIDE = 'allowlist_override';
     private const IDENTITY_POLICIES = [
         self::IDENTITY_POLICY_STRICT_MATCH,
         self::IDENTITY_POLICY_WARNING_ONLY,
+        self::IDENTITY_POLICY_SAME_DOMAIN_OVERRIDE,
+        self::IDENTITY_POLICY_ALLOWLIST_OVERRIDE,
     ];
 
     private const TEMPLATE_OUTPUT_TYPES = [
@@ -34,6 +39,8 @@ final class EmailSigningService
         'invoice_payment_thanks' => 'email_invoice_payment_thanks',
         'invoice_approval' => 'email_invoice_approval',
         'recurring_draft_reminder' => 'email_recurring_draft_reminder',
+        // Test odesílacího profilu ověřuje stejnou S/MIME politiku jako reálné odeslání faktury.
+        'email_profile_test' => 'email_invoice_send',
     ];
 
     public function __construct(
@@ -77,14 +84,16 @@ final class EmailSigningService
 
         $policy = new PdfSignaturePolicy($this->failurePolicy($outputSetting));
         $identityPolicy = $this->identityPolicy($outputSetting);
+        $identityConfig = $this->identityConfig($outputSetting);
         try {
-            $identityWarning = $this->validateIdentity($message, $profile, $identityPolicy);
+            $identityEvent = $this->applyIdentityPolicy($message, $profile, $identityPolicy, $identityConfig);
             $signed = $this->signWithProfile($message, $profile);
-            if ($identityWarning !== null) {
-                $this->activity->log('signing.email_identity_warning', $userId, 'supplier', $supplierId, $identityWarning + [
+            if ($identityEvent !== null) {
+                $activity = (string) ($identityEvent['activity'] ?? 'signing.email_identity_warning');
+                unset($identityEvent['activity']);
+                $this->activity->log($activity, $userId, 'supplier', $supplierId, $identityEvent + [
                     'output_type' => $outputType,
                     'usage' => self::USAGE,
-                    'status' => 'warning',
                     'backend' => 'smime',
                     'profile_code' => $profile['profile']['code'] ?? null,
                     'email_profile_signing_profile_id' => $emailProfileSigningProfileId > 0 ? $emailProfileSigningProfileId : null,
@@ -341,20 +350,33 @@ final class EmailSigningService
      */
     private function identityPolicy(array $outputSetting): string
     {
-        $config = $outputSetting['signature_config'] ?? [];
-        if (!is_array($config)) {
-            return self::IDENTITY_POLICY_STRICT_MATCH;
-        }
+        $config = $this->identityConfig($outputSetting);
 
         $policy = (string) ($config['smime_identity_policy'] ?? self::IDENTITY_POLICY_STRICT_MATCH);
         return in_array($policy, self::IDENTITY_POLICIES, true) ? $policy : self::IDENTITY_POLICY_STRICT_MATCH;
     }
 
     /**
+     * @param array<string,mixed> $outputSetting
+     * @return array<string,mixed>
+     */
+    private function identityConfig(array $outputSetting): array
+    {
+        $config = $outputSetting['signature_config'] ?? [];
+        return is_array($config) ? $config : [];
+    }
+
+    /**
      * @param array{profile:array<string,mixed>,credential:array<string,mixed>,password_enc:string} $profile
+     * @param array<string,mixed> $identityConfig
      * @return array<string,mixed>|null
      */
-    private function validateIdentity(Message $message, array $profile, string $identityPolicy): ?array
+    private function applyIdentityPolicy(
+        Message $message,
+        array $profile,
+        string $identityPolicy,
+        array $identityConfig,
+    ): ?array
     {
         $fromEmail = $this->messageFromEmail($message);
         $certificateEmail = $this->normalizedEmail($profile['credential']['certificate_email'] ?? null);
@@ -386,10 +408,132 @@ final class EmailSigningService
         ];
 
         if ($identityPolicy === self::IDENTITY_POLICY_WARNING_ONLY) {
-            return $payload;
+            return $payload + [
+                'activity' => 'signing.email_identity_warning',
+                'status' => 'warning',
+            ];
+        }
+
+        if ($reason === 'email_mismatch'
+            && $certificateEmail !== null
+            && $this->identityPolicyAllowsFromOverride($identityPolicy, $normalizedFrom, $certificateEmail, $identityConfig)
+        ) {
+            $originalFromEmail = $fromEmail;
+            $this->overrideMessageFrom($message, $certificateEmail);
+
+            return array_replace($payload, [
+                'activity' => 'signing.email_identity_override',
+                'status' => 'overridden',
+                'original_from_email' => $originalFromEmail,
+                'from_email' => $this->messageFromEmail($message),
+            ]);
         }
 
         throw new \RuntimeException($error);
+    }
+
+    /**
+     * @param array<string,mixed> $identityConfig
+     */
+    private function identityPolicyAllowsFromOverride(
+        string $identityPolicy,
+        ?string $fromEmail,
+        string $certificateEmail,
+        array $identityConfig,
+    ): bool {
+        if ($fromEmail === null) {
+            return false;
+        }
+
+        if ($identityPolicy === self::IDENTITY_POLICY_SAME_DOMAIN_OVERRIDE) {
+            return $this->emailDomain($fromEmail) !== null
+                && $this->emailDomain($fromEmail) === $this->emailDomain($certificateEmail);
+        }
+
+        if ($identityPolicy === self::IDENTITY_POLICY_ALLOWLIST_OVERRIDE) {
+            return $this->fromMatchesAllowlist($fromEmail, $this->smimeIdentityAllowlist($identityConfig));
+        }
+
+        return false;
+    }
+
+    private function emailDomain(string $email): ?string
+    {
+        $at = strrpos($email, '@');
+        if ($at === false || $at === strlen($email) - 1) {
+            return null;
+        }
+
+        $domain = strtolower(substr($email, $at + 1));
+        return $domain !== '' ? $domain : null;
+    }
+
+    /**
+     * @param array<string,mixed> $identityConfig
+     * @return list<string>
+     */
+    private function smimeIdentityAllowlist(array $identityConfig): array
+    {
+        $raw = $identityConfig['smime_identity_allowlist'] ?? [];
+        if (is_string($raw)) {
+            $raw = preg_split('/[\r\n,;]+/', $raw) ?: [];
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($raw as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            $item = strtolower(trim($item));
+            if ($item !== '') {
+                $items[] = $item;
+            }
+        }
+
+        return array_values(array_unique($items));
+    }
+
+    /**
+     * @param list<string> $allowlist
+     */
+    private function fromMatchesAllowlist(string $fromEmail, array $allowlist): bool
+    {
+        $fromDomain = $this->emailDomain($fromEmail);
+        foreach ($allowlist as $entry) {
+            if ($entry === $fromEmail) {
+                return true;
+            }
+
+            $domain = $entry;
+            if (str_starts_with($entry, '*@')) {
+                $domain = substr($entry, 2);
+            } elseif (str_starts_with($entry, '@')) {
+                $domain = substr($entry, 1);
+            } elseif (str_contains($entry, '@')) {
+                continue;
+            }
+
+            if ($fromDomain !== null && $domain !== '' && $fromDomain === $domain) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function overrideMessageFrom(Message $message, string $certificateEmail): void
+    {
+        $fromName = $this->messageFromName($message);
+        if ($message instanceof Email) {
+            $message->from(new Address($certificateEmail, $fromName ?? ''));
+            return;
+        }
+
+        $message->getHeaders()->remove('From');
+        $message->getHeaders()->addMailboxListHeader('From', [new Address($certificateEmail, $fromName ?? '')]);
     }
 
     private function messageFromEmail(Message $message): ?string
@@ -406,6 +550,25 @@ final class EmailSigningService
         }
         if ($header instanceof MailboxHeader) {
             return $header->getAddress()->getAddress();
+        }
+
+        return null;
+    }
+
+    private function messageFromName(Message $message): ?string
+    {
+        if ($message instanceof Email) {
+            $from = $message->getFrom();
+            return $from[0]->getName() ?? null;
+        }
+
+        $header = $message->getHeaders()->get('From');
+        if ($header instanceof MailboxListHeader) {
+            $addresses = $header->getAddresses();
+            return $addresses[0]->getName() ?? null;
+        }
+        if ($header instanceof MailboxHeader) {
+            return $header->getAddress()->getName();
         }
 
         return null;

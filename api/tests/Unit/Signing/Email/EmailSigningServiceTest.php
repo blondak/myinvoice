@@ -125,6 +125,34 @@ final class EmailSigningServiceTest extends TestCase
         );
     }
 
+    public function testEmailProfileTestUsesInvoiceSendSmimePolicyAndProfileOverrideIdentity(): void
+    {
+        $fixture = $this->p12Fixture('secret');
+        $service = $this->service(
+            $fixture['path'],
+            'secret',
+            'secret',
+            'fail_closed',
+            $this->once(),
+            defaultProfileId: 0,
+        );
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('S/MIME podpis e-mailu selhal.');
+
+        $service->signIfEnabled(
+            (new Email())
+                ->from('sender@example.test')
+                ->to('recipient@example.test')
+                ->subject('Profile test')
+                ->text('Profile test body'),
+            'email_profile_test',
+            ['id' => 1],
+            10,
+            20,
+        );
+    }
+
     public function testWarningOnlyIdentityMismatchSignsAndLogsAuditWarning(): void
     {
         $fixture = $this->p12Fixture('secret');
@@ -158,6 +186,78 @@ final class EmailSigningServiceTest extends TestCase
         self::assertSame('signing.email_signed', $events[1]['action'] ?? null);
     }
 
+    public function testSameDomainIdentityOverrideRewritesFromBeforeSigning(): void
+    {
+        $fixture = $this->p12Fixture('secret');
+        $events = [];
+        $service = $this->service(
+            $fixture['path'],
+            'secret',
+            'secret',
+            'fail_closed',
+            $this->exactly(2),
+            ['smime_identity_policy' => 'same_domain_override'],
+            'signer@example.test',
+            function (string $action, mixed ...$args) use (&$events): void {
+                $events[] = ['action' => $action, 'payload' => $args[3] ?? null];
+            },
+        );
+        $email = (new Email())
+            ->from('Sender Name <sender@example.test>')
+            ->to('recipient@example.test')
+            ->subject('Invoice')
+            ->text('Invoice body');
+
+        $signed = $service->signIfEnabled($email, 'invoice_send', ['id' => 1], 10);
+
+        self::assertNotSame($email, $signed);
+        self::assertSame('signer@example.test', $email->getFrom()[0]->getAddress());
+        self::assertSame('Sender Name', $email->getFrom()[0]->getName());
+        self::assertSame('signing.email_identity_override', $events[0]['action'] ?? null);
+        self::assertSame('overridden', $events[0]['payload']['status'] ?? null);
+        self::assertSame('same_domain_override', $events[0]['payload']['identity_policy'] ?? null);
+        self::assertSame('sender@example.test', $events[0]['payload']['original_from_email'] ?? null);
+        self::assertSame('signer@example.test', $events[0]['payload']['from_email'] ?? null);
+        self::assertSame('signing.email_signed', $events[1]['action'] ?? null);
+        self::assertSame('signer@example.test', $events[1]['payload']['from_email'] ?? null);
+    }
+
+    public function testAllowlistIdentityOverrideRewritesFromBeforeSigning(): void
+    {
+        $fixture = $this->p12Fixture('secret');
+        $events = [];
+        $service = $this->service(
+            $fixture['path'],
+            'secret',
+            'secret',
+            'fail_closed',
+            $this->exactly(2),
+            [
+                'smime_identity_policy' => 'allowlist_override',
+                'smime_identity_allowlist' => ['billing.allowed.test'],
+            ],
+            'signer@example.test',
+            function (string $action, mixed ...$args) use (&$events): void {
+                $events[] = ['action' => $action, 'payload' => $args[3] ?? null];
+            },
+        );
+        $email = (new Email())
+            ->from('Billing <billing@billing.allowed.test>')
+            ->to('recipient@example.test')
+            ->subject('Invoice')
+            ->text('Invoice body');
+
+        $signed = $service->signIfEnabled($email, 'invoice_send', ['id' => 1], 10);
+
+        self::assertNotSame($email, $signed);
+        self::assertSame('signer@example.test', $email->getFrom()[0]->getAddress());
+        self::assertSame('signing.email_identity_override', $events[0]['action'] ?? null);
+        self::assertSame('allowlist_override', $events[0]['payload']['identity_policy'] ?? null);
+        self::assertSame('billing@billing.allowed.test', $events[0]['payload']['original_from_email'] ?? null);
+        self::assertSame('signer@example.test', $events[0]['payload']['from_email'] ?? null);
+        self::assertSame('signing.email_signed', $events[1]['action'] ?? null);
+    }
+
     public function testPasswordResetIsNotSigned(): void
     {
         $activity = $this->createMock(ActivityLogger::class);
@@ -186,6 +286,7 @@ final class EmailSigningServiceTest extends TestCase
         array $signatureConfig = [],
         string $certificateEmail = 'signer@example.test',
         ?callable $activityRecorder = null,
+        int $defaultProfileId = 20,
     ): EmailSigningService {
         $config = new Config(['email_signing' => ['enabled' => true], 'app' => ['pepper' => 'test-pepper']]);
         $secrets = new SecretEncryption($config);
@@ -203,7 +304,7 @@ final class EmailSigningServiceTest extends TestCase
                 'backend' => 'smime',
                 'selection_source' => 'admin_profile_settings',
                 'user_profile_fallback' => 'fallback_unsigned',
-                'default_profile_id' => 20,
+                'default_profile_id' => $defaultProfileId,
                 'failure_policy' => $failurePolicy,
                 'signature_config' => $signatureConfig,
             ]);

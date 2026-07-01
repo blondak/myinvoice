@@ -44,7 +44,13 @@ const showSigningProfileForm = ref(false)
 const editingSigningProfile = ref<number | null>(null)
 const signingProfileTsaEnabled = ref(false)
 const signingProfileOwnerMode = ref<'supplier' | 'current_user' | 'other_user'>('supplier')
-type EmailSmimeIdentityPolicy = 'strict_match' | 'warning_only'
+type EmailSmimeIdentityPolicy = 'strict_match' | 'warning_only' | 'same_domain_override' | 'allowlist_override'
+const emailSmimeIdentityPolicies: EmailSmimeIdentityPolicy[] = [
+  'strict_match',
+  'warning_only',
+  'same_domain_override',
+  'allowlist_override',
+]
 
 const signingProfileDraft = reactive<SigningProfilePayload & { owner_user_id: number | null; is_active: boolean }>({
   owner_user_id: null,
@@ -504,7 +510,8 @@ function signingOutputBadges(outputType: string): string[] {
 }
 
 function smimeIdentityPolicy(setting: PdfSignatureOutputSetting): EmailSmimeIdentityPolicy {
-  return setting.signature_config?.smime_identity_policy === 'warning_only' ? 'warning_only' : 'strict_match'
+  const policy = setting.signature_config?.smime_identity_policy
+  return isEmailSmimeIdentityPolicy(policy) ? policy : 'strict_match'
 }
 
 function setSmimeIdentityPolicy(setting: PdfSignatureOutputSetting, policy: EmailSmimeIdentityPolicy) {
@@ -516,7 +523,31 @@ function setSmimeIdentityPolicy(setting: PdfSignatureOutputSetting, policy: Emai
 
 function onSmimeIdentityPolicyChange(setting: PdfSignatureOutputSetting, event: Event) {
   const value = (event.target as HTMLSelectElement | null)?.value
-  setSmimeIdentityPolicy(setting, value === 'warning_only' ? 'warning_only' : 'strict_match')
+  setSmimeIdentityPolicy(setting, isEmailSmimeIdentityPolicy(value) ? value : 'strict_match')
+}
+
+function isEmailSmimeIdentityPolicy(value: unknown): value is EmailSmimeIdentityPolicy {
+  return typeof value === 'string' && emailSmimeIdentityPolicies.includes(value as EmailSmimeIdentityPolicy)
+}
+
+function smimeIdentityAllowlistText(setting: PdfSignatureOutputSetting): string {
+  const allowlist = setting.signature_config?.smime_identity_allowlist
+  if (Array.isArray(allowlist)) {
+    return allowlist.filter(item => typeof item === 'string' && item.trim() !== '').join('\n')
+  }
+  return typeof allowlist === 'string' ? allowlist : ''
+}
+
+function onSmimeIdentityAllowlistChange(setting: PdfSignatureOutputSetting, event: Event) {
+  const value = (event.target as HTMLTextAreaElement | null)?.value || ''
+  const allowlist = value
+    .split(/[\n,;]+/)
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean)
+  setting.signature_config = {
+    ...(setting.signature_config || {}),
+    smime_identity_allowlist: Array.from(new Set(allowlist)),
+  }
 }
 
 function signingProfileName(profileId: number | null): string {
@@ -946,13 +977,30 @@ async function testPdfOutputSetting(setting: PdfSignatureOutputSetting) {
                     </select>
                   </td>
                   <td class="px-3 py-2">
-                    <select v-if="signingOutputUsage(setting.output_type) === 'email_smime'"
-                      :value="smimeIdentityPolicy(setting)"
-                      @change="onSmimeIdentityPolicyChange(setting, $event)"
-                      class="h-8 w-48 px-2 border border-neutral-300 rounded-md bg-surface text-xs">
-                      <option value="strict_match">{{ t('settings.signing_output_identity_strict_match') }}</option>
-                      <option value="warning_only">{{ t('settings.signing_output_identity_warning_only') }}</option>
-                    </select>
+                    <div v-if="signingOutputUsage(setting.output_type) === 'email_smime'" class="space-y-2">
+                      <select
+                        :value="smimeIdentityPolicy(setting)"
+                        @change="onSmimeIdentityPolicyChange(setting, $event)"
+                        class="h-8 w-56 px-2 border border-neutral-300 rounded-md bg-surface text-xs">
+                        <option value="strict_match">{{ t('settings.signing_output_identity_strict_match') }}</option>
+                        <option value="warning_only">{{ t('settings.signing_output_identity_warning_only') }}</option>
+                        <option value="same_domain_override">{{ t('settings.signing_output_identity_same_domain_override') }}</option>
+                        <option value="allowlist_override">{{ t('settings.signing_output_identity_allowlist_override') }}</option>
+                      </select>
+                      <p v-if="smimeIdentityPolicy(setting) === 'same_domain_override'" class="max-w-56 text-[11px] leading-snug text-neutral-500">
+                        {{ t('settings.signing_output_identity_same_domain_hint') }}
+                      </p>
+                      <div v-if="smimeIdentityPolicy(setting) === 'allowlist_override'" class="space-y-1">
+                        <textarea
+                          :value="smimeIdentityAllowlistText(setting)"
+                          @input="onSmimeIdentityAllowlistChange(setting, $event)"
+                          :placeholder="t('settings.signing_output_identity_allowlist_placeholder')"
+                          class="min-h-20 w-56 px-2 py-1.5 border border-neutral-300 rounded-md bg-surface text-xs leading-snug"></textarea>
+                        <p class="max-w-56 text-[11px] leading-snug text-neutral-500">
+                          {{ t('settings.signing_output_identity_allowlist_hint') }}
+                        </p>
+                      </div>
+                    </div>
                     <span v-else class="text-neutral-400">{{ t('settings.signing_output_identity_policy_not_applicable') }}</span>
                   </td>
                   <td class="px-3 py-2 text-right whitespace-nowrap">

@@ -271,17 +271,28 @@ Nastavení funguje stejně jako u PDF výstupů:
 - zvolí **Profil dodavatele** nebo **Přihlášený uživatel**,
 - při strategii **Přihlášený uživatel** si uživatel nastaví vlastní výchozí
   profil v **Mapování podpisových profilů**,
-- u S/MIME identity zvolí, zda se musí e-mail v certifikátu přesně shodovat
-  s hlavičkou **From**, nebo zda se při neshodě e-mail podepíše a zapíše se
-  audit warning,
+- u S/MIME identity zvolí pravidlo pro vztah mezi e-mailem v certifikátu a
+  hlavičkou **From**,
 - při chybě se použije politika **Vrátit nepodepsané** nebo
   **Zastavit s chybou**.
 
 Výchozí politika S/MIME identity je striktní shoda. Pokud certifikát neobsahuje
 e-mailovou identitu nebo se liší od skutečného odesílatele ve **From**, podpis se
-neprovede a použije se nastavená politika chyby. V režimu **Podepsat a varovat**
-se e-mail podepíše, ale do activity logu se zapíše varování s původním
-odesílatelem, e-mailem certifikátu a použitým profilem.
+neprovede a použije se nastavená politika chyby.
+
+Režimy S/MIME identity:
+
+| Režim | Chování |
+|---|---|
+| Vyžadovat shodu From | `From` se musí přesně shodovat s e-mailem v certifikátu. |
+| Podepsat a varovat | E-mail se podepíše i při neshodě a do activity logu se zapíše varování. |
+| Přepsat From při stejné doméně | Při neshodě se `From` přepíše na e-mail certifikátu jen tehdy, když původní `From` používá stejnou doménu. |
+| Přepsat From podle allowlistu | Při neshodě se `From` přepíše na e-mail certifikátu jen tehdy, když původní `From` odpovídá allowlistu e-mailů nebo domén. |
+
+Režimy s přepsáním `From` podepisují až výslednou zprávu po úpravě hlavičky.
+Activity log obsahuje původní `From`, nové `From`, e-mail certifikátu a použitý
+podpisový profil. Pokud podmínka pro přepsání neplatí, chová se režim jako
+striktní chyba a použije se nastavená politika chyby.
 
 Pokud je v **Odesílacím e-mailovém profilu** vybraný konkrétní S/MIME profil,
 má pro daný e-mail přednost před obecným mapováním profilu ve výstupu. Díky tomu
