@@ -650,7 +650,9 @@ final class IdokladImportService
      * Vytvoří jednu přijatou účtenku z iDoklad payloadu jako purchase_invoice s document_kind='receipt'.
      *
      * Rozdíly oproti createReceivedFromIdoklad():
-     *   • Partner je vnořený a MŮŽE být null (hotovostní nákup bez kontaktu) → vrátí null, caller skip.
+     *   • Partner je vnořený a MŮŽE být null (hotovostní nákup bez kontaktu) → doklad se naváže
+     *     na sběrného systémového dodavatele „Hotovostní nákup (účtenka)" (náklad se neztratí)
+     *     a importuje se bez nároku na odpočet DPH (viz níže).
      *   • Účtenka nemá splatnost (DateOfMaturity) ani DUZP (DateOfTaxing) → vše z DateOfIssue.
      *   • Číslo dokladu dodavatele je ExternalDocumentNumber (ne ReceivedDocumentNumber); často chybí.
      *   • iDoklad u účtenek nevrací hlavičkovou slevu (DiscountType/DiscountPercentage).
@@ -659,15 +661,27 @@ final class IdokladImportService
     {
         $hdr = self::idokladReceiptHeader($i, date('Y-m-d'));
 
-        // Hotovostní účtenka bez kontaktu (Partner == null) — nemáme koho navázat jako vendora.
-        if ($hdr['partner_id'] === 0) {
-            return null;
+        // Hotovostní účtenka bez kontaktu (Partner == null) — dodavatele neznáme. Místo zahození
+        // nákladu ji navážeme na sběrného systémového vendora a odpočet DPH necháme neuplatněný
+        // (nemůžeme ověřit dodavatele ani jeho plátcovství — bezpečný default pro plátce; neplátce
+        // to neřeší). Uživatel může po doplnění dodavatele odpočet povolit.
+        $unknownVendor = ($hdr['partner_id'] === 0);
+        if ($unknownVendor) {
+            $vendorId = $this->clients->findOrCreateCashReceiptVendor($supplierId);
+        } else {
+            $vendorId = $this->resolveClientByIdoklad($hdr['partner_id'], $supplierId);
+            if ($vendorId === null) {
+                throw new \RuntimeException("Dodavatel s iDoklad ID {$hdr['partner_id']} nenalezen — nejdřív naimportuj kontakty.");
+            }
+            $this->clients->markAsVendor($vendorId);
         }
-        $vendorId = $this->resolveClientByIdoklad($hdr['partner_id'], $supplierId);
-        if ($vendorId === null) {
-            throw new \RuntimeException("Dodavatel s iDoklad ID {$hdr['partner_id']} nenalezen — nejdřív naimportuj kontakty.");
+
+        // Číslo dokladu — createDraft ho vyžaduje neprázdné; hotovostní účtenka ho nemusí mít.
+        // Fallback na stabilní iDoklad Id, aby dedup (vendor+číslo+datum) i re-import fungovaly.
+        $vendorNumber = $this->sanitizeVendorNumber($hdr['vendor_invoice_number']);
+        if ($vendorNumber === '') {
+            $vendorNumber = 'UCT-' . (int) ($i['Id'] ?? 0);
         }
-        $this->clients->markAsVendor($vendorId);
 
         $issueDate = $hdr['issue_date'];
         $taxDate   = $hdr['tax_date'];
@@ -697,7 +711,7 @@ final class IdokladImportService
 
         $payload = [
             'vendor_id'             => $vendorId,
-            'vendor_invoice_number' => $this->sanitizeVendorNumber($hdr['vendor_invoice_number']),
+            'vendor_invoice_number' => $vendorNumber,
             'document_kind'         => 'receipt',
             'issue_date'            => $issueDate,
             'tax_date'              => $taxDate,
@@ -707,6 +721,9 @@ final class IdokladImportService
             'exchange_rate'         => self::idokladExchangeRate($i),
             'exchange_rate_source'  => 'manual',
             'reverse_charge'        => $reverseCharge,
+            // Neznámý dodavatel (hotovostní účtenka) → bez nároku na odpočet DPH. Import jde přes
+            // createDraft(), který NEuplatňuje auto-none z CreatePurchaseInvoiceAction, proto explicitně.
+            'vat_deduction'         => $unknownVendor ? 'none' : 'full',
             'language'              => 'cs',
             'items'                 => $items,
         ];
@@ -752,6 +769,20 @@ final class IdokladImportService
                 } catch (\Throwable) {
                     // Varování je „nice to have".
                 }
+            }
+        }
+
+        // Hotovostní účtenka bez identifikace dodavatele — upozorni na revizi (odpočet je záměrně
+        // neuplatněný; uživatel po doplnění dodavatele může nárok povolit).
+        if ($unknownVendor) {
+            try {
+                $this->purchaseRepo->appendExtractionWarning(
+                    $id,
+                    $supplierId,
+                    'Účtenka bez identifikace dodavatele (hotovostní nákup) — pro uplatnění odpočtu DPH doplňte dodavatele a povolte odpočet.',
+                );
+            } catch (\Throwable) {
+                // Varování je „nice to have".
             }
         }
 

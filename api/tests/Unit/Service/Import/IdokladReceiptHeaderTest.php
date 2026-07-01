@@ -12,7 +12,8 @@ use PHPUnit\Framework\TestCase;
  *
  * Účtenky se od přijatých faktur (ReceivedInvoices) liší a tahle čistá funkce drží
  * právě ty rozdíly:
- *   • Partner je vnořený objekt a může chybět (hotovostní nákup) → partner_id=0 → caller skip.
+ *   • Partner je vnořený objekt a může chybět (hotovostní nákup) → partner_id=0; caller pak doklad
+ *     naváže na sběrného systémového dodavatele (viz createReceiptFromIdoklad).
  *   • Nemají splatnost (DateOfMaturity) ani DUZP (DateOfTaxing) → issue/tax/due == DateOfIssue.
  *   • Číslo dokladu dodavatele je ExternalDocumentNumber (fallback DocumentNumber), může chybět.
  */
@@ -40,9 +41,10 @@ final class IdokladReceiptHeaderTest extends TestCase
         self::assertSame('2026-05-12', $hdr['due_date']);
     }
 
-    public function testNullPartnerYieldsZeroSoCallerSkips(): void
+    public function testNullPartnerYieldsZeroForCollectiveVendorRouting(): void
     {
-        // Hotovostní účtenka bez kontaktu — Partner == null.
+        // Hotovostní účtenka bez kontaktu — Partner == null → partner_id=0 (caller ho navěsí
+        // na sběrného systémového dodavatele „Hotovostní nákup").
         $i = [
             'Id'          => 1,
             'DateOfIssue' => '2026-05-12',
