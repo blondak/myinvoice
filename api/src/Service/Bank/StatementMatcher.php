@@ -301,14 +301,23 @@ final class StatementMatcher
 
         // Porovnáváme proti ZBÝVAJÍCÍ částce (amount_to_pay - paid_total) — dřívější
         // částečné úhrady (jiné transakce, ruční záznamy) match nesmí rozbít (#89).
+        $alreadyPaid = ($inv['status'] === 'paid');
         $remaining = round((float) $inv['amount_to_pay'] - (float) ($inv['paid_total'] ?? 0), 2);
-        $m = $this->expectedMatch($remaining, (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCurrency, $exactTolerance);
+        // Už zaplacená faktura má remaining = 0 (paid_total pokrývá celou částku), takže
+        // porovnání plné bankovní platby proti 0 by vždy selhalo a paid faktura by ve
+        // výpisu visela jako unmatched — přesně tohle uživatel reportoval. Chceme ji ale
+        // jen NAVÁZAT (status/paid_at zůstane), proto porovnáváme proti CELKOVÉ částce
+        // faktury (amount_to_pay; fallback paid_total, kdyby header byl 0). U nezaplacených
+        // zůstává porovnání proti zbývajícímu dluhu beze změny.
+        $compareBase = $alreadyPaid
+            ? round(max((float) $inv['amount_to_pay'], (float) ($inv['paid_total'] ?? 0)), 2)
+            : $remaining;
+        $m = $this->expectedMatch($compareBase, (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCurrency, $exactTolerance);
         if ($m === null) {
             return ['status' => 'unmatched', 'reason' => 'currency_mismatch',
                     'tx_currency' => $txCurrency, 'invoice_currency' => $inv['currency']];
         }
 
-        $alreadyPaid = ($inv['status'] === 'paid');
         $diff = abs($amount - $m['expected']);
         // Exact = doplacení v toleranci; drobný přeplatek do partial tier (≤ 1 Kč)
         // bereme taky jako úhradu (zaeviduje se reálná částka, payment_status to ukáže).

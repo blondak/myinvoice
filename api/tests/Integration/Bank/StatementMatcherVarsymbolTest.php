@@ -41,7 +41,7 @@ final class StatementMatcherVarsymbolTest extends TestCase
 
     private const FILE_MARKER = '__vs58_test__';
     /** Konkrétní VS používané testy — deterministický úklid (i po spadnutém běhu). */
-    private const TEST_VARSYMBOLS = ['2099-00042', '2099-00077', '2099000099'];
+    private const TEST_VARSYMBOLS = ['2099-00042', '2099-00077', '2099000099', '2099000123'];
 
     protected function setUp(): void
     {
@@ -105,7 +105,7 @@ final class StatementMatcherVarsymbolTest extends TestCase
     /**
      * @param numeric-string $varsymbol
      */
-    private function seed(string $varsymbol, string $txVs, float $amount): void
+    private function seed(string $varsymbol, string $txVs, float $amount, string $status = 'issued', float $paidTotal = 0.0): void
     {
         $pdo = $this->db->pdo();
         $d = $this->date->format('Y-m-d');
@@ -113,11 +113,11 @@ final class StatementMatcherVarsymbolTest extends TestCase
         $pdo->prepare(
             "INSERT INTO invoices
                 (invoice_type, varsymbol, client_id, supplier_id, issue_date, tax_date, due_date,
-                 currency_id, status, total_without_vat, total_with_vat, amount_to_pay, created_by)
-             VALUES ('invoice', ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?, ?)"
+                 currency_id, status, total_without_vat, total_with_vat, amount_to_pay, paid_total, created_by)
+             VALUES ('invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )->execute([
             $varsymbol, $this->clientId, $this->supplierId, $d, $d, $d,
-            $this->currencyId, $amount, $amount, $amount, $this->userId,
+            $this->currencyId, $status, $amount, $amount, $amount, $paidTotal, $this->userId,
         ]);
         $this->invoiceId = (int) $pdo->lastInsertId();
 
@@ -174,6 +174,30 @@ final class StatementMatcherVarsymbolTest extends TestCase
 
         self::assertSame('auto_exact', $res['status'] ?? null);
         self::assertSame($this->invoiceId, $res['invoice_id'] ?? null);
+    }
+
+    public function testAlreadyPaidInvoiceStillLinks(): void
+    {
+        // Regrese: faktura je už zaplacená (status paid, paid_total = celá částka → remaining 0).
+        // Dřív matcher porovnával platbu proti zbytku (0) a plnou platbu nikdy nespároval →
+        // paid faktura visela ve výpisu jako unmatched. Teď se transakce naváže (auto_exact,
+        // already_paid) a status/paid_at zůstane netknutý.
+        $this->seed('2099000123', '2099000123', 999.00, 'paid', 999.00);
+
+        $res = $this->matcher->match($this->transactionId);
+
+        self::assertSame('auto_exact', $res['status'] ?? null, 'Zaplacená faktura se musí navázat na platbu z výpisu.');
+        self::assertSame($this->invoiceId, $res['invoice_id'] ?? null);
+        self::assertTrue($res['already_paid'] ?? false, 'Match zaplacené faktury má nést příznak already_paid.');
+
+        $pdo = $this->db->pdo();
+        // Status ani paid_total se u ručně/dřív zaplacené faktury nemění.
+        self::assertSame('paid', $pdo->query("SELECT status FROM invoices WHERE id = {$this->invoiceId}")->fetchColumn());
+        // Transakce je navázaná na fakturu.
+        self::assertSame(
+            $this->invoiceId,
+            (int) $pdo->query("SELECT matched_invoice_id FROM bank_transactions WHERE id = {$this->transactionId}")->fetchColumn()
+        );
     }
 
     public function testWrongVsDoesNotMatch(): void
