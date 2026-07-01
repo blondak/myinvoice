@@ -274,16 +274,32 @@ final class Mailer
         // DKIM signer
         if ($this->config->get('smtp.dkim.enabled', false)) {
             $keyPath = (string) $this->config->get('smtp.dkim.private_key_path', '');
-            if ($emailProfile !== null) {
-                $dkimDomain = (string) ($emailProfile['dkim_domain'] ?? '');
-                $dkimSelector = (string) ($emailProfile['dkim_selector'] ?? '');
-                $dkimEnabled = ($emailProfile['dkim_enabled'] ?? false)
-                    && $dkimDomain !== ''
-                    && $dkimSelector !== '';
+            $globalDkimDomain = (string) $this->config->get('smtp.dkim.domain');
+            $globalDkimSelector = (string) $this->config->get('smtp.dkim.selector');
+
+            $profileDkimDomain = $emailProfile !== null ? (string) ($emailProfile['dkim_domain'] ?? '') : '';
+            $profileDkimSelector = $emailProfile !== null ? (string) ($emailProfile['dkim_selector'] ?? '') : '';
+            $profileDkimEnabled = $emailProfile !== null
+                && ($emailProfile['dkim_enabled'] ?? false)
+                && $profileDkimDomain !== ''
+                && $profileDkimSelector !== '';
+
+            if ($profileDkimEnabled) {
+                // Profil má vlastní DKIM identitu → použij ji.
+                $dkimDomain = $profileDkimDomain;
+                $dkimSelector = $profileDkimSelector;
+                $dkimEnabled = true;
             } else {
-                $dkimDomain = (string) $this->config->get('smtp.dkim.domain');
-                $dkimSelector = (string) $this->config->get('smtp.dkim.selector');
-                $dkimEnabled = $dkimDomain !== '' && $dkimSelector !== '';
+                // Profil bez vlastního DKIM (nebo žádný profil) → globální DKIM, ale
+                // jen když doména From odpovídá globální DKIM doméně (jinak by podpis
+                // neseděl). Tím profil vytvořený jen kvůli custom From na STEJNÉ doméně
+                // nepřijde o DKIM (jinak SPF/DMARC fail → spam/odmítnutí).
+                $dkimDomain = $globalDkimDomain;
+                $dkimSelector = $globalDkimSelector;
+                $fromDomain = $this->fromDomain($email);
+                $dkimEnabled = $dkimDomain !== '' && $dkimSelector !== ''
+                    && ($emailProfile === null
+                        || ($fromDomain !== null && strcasecmp($fromDomain, $dkimDomain) === 0));
             }
 
             if ($dkimEnabled && is_file($keyPath)) {
@@ -338,13 +354,25 @@ final class Mailer
             'imap_append_status' => $imapAppend['status'],
             'imap_append_folder' => $imapAppend['folder'],
             'imap_append_error' => $imapAppend['error'],
-            // Plný SMTP transcript — užitečný pro debugging delivery problémů.
-            // Pokud je log moc velký, dá se filtrovat na úrovni Monolog handleru.
-            'smtp_debug'    => $debug,
         ]);
 
+        // Plný SMTP transcript obsahuje i `AUTH …` kredence (base64 = triviálně
+        // reverzibilní heslo) → jen na DEBUG úrovni, ne v běžném info logu.
+        if ($debug !== '') {
+            $this->logger->debug('mail.smtp_transcript', ['template' => $code, 'smtp_debug' => $debug]);
+        }
+
         if ($imapAppend['status'] === 'failed' && $this->imapFailurePolicy($emailProfile) === 'fail_send') {
-            throw new \RuntimeException(
+            // E-mail UŽ byl doručen (transport->send() proběhl); selhalo jen uložení
+            // kopie do IMAP. Logujeme error a vyhazujeme DEDIKOVANÝ typ výjimky, aby
+            // caller/fronta odeslání NEretryoval (jinak by příjemce dostal e-mail 2×).
+            $this->logger->error('mail.imap_sent_append_failed_fail_send', [
+                'template'      => $code,
+                'email_profile' => $emailProfile !== null ? ($emailProfile['code'] ?? null) : null,
+                'folder'        => $imapAppend['folder'],
+                'error'         => $imapAppend['error'],
+            ]);
+            throw new MailDeliveredArchiveException(
                 'E-mail byl transportem přijat, ale uložení do IMAP složky selhalo: '
                 . (string) ($imapAppend['error'] ?? 'neznámá chyba'),
             );
@@ -476,7 +504,10 @@ final class Mailer
             (string) $this->config->get('smtp.host'),
             (int) $this->config->get('smtp.port', 25),
             (bool) $this->config->get('smtp.auth_enabled', false),
-            (string) $this->config->get('smtp.auth_type', 'PLAIN'),
+            // Prázdný default (ne 'PLAIN') → plná negociace authenticatorů jako před
+            // zavedením profilů. Vynucení PLAIN-only by rozbilo servery, které PLAIN
+            // nenabízejí (jen LOGIN/CRAM-MD5) a v cfg.php auth_type nemají nastavený.
+            (string) $this->config->get('smtp.auth_type', ''),
             (string) $this->config->get('smtp.user', ''),
             (string) $this->config->get('smtp.pass', ''),
             (string) $this->config->get('smtp.encryption', ''),
@@ -539,16 +570,39 @@ final class Mailer
     }
 
     /**
-     * @return list<object>
+     * Konkrétní authenticator dle `auth_type`, nebo `null` = předej EsmtpTransportu
+     * jeho plnou vestavěnou sadu (LOGIN/PLAIN/CRAM-MD5/XOAUTH2) s negociací dle
+     * nabídky serveru. Prázdné/neznámé `auth_type` ⇒ null (zpětně kompatibilní).
+     *
+     * @return list<object>|null
      */
-    private function smtpAuthenticators(string $authType): array
+    private function smtpAuthenticators(string $authType): ?array
     {
-        return match (strtoupper($authType)) {
+        return match (strtoupper(trim($authType))) {
             'LOGIN' => [new LoginAuthenticator()],
+            'PLAIN' => [new PlainAuthenticator()],
             'CRAM-MD5' => [new CramMd5Authenticator()],
             'XOAUTH2' => [new XOAuth2Authenticator()],
-            default => [new PlainAuthenticator()],
+            default => null,
         };
+    }
+
+    /**
+     * Doména z hlavičky From (první adresa), lowercase; null když chybí/neplatná.
+     */
+    private function fromDomain(Email $email): ?string
+    {
+        $from = $email->getFrom();
+        if ($from === []) {
+            return null;
+        }
+        $address = $from[0]->getAddress();
+        $at = strrpos($address, '@');
+        if ($at === false || $at === strlen($address) - 1) {
+            return null;
+        }
+        $domain = strtolower(substr($address, $at + 1));
+        return $domain !== '' ? $domain : null;
     }
 
     private function sendmailDsn(string $command): string

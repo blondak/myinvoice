@@ -483,6 +483,9 @@ final class EmailProfileRepository
             }
         } elseif ($transportType === 'sendmail') {
             $sendmailCommand = $this->nullableString($data['sendmail_command'] ?? null, 'sendmail_command', 255);
+            if ($sendmailCommand !== null) {
+                $sendmailCommand = $this->validateSendmailCommand($sendmailCommand);
+            }
         }
 
         if ($imapSentEnabled) {
@@ -638,6 +641,47 @@ final class EmailProfileRepository
         }
 
         return strtolower($value);
+    }
+
+    /**
+     * Přísná validace vlastního sendmail příkazu. Symfony SendmailTransport spouští
+     * příkaz přes proc_open — volný text = riziko RCE (např. „/bin/sh -c '…|sh' -bs").
+     * Proto: žádné shell metaznaky, absolutní cesta na sendmail-kompatibilní binárku,
+     * povinné -bs/-t a jen jednoduché přepínače/hodnoty jako argumenty.
+     */
+    private function validateSendmailCommand(string $command): string
+    {
+        $command = trim($command);
+
+        if (preg_match('/[;|&$><`(){}\\\\\'"\r\n]/', $command) === 1) {
+            throw new \InvalidArgumentException('Pole \'sendmail_command\' obsahuje nepovolené znaky.');
+        }
+
+        $parts = preg_split('/\s+/', $command) ?: [];
+        $binary = $parts[0] ?? '';
+        if ($binary === '' || $binary[0] !== '/') {
+            throw new \InvalidArgumentException('Pole \'sendmail_command\' musí začínat absolutní cestou k binárce (např. /usr/sbin/sendmail -bs).');
+        }
+
+        $basename = strtolower(basename($binary));
+        if (preg_match('/^(sendmail|msmtp|ssmtp|exim|postfix)$/', $basename) !== 1) {
+            throw new \InvalidArgumentException('Pole \'sendmail_command\' musí ukazovat na sendmail-kompatibilní binárku (sendmail/msmtp/ssmtp).');
+        }
+
+        // Symfony SendmailTransport vyžaduje -bs nebo -t; zároveň to vyloučí příkazy,
+        // které nejsou skutečný sendmail transport.
+        if (!in_array('-bs', $parts, true) && !in_array('-t', $parts, true)) {
+            throw new \InvalidArgumentException('Pole \'sendmail_command\' musí obsahovat -bs nebo -t.');
+        }
+
+        foreach (array_slice($parts, 1) as $arg) {
+            if (preg_match('/^-{1,2}[A-Za-z0-9][A-Za-z0-9_-]*$/', $arg) !== 1
+                && preg_match('/^[A-Za-z0-9@._\/-]+$/', $arg) !== 1) {
+                throw new \InvalidArgumentException('Pole \'sendmail_command\' obsahuje neplatný argument: ' . $arg);
+            }
+        }
+
+        return $command;
     }
 
     private function nullableEmail(mixed $value, string $field): ?string

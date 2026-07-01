@@ -691,7 +691,14 @@ final class SigningProfileRepository
                        c.certificate_valid_to AS credential_certificate_valid_to,
                        c.is_active AS credential_is_active
                   FROM signing_profiles p
-             LEFT JOIN signing_credentials c ON c.profile_id = p.id AND c.deleted_at IS NULL';
+             LEFT JOIN signing_credentials c
+                    ON c.id = (
+                        SELECT c2.id
+                          FROM signing_credentials c2
+                         WHERE c2.profile_id = p.id AND c2.deleted_at IS NULL
+                         ORDER BY (c2.`usage` = \'pdf\') DESC, c2.id DESC
+                         LIMIT 1
+                    )';
     }
 
     /**
