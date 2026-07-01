@@ -580,6 +580,7 @@ final class Routes
         $app->post ('/api/bank-statements/upload',           [BankStatementAction::class, 'upload']);
         $app->post ('/api/bank-statements/scan',             [BankStatementAction::class, 'scan']);
         $app->get  ('/api/bank-statements',                  [BankStatementAction::class, 'list']);
+        $app->get  ('/api/bank-statements/account-balances', [BankStatementAction::class, 'accountBalances']);
         $app->get  ('/api/bank-statements/{id:[0-9]+}',      [BankStatementAction::class, 'detail']);
         $app->get  ('/api/bank-statements/{id:[0-9]+}/download', [BankStatementAction::class, 'download']);
         $app->post ('/api/bank-statements/{id:[0-9]+}/pdf',  [BankStatementAction::class, 'uploadPdf']);
