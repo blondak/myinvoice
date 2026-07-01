@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.43.4] — 2026-07-01
+
+### Fixed
+
+- **Párování bankovního výpisu (GPC) — zaplacené faktury se nepřeskočí.** Vystavená faktura, která už byla označená jako zaplacená (`paid`, `paid_total` = plná částka), se při importu i automatickém přepárování porovnávala proti zbývajícímu dluhu (= 0), takže plná platba nikdy nesedla a faktura zůstala ve výpisu jako *Nespárováno*. Nově se u již zaplacené faktury porovnává proti celkové částce dokladu a transakce se na ni jen naváže (stav ani datum úhrady se nemění, nevzniká duplicitní platba). Projevovalo se zejména při re-importu téže platby nebo když byla úhrada zaznamenaná dřív (jiná transakce / ruční záznam).
+- **Párování — uhrazené zálohové faktury (proforma) se nyní spárují.** Uhrazená záloha s vystaveným (a taky vyrovnaným) finálním dokladem se nepárovala: matcher platbu vždy přesměroval na finál, který ovšem u uhrazené zálohy nese `k úhradě` = 0 (pohledávku i platbu drží proforma), takže se porovnávala proti nule. Přesměrování na finál teď proběhne jen když je co doplácet (finál nese otevřenou pohledávku nebo proforma ještě není uhrazená); u plně vyrovnané zálohy se potvrzující platba naváže přímo na proformu.
+- **Párování odchozích plateb — karetní/bez VS platby se párují jako v ruční nabídce.** Automatické párování odchozích (záporných) plateb na přijaté faktury dosud u plateb bez variabilního symbolu (typicky karetní — GitHub, Anthropic, Alza…) vyžadovalo shodu názvu protistrany a vynechávalo už zaplacené faktury, takže se nespárovaly, přestože je ruční nabídka kandidátů podle částky a data našla. Přibyla poslední záchrana: shoda podle **částky (±1 Kč / 4 % u cizí měny) a data (±14 dní)** včetně zaplacených faktur — spáruje se ale jen při **právě jednom** jednoznačném kandidátovi (jinak zůstane nespárováno k ruční kontrole; už spárované doklady se vylučují).
+
 ## [4.43.3] — 2026-06-30
 
 ### Added

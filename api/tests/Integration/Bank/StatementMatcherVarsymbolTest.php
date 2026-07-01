@@ -41,7 +41,7 @@ final class StatementMatcherVarsymbolTest extends TestCase
 
     private const FILE_MARKER = '__vs58_test__';
     /** Konkrétní VS používané testy — deterministický úklid (i po spadnutém běhu). */
-    private const TEST_VARSYMBOLS = ['2099-00042', '2099-00077', '2099000099', '2099000123'];
+    private const TEST_VARSYMBOLS = ['2099-00042', '2099-00077', '2099000099', '2099000123', '2099000260', '2099000261'];
 
     protected function setUp(): void
     {
@@ -97,6 +97,9 @@ final class StatementMatcherVarsymbolTest extends TestCase
         $pdo->prepare("DELETE FROM bank_statements WHERE file_name LIKE ?")
             ->execute(['%' . self::FILE_MARKER . '%']);
         $placeholders = implode(',', array_fill(0, count(self::TEST_VARSYMBOLS), '?'));
+        // Nejdřív finály (parent_invoice_id != NULL), pak zbytek — kvůli FK na parent.
+        $pdo->prepare("DELETE FROM invoices WHERE supplier_id = ? AND varsymbol IN ($placeholders) AND parent_invoice_id IS NOT NULL")
+            ->execute([$this->supplierId, ...self::TEST_VARSYMBOLS]);
         $pdo->prepare("DELETE FROM invoices WHERE supplier_id = ? AND varsymbol IN ($placeholders)")
             ->execute([$this->supplierId, ...self::TEST_VARSYMBOLS]);
         $this->invoiceId = $this->statementId = $this->transactionId = 0;
@@ -196,6 +199,70 @@ final class StatementMatcherVarsymbolTest extends TestCase
         // Transakce je navázaná na fakturu.
         self::assertSame(
             $this->invoiceId,
+            (int) $pdo->query("SELECT matched_invoice_id FROM bank_transactions WHERE id = {$this->transactionId}")->fetchColumn()
+        );
+    }
+
+    public function testPaidProformaWithSettledFinalStillLinks(): void
+    {
+        // Uhrazená ZÁLOHOVÁ faktura (proforma paid, paid_total = plná částka) s vystaveným
+        // finálem, který je taky vyrovnaný (amount_to_pay=0, paid_total=0 — pohledávku i
+        // platbu drží proforma). Matcher dřív platbu přesměroval na finál a porovnával ji
+        // proti nule → záloha se nikdy nespárovala. Teď zůstane na proformě a naváže ji.
+        $pdo = $this->db->pdo();
+        $d = $this->date->format('Y-m-d');
+        $amount = 45000.00;
+
+        // Proforma (paid, plně uhrazená).
+        $pdo->prepare(
+            "INSERT INTO invoices
+                (invoice_type, varsymbol, client_id, supplier_id, issue_date, tax_date, due_date,
+                 currency_id, status, total_without_vat, total_with_vat, amount_to_pay, paid_total, created_by)
+             VALUES ('proforma', '2099000260', ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)"
+        )->execute([
+            $this->clientId, $this->supplierId, $d, $d, $d, $this->currencyId,
+            $amount, $amount, $amount, $amount, $this->userId,
+        ]);
+        $proformaId = (int) $pdo->lastInsertId();
+        $this->invoiceId = $proformaId;
+
+        // Finál z proformy — vyrovnaný, bez zbývající pohledávky.
+        $pdo->prepare(
+            "INSERT INTO invoices
+                (invoice_type, parent_invoice_id, varsymbol, client_id, supplier_id, issue_date, tax_date, due_date,
+                 currency_id, status, total_without_vat, total_with_vat, amount_to_pay, paid_total, created_by)
+             VALUES ('invoice', ?, '2099000261', ?, ?, ?, ?, ?, ?, 'paid', ?, ?, 0, 0, ?)"
+        )->execute([
+            $proformaId, $this->clientId, $this->supplierId, $d, $d, $d, $this->currencyId,
+            $amount, $amount, $this->userId,
+        ]);
+
+        $pdo->prepare(
+            "INSERT INTO bank_statements
+                (file_name, file_hash, account_number, bank_code, currency, statement_date)
+             VALUES (?, ?, ?, ?, 'CZK', ?)"
+        )->execute([
+            self::FILE_MARKER . 'proforma.gpc',
+            hash('sha256', self::FILE_MARKER . '2099000260proforma'),
+            $this->account, $this->bankCode, $d,
+        ]);
+        $this->statementId = (int) $pdo->lastInsertId();
+
+        // Příchozí platba (kladná) pod VS proformy, plná částka.
+        $pdo->prepare(
+            "INSERT INTO bank_transactions
+                (statement_id, posted_at, amount, currency, variable_symbol)
+             VALUES (?, ?, ?, 'CZK', '2099000260')"
+        )->execute([$this->statementId, $d, $amount]);
+        $this->transactionId = (int) $pdo->lastInsertId();
+
+        $res = $this->matcher->match($this->transactionId);
+
+        self::assertSame('auto_exact', $res['status'] ?? null, 'Uhrazená záloha se musí navázat na platbu z výpisu.');
+        self::assertSame($proformaId, $res['invoice_id'] ?? null, 'Platba se má navázat na proformu, ne na vyrovnaný finál.');
+        self::assertTrue($res['already_paid'] ?? false);
+        self::assertSame(
+            $proformaId,
             (int) $pdo->query("SELECT matched_invoice_id FROM bank_transactions WHERE id = {$this->transactionId}")->fetchColumn()
         );
     }

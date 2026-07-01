@@ -222,7 +222,17 @@ final class StatementMatcher
             }
             // 2) karetní platby (bez VS) / VS bez shody → fuzzy dle částky + podobného
             //    názvu protistrany (u karet je název obchodníka odlišný od jména dodavatele).
-            return $this->matchPurchaseFuzzy($pdo, $supplierId, abs($amount), (string) ($row['counterparty_name'] ?? ''), (string) $row['posted_at'], $transactionId, $txCurrency);
+            $res = $this->matchPurchaseFuzzy($pdo, $supplierId, abs($amount), (string) ($row['counterparty_name'] ?? ''), (string) $row['posted_at'], $transactionId, $txCurrency);
+            if (($res['status'] ?? 'unmatched') !== 'unmatched') {
+                return $res;
+            }
+            // 3) poslední záchrana: shoda dle ČÁSTKY + DATA (±14 dní), stejně jako ruční
+            //    nabídka kandidátů (matchCandidates) — VČETNĚ zaplacených faktur a bez ohledu
+            //    na VS/název. Fuzzy nad tímto nestačí: vynechává paid (uživatel značí faktury
+            //    paid hned) a je moc přísný (0,05 Kč, shoda názvu), takže karetní/bez-VS platby
+            //    se automaticky nikdy nespárovaly, i když ručně se kandidát nabídl. Bezpečnost
+            //    drží pravidlo „právě jeden kandidát".
+            return $this->matchPurchaseByAmountDate($pdo, $supplierId, abs($amount), (string) $row['posted_at'], $transactionId, $txCurrency);
         }
 
         // Příchozí platby stále vyžadují VS (vystavené faktury se párují na náš VS).
@@ -269,6 +279,7 @@ final class StatementMatcher
         // by visela mimo dluh (receivable guard proformy s finálem vylučuje) a navíc
         // by spustila daňový doklad k platbě, který už finál nikdy neodečte (§ 37a).
         if (($inv['invoice_type'] ?? '') === 'proforma') {
+            $proformaPaid = ($inv['status'] === 'paid');
             $fin = $pdo->prepare(
                 "SELECT i.id, i.varsymbol, i.amount_to_pay, i.paid_total, i.exchange_rate, i.status, i.invoice_type, cur.code AS currency
                    FROM invoices i
@@ -280,7 +291,18 @@ final class StatementMatcher
             $fin->execute([(int) $inv['id']]);
             $finRow = $fin->fetch(PDO::FETCH_ASSOC);
             if ($finRow) {
-                $inv = $finRow;
+                // Přesměruj na finál JEN když je co vybrat — finál nese otevřenou pohledávku
+                // NEBO proforma sama ještě není uhrazená (finál je doklad k úhradě). Když je
+                // ale proforma i finál plně vyrovnané, platba už jen potvrzuje uhrazenou
+                // zálohu a navážeme ji na PROFORMU: finál z uhrazené proformy má
+                // amount_to_pay=0 i paid_total=0 (pohledávku i platbu drží proforma), takže
+                // přesměrování by porovnávalo platbu proti nule a uhrazená záloha by se
+                // nikdy nespárovala (issue: „zálohové faktury se nepárují").
+                $finRemaining = round((float) $finRow['amount_to_pay'] - (float) ($finRow['paid_total'] ?? 0), 2);
+                $finSettled = ($finRow['status'] === 'paid') || $finRemaining <= 0.005;
+                if (!($proformaPaid && $finSettled)) {
+                    $inv = $finRow;
+                }
             }
         }
 
@@ -641,6 +663,77 @@ final class StatementMatcher
         $this->logPaymentMatch('purchase_invoice', (int) $pi['id'], $supplierId, 'auto_partial', $absAmount, '', $transactionId);
 
         return ['status' => 'auto_partial', 'purchase_invoice_id' => (int) $pi['id'], 'fuzzy' => true];
+    }
+
+    /** Okno ±N dní kolem data platby pro shodu dle částky+data (zrcadlí BankStatementAction). */
+    private const AMOUNT_DATE_DAY_WINDOW = 14;
+
+    /**
+     * Poslední záchrana pro ODCHOZÍ platbu bez shody VS i názvu: napáruj přijatou fakturu
+     * dle ČÁSTKY (v toleranci expectedMatch — ±1 Kč, resp. 4 % u cizí měny) + DATA (±14 dní
+     * kolem posted_at), stejně jako ruční nabídka kandidátů (matchCandidates).
+     *
+     * Oproti fuzzy: (1) zahrnuje i ZAPLACENÉ faktury (uživatel je typicky značí paid hned,
+     * takže by jinak nikdy neprošly), (2) nevyžaduje shodu názvu, (3) volnější tolerance.
+     * Bezpečnost drží pravidlo „PRÁVĚ JEDEN kandidát": při 0 nebo 2+ shodách necháme
+     * unmatched (radši ručně než špatně). Faktury, které už mají párování (payment_matches),
+     * se vylučují, ať se druhá platba nenaváže na už vyrovnanou fakturu.
+     *
+     * Zapisujeme jako auto_partial (confidence 65) — bez VS/názvu jde o slabší důkaz, ať
+     * to uživatel v UI vidí jako „ke kontrole". Nezaplacenou fakturu překlopí na paid.
+     */
+    private function matchPurchaseByAmountDate(\PDO $pdo, int $supplierId, float $absAmount, string $postedAt, int $transactionId, ?string $txCurrency): array
+    {
+        $win = self::AMOUNT_DATE_DAY_WINDOW;
+        $sql = "SELECT pi.id, pi.status,
+                       COALESCE(pi.amount_to_pay, pi.total_with_vat, 0) AS amount_to_pay,
+                       pi.exchange_rate, cur.code AS currency
+                  FROM purchase_invoices pi
+             LEFT JOIN currencies cur ON cur.id = pi.currency_id
+                 WHERE pi.supplier_id = ?
+                   AND pi.status IN ('received', 'booked', 'paid')
+                   AND (ABS(DATEDIFF(pi.due_date, ?)) <= ? OR ABS(DATEDIFF(pi.issue_date, ?)) <= ?)
+                   AND NOT EXISTS (SELECT 1 FROM payment_matches pm WHERE pm.purchase_invoice_id = pi.id)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$supplierId, $postedAt, $win, $postedAt, $win]);
+
+        $matches = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $m = $this->expectedMatch((float) $r['amount_to_pay'], (string) ($r['currency'] ?? self::LOCAL_CURRENCY), (float) ($r['exchange_rate'] ?: 0), $txCurrency);
+            if ($m === null) {
+                continue; // měny nejdou spolehlivě porovnat → přeskoč
+            }
+            if (abs($absAmount - $m['expected']) <= $m['partial']) {
+                $matches[] = $r;
+            }
+        }
+        if (count($matches) !== 1) {
+            return ['status' => 'unmatched', 'reason' => $matches === [] ? 'no_amount_date_match' : 'ambiguous_amount_date_match'];
+        }
+        $pi = $matches[0];
+        $alreadyPaid = ($pi['status'] ?? '') === 'paid';
+
+        $pdo->beginTransaction();
+        try {
+            if (!$alreadyPaid) {
+                $pdo->prepare("UPDATE purchase_invoices SET status = 'paid', paid_at = ? WHERE id = ? AND status <> 'paid'")
+                    ->execute([$postedAt, $pi['id']]);
+            }
+            $pdo->prepare(
+                "INSERT INTO payment_matches
+                    (supplier_id, bank_transaction_id, purchase_invoice_id, amount, match_type, match_confidence)
+                 VALUES (?, ?, ?, ?, 'auto', 65)"
+            )->execute([$supplierId, $transactionId, (int) $pi['id'], $absAmount]);
+            $pdo->prepare("UPDATE bank_transactions SET match_status = 'auto_partial', matched_at = NOW() WHERE id = ?")
+                ->execute([$transactionId]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+        $this->logPaymentMatch('purchase_invoice', (int) $pi['id'], $supplierId, 'auto_partial', $absAmount, '', $transactionId, $alreadyPaid);
+
+        return ['status' => 'auto_partial', 'purchase_invoice_id' => (int) $pi['id'], 'amount_date' => true];
     }
 
     /**
