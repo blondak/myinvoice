@@ -232,6 +232,48 @@ final class EmailProfileRepositoryTest extends TestCase
         self::assertSame('smtp-secret', $internal['smtp_password'] ?? null);
     }
 
+    public function testImapSentSettingsStoreSecretOnlyForInternalUse(): void
+    {
+        $profileId = $this->profiles->createProfile($this->supplierId, [
+            'name' => 'IMAP Sent profile',
+            'code' => 'itest_imap_sent_' . bin2hex(random_bytes(4)),
+            'from_email' => 'imap-sent@example.test',
+            'imap_sent_enabled' => true,
+            'imap_host' => 'imap.example.test',
+            'imap_port' => 993,
+            'imap_encryption' => 'ssl',
+            'imap_validate_cert' => false,
+            'imap_username' => 'imap-user',
+            'imap_password' => 'imap-secret',
+            'imap_folder' => 'Sent Items',
+            'imap_create_folder' => true,
+            'imap_mark_seen' => false,
+            'imap_timeout' => 45,
+            'imap_on_failure' => 'fail_send',
+        ], $this->userId);
+        $this->createdEmailProfiles[] = $profileId;
+
+        $public = $this->profiles->findProfile($this->supplierId, $profileId);
+        self::assertNotNull($public);
+        self::assertTrue($public['imap_sent_enabled']);
+        self::assertSame('imap.example.test', $public['imap_host']);
+        self::assertSame(993, $public['imap_port']);
+        self::assertSame('ssl', $public['imap_encryption']);
+        self::assertFalse($public['imap_validate_cert']);
+        self::assertSame('imap-user', $public['imap_username']);
+        self::assertSame('Sent Items', $public['imap_folder']);
+        self::assertTrue($public['imap_create_folder']);
+        self::assertFalse($public['imap_mark_seen']);
+        self::assertSame(45, $public['imap_timeout']);
+        self::assertSame('fail_send', $public['imap_on_failure']);
+        self::assertTrue($public['has_imap_password']);
+        self::assertArrayNotHasKey('imap_password', $public);
+
+        $internal = $this->profiles->findProfile($this->supplierId, $profileId, false, true);
+        self::assertNotNull($internal);
+        self::assertSame('imap-secret', $internal['imap_password'] ?? null);
+    }
+
     public function testDraftTestProfileDoesNotPersistAndCanReuseStoredSecret(): void
     {
         $profileId = $this->profiles->createProfile($this->supplierId, [
@@ -243,6 +285,11 @@ final class EmailProfileRepositoryTest extends TestCase
             'smtp_auth_enabled' => true,
             'smtp_username' => 'base-user',
             'smtp_password' => 'stored-secret',
+            'imap_sent_enabled' => true,
+            'imap_host' => 'imap-base.example.test',
+            'imap_username' => 'base-imap-user',
+            'imap_password' => 'stored-imap-secret',
+            'imap_folder' => 'Sent',
         ], $this->userId);
         $this->createdEmailProfiles[] = $profileId;
 
@@ -256,6 +303,11 @@ final class EmailProfileRepositoryTest extends TestCase
             'smtp_auth_enabled' => true,
             'smtp_username' => 'draft-user',
             'smtp_password' => '',
+            'imap_sent_enabled' => true,
+            'imap_host' => 'imap-draft.example.test',
+            'imap_username' => 'draft-imap-user',
+            'imap_password' => '',
+            'imap_folder' => 'Sent Items',
         ], $profileId);
 
         self::assertSame($profileId, $draft['id']);
@@ -263,6 +315,11 @@ final class EmailProfileRepositoryTest extends TestCase
         self::assertSame('smtp-draft.example.test', $draft['smtp_host']);
         self::assertSame('draft-user', $draft['smtp_username']);
         self::assertSame('stored-secret', $draft['smtp_password']);
+        self::assertTrue($draft['imap_sent_enabled']);
+        self::assertSame('imap-draft.example.test', $draft['imap_host']);
+        self::assertSame('draft-imap-user', $draft['imap_username']);
+        self::assertSame('stored-imap-secret', $draft['imap_password']);
+        self::assertSame('Sent Items', $draft['imap_folder']);
 
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM email_profiles WHERE supplier_id = ? AND code = ?');
         $stmt->execute([$this->supplierId, $draftCode]);
@@ -271,6 +328,47 @@ final class EmailProfileRepositoryTest extends TestCase
         $stored = $this->profiles->findProfile($this->supplierId, $profileId);
         self::assertSame('draft-base@example.test', $stored['from_email'] ?? null);
         self::assertSame('smtp-base.example.test', $stored['smtp_host'] ?? null);
+        self::assertSame('imap-base.example.test', $stored['imap_host'] ?? null);
+    }
+
+    public function testImapProbeSettingsCanReuseStoredSecretWithoutWholeProfile(): void
+    {
+        $profileId = $this->profiles->createProfile($this->supplierId, [
+            'name' => 'IMAP browse base',
+            'code' => 'itest_imap_browse_' . bin2hex(random_bytes(4)),
+            'from_email' => 'imap-browse@example.test',
+            'imap_sent_enabled' => true,
+            'imap_host' => 'imap-base.example.test',
+            'imap_username' => 'base-user',
+            'imap_password' => 'stored-imap-secret',
+            'imap_folder' => 'Sent',
+        ], $this->userId);
+        $this->createdEmailProfiles[] = $profileId;
+
+        $settings = $this->profiles->imapProbeSettingsForDraft($this->supplierId, [
+            'imap_host' => 'imap-draft.example.test',
+            'imap_port' => 143,
+            'imap_encryption' => 'tls',
+            'imap_validate_cert' => false,
+            'imap_username' => 'draft-user',
+            'imap_password' => '',
+            'imap_folder' => 'Sent Items',
+            'imap_mark_seen' => false,
+            'imap_timeout' => 60,
+            'imap_on_failure' => 'fail_send',
+        ], $profileId);
+
+        self::assertTrue($settings['imap_sent_enabled']);
+        self::assertSame('imap-draft.example.test', $settings['imap_host']);
+        self::assertSame(143, $settings['imap_port']);
+        self::assertSame('tls', $settings['imap_encryption']);
+        self::assertFalse($settings['imap_validate_cert']);
+        self::assertSame('draft-user', $settings['imap_username']);
+        self::assertSame('stored-imap-secret', $settings['imap_password']);
+        self::assertSame('Sent Items', $settings['imap_folder']);
+        self::assertFalse($settings['imap_mark_seen']);
+        self::assertSame(60, $settings['imap_timeout']);
+        self::assertSame('fail_send', $settings['imap_on_failure']);
     }
 
     public function testRejectsInvalidEmail(): void
@@ -316,6 +414,34 @@ final class EmailProfileRepositoryTest extends TestCase
             'from_email' => 'dkim-required@example.test',
             'dkim_enabled' => true,
             'dkim_domain' => 'example.test',
+        ], $this->userId);
+    }
+
+    public function testRejectsEnabledSmtpAuthWithoutPassword(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->profiles->createProfile($this->supplierId, [
+            'name' => 'Invalid SMTP auth',
+            'code' => 'itest_smtp_invalid_' . bin2hex(random_bytes(4)),
+            'from_email' => 'smtp-invalid@example.test',
+            'transport_type' => 'smtp',
+            'smtp_host' => 'smtp.example.test',
+            'smtp_auth_enabled' => true,
+            'smtp_username' => 'smtp-user',
+        ], $this->userId);
+    }
+
+    public function testRejectsEnabledImapSentWithoutPassword(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->profiles->createProfile($this->supplierId, [
+            'name' => 'Invalid IMAP Sent',
+            'code' => 'itest_imap_invalid_' . bin2hex(random_bytes(4)),
+            'from_email' => 'imap-invalid@example.test',
+            'imap_sent_enabled' => true,
+            'imap_host' => 'imap.example.test',
+            'imap_username' => 'imap-user',
+            'imap_folder' => 'Sent',
         ], $this->userId);
     }
 }

@@ -517,7 +517,11 @@ final class Routes
         $app->get    ('/api/settings/email-profiles',       [EmailProfilesAction::class, 'list']);
         $app->post   ('/api/settings/email-profiles',       [EmailProfilesAction::class, 'create']);
         $app->post   ('/api/settings/email-profiles/test',  [EmailProfilesAction::class, 'testDraft']);
+        $app->post   ('/api/settings/email-profiles/imap-test', [EmailProfilesAction::class, 'testImapSettings']);
+        $app->post   ('/api/settings/email-profiles/folders', [EmailProfilesAction::class, 'browseImapFolders']);
         $app->post   ('/api/settings/email-profiles/{id:[0-9]+}/test', [EmailProfilesAction::class, 'test']);
+        $app->post   ('/api/settings/email-profiles/{id:[0-9]+}/imap-test', [EmailProfilesAction::class, 'testImapSettings']);
+        $app->post   ('/api/settings/email-profiles/{id:[0-9]+}/folders', [EmailProfilesAction::class, 'browseImapFolders']);
         $app->put    ('/api/settings/email-profiles/{id:[0-9]+}', [EmailProfilesAction::class, 'update']);
         $app->delete ('/api/settings/email-profiles/{id:[0-9]+}', [EmailProfilesAction::class, 'delete']);
         $app->get    ('/api/settings/pdf-signing/diagnostics', PdfSigningDiagnosticsAction::class);

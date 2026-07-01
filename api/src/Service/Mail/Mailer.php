@@ -14,6 +14,7 @@ use MyInvoice\Service\Signing\Email\EmailSigningService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Mailer as SymfonyMailer;
+use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Smtp\Auth\CramMd5Authenticator;
 use Symfony\Component\Mailer\Transport\Smtp\Auth\LoginAuthenticator;
@@ -25,6 +26,7 @@ use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Crypto\DkimSigner;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\RawMessage;
 use Twig\Environment;
 use Twig\Extension\SandboxExtension;
 use Twig\Loader\FilesystemLoader;
@@ -54,6 +56,7 @@ final class Mailer
         private readonly EmailTemplateRepository $templates,
         private readonly ?EmailSigningService $emailSigning = null,
         private readonly ?EmailProfileRepository $emailProfiles = null,
+        private readonly ?SentMailAppenderInterface $sentMailImap = null,
     ) {}
 
     /**
@@ -80,6 +83,45 @@ final class Mailer
         ?int $userId = null,
         ?array $emailProfileOverride = null,
     ): string {
+        return $this->sendTemplateDetailed(
+            $code,
+            $locale,
+            $to,
+            $vars,
+            $subjectOverride,
+            $cc,
+            $bcc,
+            $attachments,
+            $userId,
+            $emailProfileOverride,
+        )['smtp_response'];
+    }
+
+    /**
+     * @param string[]      $to
+     * @param array<string,mixed> $vars
+     * @param string[]      $cc
+     * @param string[]      $bcc
+     * @param array<int,array{path:string,name:string,contentType:string}> $attachments
+     * @param ?int          $userId Přihlášený uživatel pro výběr user podpisového profilu.
+     * @param array<string,mixed>|null $emailProfileOverride Explicitní profil pro test konfigurace.
+     * @return array{
+     *   smtp_response:string,
+     *   imap_append:array{status:'skipped'|'saved'|'failed',folder:?string,error:?string}
+     * }
+     */
+    public function sendTemplateDetailed(
+        string $code,
+        string $locale,
+        array $to,
+        array $vars,
+        ?string $subjectOverride = null,
+        array $cc = [],
+        array $bcc = [],
+        array $attachments = [],
+        ?int $userId = null,
+        ?array $emailProfileOverride = null,
+    ): array {
         $twig = $this->twig();
 
         $vars['locale'] = $locale;
@@ -271,6 +313,18 @@ final class Mailer
         }
         $debug = $sent !== null ? $sent->getDebug() : '';
         $smtpResponse = $this->extractLastServerResponse($debug);
+        $imapAppend = $this->sentMailImap !== null
+            ? $this->sentMailImap->appendIfEnabled($emailProfile, $this->rawMessageForImap($sent, $email))
+            : ['status' => 'skipped', 'folder' => null, 'error' => null];
+
+        if ($imapAppend['status'] === 'failed') {
+            $this->logger->warning('mail.imap_sent_append_failed', [
+                'template' => $code,
+                'email_profile' => $emailProfile !== null ? ($emailProfile['code'] ?? null) : null,
+                'folder' => $imapAppend['folder'],
+                'error' => $imapAppend['error'],
+            ]);
+        }
 
         $this->logger->info('mail.sent', [
             'template'      => $code,
@@ -281,12 +335,25 @@ final class Mailer
             'bcc'           => $bcc,
             'attachments'   => count($attachments),
             'smtp_response' => $smtpResponse,
+            'imap_append_status' => $imapAppend['status'],
+            'imap_append_folder' => $imapAppend['folder'],
+            'imap_append_error' => $imapAppend['error'],
             // Plný SMTP transcript — užitečný pro debugging delivery problémů.
             // Pokud je log moc velký, dá se filtrovat na úrovni Monolog handleru.
             'smtp_debug'    => $debug,
         ]);
 
-        return $smtpResponse;
+        if ($imapAppend['status'] === 'failed' && $this->imapFailurePolicy($emailProfile) === 'fail_send') {
+            throw new \RuntimeException(
+                'E-mail byl transportem přijat, ale uložení do IMAP složky selhalo: '
+                . (string) ($imapAppend['error'] ?? 'neznámá chyba'),
+            );
+        }
+
+        return [
+            'smtp_response' => $smtpResponse,
+            'imap_append' => $imapAppend,
+        ];
     }
 
     /**
@@ -503,6 +570,21 @@ final class Mailer
         }
 
         return (bool) $this->config->get('smtp.keepalive', false);
+    }
+
+    /**
+     * @param array<string,mixed>|null $emailProfile
+     */
+    private function imapFailurePolicy(?array $emailProfile): string
+    {
+        return $emailProfile !== null && ($emailProfile['imap_on_failure'] ?? 'log_only') === 'fail_send'
+            ? 'fail_send'
+            : 'log_only';
+    }
+
+    private function rawMessageForImap(?SentMessage $sent, RawMessage $email): string
+    {
+        return $sent !== null ? $sent->toString() : $email->toString();
     }
 
     /**

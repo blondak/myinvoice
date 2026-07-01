@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   settingsApi,
   type EmailProfile,
+  type EmailProfileImapFolder,
   type EmailProfilePayload,
   type SigningProfile,
 } from '@/api/settings'
@@ -17,19 +18,26 @@ const saving = ref(false)
 const deletingId = ref<number | null>(null)
 const testingId = ref<number | null>(null)
 const testingDraft = ref(false)
+const browsingImapFolders = ref(false)
+const testingImapSettings = ref(false)
 const editingHasSmtpPassword = ref(false)
+const editingHasImapPassword = ref(false)
 const profiles = ref<EmailProfile[]>([])
 const signingProfiles = ref<SigningProfile[]>([])
+const imapFolderOptions = ref<EmailProfileImapFolder[]>([])
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const configureReplyTo = ref(false)
 const configureDkim = ref(false)
+const configureImapSent = ref(false)
 const validationErrors = ref<string[]>([])
+const validationScope = ref<'profile' | 'imap' | null>(null)
 const draftTestFeedback = ref<{
   status: 'success' | 'error'
   title: string
   detail: string
   smtpResponse?: string
+  imapStatus?: string
 } | null>(null)
 
 const draft = reactive<EmailProfilePayload>({
@@ -58,6 +66,18 @@ const draft = reactive<EmailProfilePayload>({
   smtp_timeout: 30,
   smtp_keepalive: false,
   sendmail_command: '',
+  imap_sent_enabled: false,
+  imap_host: '',
+  imap_port: 993,
+  imap_encryption: 'ssl',
+  imap_validate_cert: true,
+  imap_username: '',
+  imap_password: '',
+  imap_folder: 'Sent',
+  imap_create_folder: false,
+  imap_mark_seen: true,
+  imap_timeout: 30,
+  imap_on_failure: 'log_only',
   is_default: false,
   is_active: true,
 })
@@ -130,6 +150,10 @@ const smtpPasswordRequired = computed(() =>
   && draft.smtp_auth_enabled
   && (editingId.value === null || !editingHasSmtpPassword.value),
 )
+const imapPasswordRequired = computed(() =>
+  configureImapSent.value
+  && (editingId.value === null || !editingHasImapPassword.value),
+)
 
 onMounted(load)
 
@@ -149,11 +173,37 @@ watch(
     draft.smtp_username,
     draft.smtp_password,
     smtpPasswordRequired.value,
+    configureImapSent.value,
+    draft.imap_host,
+    draft.imap_username,
+    draft.imap_password,
+    draft.imap_folder,
+    imapPasswordRequired.value,
   ],
   () => {
     if (validationErrors.value.length > 0) {
-      validateDraft()
+      if (validationScope.value === 'imap') {
+        validateImapSettings()
+      } else {
+        validateDraft()
+      }
     }
+  },
+)
+
+watch(
+  () => [
+    configureImapSent.value,
+    draft.imap_host,
+    draft.imap_port,
+    draft.imap_encryption,
+    draft.imap_validate_cert,
+    draft.imap_username,
+    draft.imap_password,
+    draft.imap_timeout,
+  ],
+  () => {
+    imapFolderOptions.value = []
   },
 )
 
@@ -176,8 +226,11 @@ async function load() {
 function resetDraft() {
   editingId.value = null
   editingHasSmtpPassword.value = false
+  editingHasImapPassword.value = false
   draftTestFeedback.value = null
   validationErrors.value = []
+  validationScope.value = null
+  imapFolderOptions.value = []
   draft.name = ''
   draft.code = ''
   draft.from_email = ''
@@ -203,10 +256,23 @@ function resetDraft() {
   draft.smtp_timeout = 30
   draft.smtp_keepalive = false
   draft.sendmail_command = ''
+  draft.imap_sent_enabled = false
+  draft.imap_host = ''
+  draft.imap_port = 993
+  draft.imap_encryption = 'ssl'
+  draft.imap_validate_cert = true
+  draft.imap_username = ''
+  draft.imap_password = ''
+  draft.imap_folder = 'Sent'
+  draft.imap_create_folder = false
+  draft.imap_mark_seen = true
+  draft.imap_timeout = 30
+  draft.imap_on_failure = 'log_only'
   draft.is_default = profiles.value.length === 0
   draft.is_active = true
   configureReplyTo.value = false
   configureDkim.value = false
+  configureImapSent.value = false
 }
 
 function newProfile() {
@@ -217,8 +283,11 @@ function newProfile() {
 function editProfile(profile: EmailProfile) {
   draftTestFeedback.value = null
   validationErrors.value = []
+  validationScope.value = null
+  imapFolderOptions.value = []
   editingId.value = profile.id
   editingHasSmtpPassword.value = profile.has_smtp_password
+  editingHasImapPassword.value = profile.has_imap_password
   draft.name = profile.name
   draft.code = profile.code
   draft.from_email = profile.from_email
@@ -244,10 +313,23 @@ function editProfile(profile: EmailProfile) {
   draft.smtp_timeout = profile.smtp_timeout || 30
   draft.smtp_keepalive = profile.smtp_keepalive
   draft.sendmail_command = profile.sendmail_command || ''
+  draft.imap_sent_enabled = profile.imap_sent_enabled
+  draft.imap_host = profile.imap_host || ''
+  draft.imap_port = profile.imap_port || 993
+  draft.imap_encryption = profile.imap_encryption || 'ssl'
+  draft.imap_validate_cert = profile.imap_validate_cert
+  draft.imap_username = profile.imap_username || ''
+  draft.imap_password = ''
+  draft.imap_folder = profile.imap_folder || 'Sent'
+  draft.imap_create_folder = profile.imap_create_folder
+  draft.imap_mark_seen = profile.imap_mark_seen
+  draft.imap_timeout = profile.imap_timeout || 30
+  draft.imap_on_failure = profile.imap_on_failure || 'log_only'
   draft.is_default = profile.is_default
   draft.is_active = profile.is_active
   configureReplyTo.value = profile.reply_to_enabled
   configureDkim.value = profile.dkim_enabled
+  configureImapSent.value = profile.imap_sent_enabled
   showForm.value = true
 }
 
@@ -278,8 +360,37 @@ function payload(): EmailProfilePayload {
     smtp_timeout: draft.transport_type === 'smtp' ? (Number(draft.smtp_timeout) || 30) : null,
     smtp_keepalive: draft.transport_type === 'smtp' ? Boolean(draft.smtp_keepalive) : false,
     sendmail_command: draft.transport_type === 'sendmail' ? (draft.sendmail_command || null) : null,
+    imap_sent_enabled: configureImapSent.value,
+    imap_host: configureImapSent.value ? (draft.imap_host || null) : null,
+    imap_port: configureImapSent.value ? (Number(draft.imap_port) || 993) : null,
+    imap_encryption: configureImapSent.value ? (draft.imap_encryption || 'ssl') : 'ssl',
+    imap_validate_cert: configureImapSent.value ? Boolean(draft.imap_validate_cert) : true,
+    imap_username: configureImapSent.value ? (draft.imap_username || null) : null,
+    imap_password: configureImapSent.value && draft.imap_password ? draft.imap_password : null,
+    imap_folder: configureImapSent.value ? (draft.imap_folder || 'Sent') : null,
+    imap_create_folder: configureImapSent.value ? Boolean(draft.imap_create_folder) : false,
+    imap_mark_seen: configureImapSent.value ? Boolean(draft.imap_mark_seen) : true,
+    imap_timeout: configureImapSent.value ? (Number(draft.imap_timeout) || 30) : 30,
+    imap_on_failure: configureImapSent.value ? (draft.imap_on_failure || 'log_only') : 'log_only',
     is_default: draft.is_default,
     is_active: draft.is_active,
+  }
+}
+
+function imapBrowsePayload(): Partial<EmailProfilePayload> {
+  return {
+    imap_sent_enabled: true,
+    imap_host: draft.imap_host || null,
+    imap_port: Number(draft.imap_port) || 993,
+    imap_encryption: draft.imap_encryption || 'ssl',
+    imap_validate_cert: Boolean(draft.imap_validate_cert),
+    imap_username: draft.imap_username || null,
+    imap_password: draft.imap_password || null,
+    imap_folder: draft.imap_folder || 'Sent',
+    imap_create_folder: Boolean(draft.imap_create_folder),
+    imap_mark_seen: Boolean(draft.imap_mark_seen),
+    imap_timeout: Number(draft.imap_timeout) || 30,
+    imap_on_failure: draft.imap_on_failure || 'log_only',
   }
 }
 
@@ -339,6 +450,11 @@ async function testProfile(profile: EmailProfile) {
   try {
     const result = await settingsApi.testEmailProfile(profile.id)
     toast.success(t('settings.email_profile_test_sent', { email: result.sent_to.join(', ') }))
+    if (result.imap_append?.status === 'failed') {
+      toast.error(imapAppendText(result.imap_append))
+    } else if (result.imap_append?.status === 'saved') {
+      toast.success(imapAppendText(result.imap_append))
+    }
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('settings.email_profile_test_failed'))
   } finally {
@@ -362,6 +478,7 @@ async function testDraftProfile() {
       title: t('settings.email_profile_test_accepted_title'),
       detail: t('settings.email_profile_test_accepted_detail', { email: recipients }),
       smtpResponse: smtpResponseText(result.smtp_response),
+      imapStatus: imapAppendText(result.imap_append),
     }
     toast.success(t('settings.email_profile_test_sent', { email: recipients }))
   } catch (e: any) {
@@ -377,12 +494,84 @@ async function testDraftProfile() {
   }
 }
 
+async function browseImapFolders() {
+  if (!validateImapSettings()) {
+    toast.error(t('settings.email_profile_validation_failed'))
+    return
+  }
+
+  browsingImapFolders.value = true
+  imapFolderOptions.value = []
+  try {
+    const result = await settingsApi.browseEmailProfileImapFolders(imapBrowsePayload(), editingId.value)
+    imapFolderOptions.value = result.folders ?? []
+    if (imapFolderOptions.value.length > 0) {
+      toast.success(t('settings.email_profile_imap_folders_loaded', { count: imapFolderOptions.value.length }))
+    } else {
+      toast.info(t('settings.email_profile_imap_folders_none'))
+    }
+  } catch (e: any) {
+    toast.error(
+      e?.response?.data?.message
+      || e?.response?.data?.error?.message
+      || t('settings.email_profile_imap_folders_failed'),
+    )
+  } finally {
+    browsingImapFolders.value = false
+  }
+}
+
+async function testImapSettings() {
+  if (!validateImapSettings()) {
+    toast.error(t('settings.email_profile_validation_failed'))
+    return
+  }
+
+  testingImapSettings.value = true
+  try {
+    await settingsApi.testEmailProfileImapSettings(imapBrowsePayload(), editingId.value)
+    toast.success(t('settings.email_profile_imap_test_ok', { folder: draft.imap_folder || 'Sent' }))
+  } catch (e: any) {
+    toast.error(
+      e?.response?.data?.message
+      || e?.response?.data?.error?.message
+      || t('settings.email_profile_imap_test_failed'),
+    )
+  } finally {
+    testingImapSettings.value = false
+  }
+}
+
+function selectImapFolder(folder: string) {
+  draft.imap_folder = folder
+  imapFolderOptions.value = []
+}
+
+function imapFolderLabel(folder: EmailProfileImapFolder): string {
+  const labels = []
+  if (folder.sent) labels.push(t('settings.email_profile_imap_folder_sent_badge'))
+  if (!folder.writable) labels.push(t('settings.email_profile_imap_folder_readonly_badge'))
+  const suffix = labels.length > 0 ? ` (${labels.join(', ')})` : ''
+  return `${folder.full_name || folder.path}${suffix}`
+}
+
 function smtpResponseText(value: string | null | undefined): string {
   const response = String(value || '').trim()
   return response !== '' ? response : t('settings.email_profile_test_no_smtp_response')
 }
 
+function imapAppendText(value: { status: 'skipped' | 'saved' | 'failed'; folder: string | null; error: string | null } | null | undefined): string {
+  if (!value || value.status === 'skipped') {
+    return t('settings.email_profile_test_imap_skipped')
+  }
+  if (value.status === 'saved') {
+    return t('settings.email_profile_test_imap_saved', { folder: value.folder || 'Sent' })
+  }
+  return t('settings.email_profile_test_imap_failed', { error: value.error || t('common.error') })
+}
+
 function validateDraft(): boolean {
+  validationScope.value = 'profile'
   const errors: string[] = []
   if (isBlank(draft.name)) errors.push(t('settings.email_profile_validation_name'))
   if (isBlank(draft.code)) errors.push(t('settings.email_profile_validation_code'))
@@ -404,6 +593,38 @@ function validateDraft(): boolean {
   }
   if (smtpPasswordRequired.value && isBlank(draft.smtp_password)) {
     errors.push(t('settings.email_profile_validation_smtp_password'))
+  }
+  if (configureImapSent.value && isBlank(draft.imap_host)) {
+    errors.push(t('settings.email_profile_validation_imap_host'))
+  }
+  if (configureImapSent.value && isBlank(draft.imap_username)) {
+    errors.push(t('settings.email_profile_validation_imap_username'))
+  }
+  if (imapPasswordRequired.value && isBlank(draft.imap_password)) {
+    errors.push(t('settings.email_profile_validation_imap_password'))
+  }
+  if (configureImapSent.value && isBlank(draft.imap_folder)) {
+    errors.push(t('settings.email_profile_validation_imap_folder'))
+  }
+
+  validationErrors.value = errors
+  return errors.length === 0
+}
+
+function validateImapSettings(): boolean {
+  validationScope.value = 'imap'
+  const errors: string[] = []
+  if (isBlank(draft.imap_host)) {
+    errors.push(t('settings.email_profile_validation_imap_host'))
+  }
+  if (isBlank(draft.imap_username)) {
+    errors.push(t('settings.email_profile_validation_imap_username'))
+  }
+  if (imapPasswordRequired.value && isBlank(draft.imap_password)) {
+    errors.push(t('settings.email_profile_validation_imap_password'))
+  }
+  if (isBlank(draft.imap_folder)) {
+    errors.push(t('settings.email_profile_validation_imap_folder'))
   }
 
   validationErrors.value = errors
@@ -644,6 +865,95 @@ function certificateCommonName(subject: string | null | undefined): string | nul
             </label>
           </div>
         </div>
+        <div class="md:col-span-2">
+          <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
+            <input v-model="configureImapSent" type="checkbox" class="h-4 w-4 accent-primary-600" />
+            {{ t('settings.email_profile_configure_imap_sent') }}
+          </label>
+          <div v-if="configureImapSent" class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label class="block text-xs font-medium text-neutral-600">
+              {{ t('settings.email_profile_imap_host') }}
+              <span class="ml-0.5 text-danger-600" :title="t('common.required')" aria-hidden="true">*</span>
+              <span class="sr-only">{{ t('common.required') }}</span>
+              <input v-model="draft.imap_host" required class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+            </label>
+            <label class="block text-xs font-medium text-neutral-600">
+              {{ t('settings.email_profile_imap_port') }}
+              <input v-model.number="draft.imap_port" type="number" min="1" max="65535" class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+            </label>
+            <label class="block text-xs font-medium text-neutral-600">
+              {{ t('settings.email_profile_imap_encryption') }}
+              <select v-model="draft.imap_encryption" class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm">
+                <option value="ssl">{{ t('settings.email_profile_smtp_encryption_ssl') }}</option>
+                <option value="tls">{{ t('settings.email_profile_smtp_encryption_tls') }}</option>
+                <option value="none">{{ t('settings.email_profile_smtp_encryption_none') }}</option>
+              </select>
+            </label>
+            <div class="block text-xs font-medium text-neutral-600">
+              <label for="email-profile-imap-folder">
+                {{ t('settings.email_profile_imap_folder') }}
+                <span class="ml-0.5 text-danger-600" :title="t('common.required')" aria-hidden="true">*</span>
+                <span class="sr-only">{{ t('common.required') }}</span>
+              </label>
+              <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                <input id="email-profile-imap-folder" v-model="draft.imap_folder" required class="min-w-0 flex-1 rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+                <button type="button" @click="browseImapFolders" :disabled="browsingImapFolders || testingImapSettings"
+                  class="shrink-0 cursor-pointer rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+                  {{ browsingImapFolders ? t('settings.email_profile_imap_browsing') : t('settings.email_profile_imap_browse') }}
+                </button>
+                <button type="button" @click="testImapSettings" :disabled="testingImapSettings || browsingImapFolders"
+                  class="shrink-0 cursor-pointer rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+                  {{ testingImapSettings ? t('settings.email_profile_imap_testing') : t('settings.email_profile_imap_test') }}
+                </button>
+              </div>
+              <select v-if="imapFolderOptions.length > 0" :value="draft.imap_folder" @change="selectImapFolder(($event.target as HTMLSelectElement).value)"
+                class="mt-2 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm">
+                <option v-for="folder in imapFolderOptions" :key="folder.path" :value="folder.path" :disabled="!folder.writable">
+                  {{ imapFolderLabel(folder) }}
+                </option>
+              </select>
+            </div>
+            <div class="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+              <label class="block text-xs font-medium text-neutral-600">
+                {{ t('settings.email_profile_imap_username') }}
+                <span class="ml-0.5 text-danger-600" :title="t('common.required')" aria-hidden="true">*</span>
+                <span class="sr-only">{{ t('common.required') }}</span>
+                <input v-model="draft.imap_username" required class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+              </label>
+              <label class="block text-xs font-medium text-neutral-600">
+                {{ t('settings.email_profile_imap_password') }}
+                <span v-if="imapPasswordRequired" class="ml-0.5 text-danger-600" :title="t('common.required')" aria-hidden="true">*</span>
+                <span v-if="imapPasswordRequired" class="sr-only">{{ t('common.required') }}</span>
+                <input v-model="draft.imap_password" type="password" autocomplete="new-password" :required="imapPasswordRequired"
+                  :placeholder="editingId === null ? '' : t('settings.email_profile_smtp_password_keep')"
+                  class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <label class="block text-xs font-medium text-neutral-600">
+              {{ t('settings.email_profile_imap_timeout') }}
+              <input v-model.number="draft.imap_timeout" type="number" min="1" max="300" class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm" />
+            </label>
+            <label class="block text-xs font-medium text-neutral-600">
+              {{ t('settings.email_profile_imap_on_failure') }}
+              <select v-model="draft.imap_on_failure" class="mt-1 w-full rounded-md border border-neutral-300 bg-surface px-3 py-2 text-sm">
+                <option value="log_only">{{ t('settings.email_profile_imap_on_failure_log_only') }}</option>
+                <option value="fail_send">{{ t('settings.email_profile_imap_on_failure_fail_send') }}</option>
+              </select>
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
+              <input v-model="draft.imap_validate_cert" type="checkbox" class="h-4 w-4 accent-primary-600" />
+              {{ t('settings.email_profile_imap_validate_cert') }}
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
+              <input v-model="draft.imap_create_folder" type="checkbox" class="h-4 w-4 accent-primary-600" />
+              {{ t('settings.email_profile_imap_create_folder') }}
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
+              <input v-model="draft.imap_mark_seen" type="checkbox" class="h-4 w-4 accent-primary-600" />
+              {{ t('settings.email_profile_imap_mark_seen') }}
+            </label>
+          </div>
+        </div>
         <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
           <input v-model="draft.is_default" type="checkbox" class="h-4 w-4 accent-primary-600" />
           {{ t('settings.email_profile_default') }}
@@ -685,6 +995,12 @@ function certificateCommonName(subject: string | null | undefined): string | nul
             {{ draftTestFeedback.smtpResponse }}
           </div>
         </div>
+        <div v-if="draftTestFeedback.imapStatus" class="mt-2">
+          <div class="text-xs font-medium uppercase text-current/70">{{ t('settings.email_profile_test_imap_status') }}</div>
+          <div class="mt-1 whitespace-pre-wrap break-words rounded border border-current/20 bg-surface/70 px-2 py-1 text-xs">
+            {{ draftTestFeedback.imapStatus }}
+          </div>
+        </div>
       </div>
     </section>
 
@@ -701,6 +1017,7 @@ function certificateCommonName(subject: string | null | undefined): string | nul
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.email_profile_signing_profile') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.email_profile_dkim') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.email_profile_transport') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('settings.email_profile_imap_sent') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('settings.email_profile_status') }}</th>
               <th class="px-3 py-2 text-right font-medium"></th>
             </tr>
@@ -735,6 +1052,13 @@ function certificateCommonName(subject: string | null | undefined): string | nul
                 <div v-if="profile.transport_type === 'smtp' && profile.smtp_auth_enabled" class="text-neutral-500">
                   {{ t('settings.email_profile_smtp_auth_enabled') }} · {{ profile.smtp_auth_type }}
                 </div>
+              </td>
+              <td class="px-3 py-2">
+                <template v-if="profile.imap_sent_enabled">
+                  <div>{{ profile.imap_folder || 'Sent' }}</div>
+                  <div class="text-neutral-500">{{ profile.imap_host }}:{{ profile.imap_port || 993 }}</div>
+                </template>
+                <span v-else class="text-neutral-400">{{ t('settings.email_profile_imap_sent_disabled') }}</span>
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-wrap gap-1">

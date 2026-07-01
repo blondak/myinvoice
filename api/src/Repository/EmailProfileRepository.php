@@ -18,6 +18,8 @@ final class EmailProfileRepository
 {
     private const TRANSPORT_TYPES = ['global', 'smtp', 'sendmail'];
     private const SMTP_ENCRYPTIONS = ['none', 'tls', 'ssl'];
+    private const IMAP_ENCRYPTIONS = ['none', 'tls', 'ssl'];
+    private const IMAP_ON_FAILURES = ['log_only', 'fail_send'];
     private const SMTP_AUTH_TYPES = ['LOGIN', 'PLAIN', 'CRAM-MD5', 'XOAUTH2'];
 
     public function __construct(
@@ -96,9 +98,11 @@ final class EmailProfileRepository
                  transport_type, smtp_host, smtp_port, smtp_encryption, smtp_auth_enabled,
                  smtp_auth_type, smtp_username, smtp_password_enc, smtp_verify_peer,
                  smtp_verify_peer_name, smtp_allow_self_signed, smtp_timeout, smtp_keepalive,
-                 sendmail_command,
+                 sendmail_command, imap_sent_enabled, imap_host, imap_port, imap_encryption,
+                 imap_validate_cert, imap_username, imap_password_enc, imap_folder, imap_create_folder,
+                 imap_mark_seen, imap_timeout, imap_on_failure,
                  is_default, is_active, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $supplierId,
@@ -127,6 +131,18 @@ final class EmailProfileRepository
             $normalized['smtp_timeout'],
             $normalized['smtp_keepalive'] ? 1 : 0,
             $normalized['sendmail_command'],
+            $normalized['imap_sent_enabled'] ? 1 : 0,
+            $normalized['imap_host'],
+            $normalized['imap_port'],
+            $normalized['imap_encryption'],
+            $normalized['imap_validate_cert'] ? 1 : 0,
+            $normalized['imap_username'],
+            $normalized['imap_password_enc'],
+            $normalized['imap_folder'],
+            $normalized['imap_create_folder'] ? 1 : 0,
+            $normalized['imap_mark_seen'] ? 1 : 0,
+            $normalized['imap_timeout'],
+            $normalized['imap_on_failure'],
             $normalized['is_default'] ? 1 : 0,
             $normalized['is_active'] ? 1 : 0,
             $createdBy,
@@ -160,6 +176,11 @@ final class EmailProfileRepository
         ) {
             $merged['smtp_password'] = $currentWithSecret['smtp_password'] ?? null;
         }
+        if ($currentWithSecret !== null
+            && (!array_key_exists('imap_password', $changes) || trim((string) ($changes['imap_password'] ?? '')) === '')
+        ) {
+            $merged['imap_password'] = $currentWithSecret['imap_password'] ?? null;
+        }
         if (!array_key_exists('reply_to_enabled', $changes) && array_key_exists('reply_to_email', $changes)) {
             $merged['reply_to_enabled'] = trim((string) ($changes['reply_to_email'] ?? '')) !== '';
         }
@@ -180,6 +201,10 @@ final class EmailProfileRepository
                     smtp_auth_enabled = ?, smtp_auth_type = ?, smtp_username = ?, smtp_password_enc = ?,
                     smtp_verify_peer = ?, smtp_verify_peer_name = ?, smtp_allow_self_signed = ?,
                     smtp_timeout = ?, smtp_keepalive = ?, sendmail_command = ?,
+                    imap_sent_enabled = ?, imap_host = ?, imap_port = ?, imap_encryption = ?,
+                    imap_validate_cert = ?, imap_username = ?, imap_password_enc = ?,
+                    imap_folder = ?, imap_create_folder = ?, imap_mark_seen = ?,
+                    imap_timeout = ?, imap_on_failure = ?,
                     is_default = ?, is_active = ?
               WHERE supplier_id = ? AND id = ? AND deleted_at IS NULL'
         );
@@ -209,6 +234,18 @@ final class EmailProfileRepository
             $normalized['smtp_timeout'],
             $normalized['smtp_keepalive'] ? 1 : 0,
             $normalized['sendmail_command'],
+            $normalized['imap_sent_enabled'] ? 1 : 0,
+            $normalized['imap_host'],
+            $normalized['imap_port'],
+            $normalized['imap_encryption'],
+            $normalized['imap_validate_cert'] ? 1 : 0,
+            $normalized['imap_username'],
+            $normalized['imap_password_enc'],
+            $normalized['imap_folder'],
+            $normalized['imap_create_folder'] ? 1 : 0,
+            $normalized['imap_mark_seen'] ? 1 : 0,
+            $normalized['imap_timeout'],
+            $normalized['imap_on_failure'],
             $normalized['is_default'] ? 1 : 0,
             $normalized['is_active'] ? 1 : 0,
             $supplierId,
@@ -248,6 +285,11 @@ final class EmailProfileRepository
             ) {
                 $draft['smtp_password'] = $currentWithSecret['smtp_password'] ?? null;
             }
+            if ($currentWithSecret !== null
+                && (!array_key_exists('imap_password', $data) || trim((string) ($data['imap_password'] ?? '')) === '')
+            ) {
+                $draft['imap_password'] = $currentWithSecret['imap_password'] ?? null;
+            }
         }
 
         if (!array_key_exists('reply_to_enabled', $data) && array_key_exists('reply_to_email', $data)) {
@@ -265,6 +307,59 @@ final class EmailProfileRepository
         $normalized['supplier_id'] = $supplierId;
 
         return $normalized;
+    }
+
+    /**
+     * Připraví IMAP nastavení z rozpracovaného formuláře pro procházení složek.
+     * Nevyžaduje vyplněný celý odesílací profil, pouze údaje nutné pro IMAP.
+     *
+     * @param array<string,mixed> $data
+     * @return array{
+     *   imap_sent_enabled:bool,imap_host:string,imap_port:int,imap_encryption:string,
+     *   imap_validate_cert:bool,imap_username:string,imap_password:string,
+     *   imap_folder:string,imap_create_folder:bool,imap_mark_seen:bool,
+     *   imap_timeout:int,imap_on_failure:string
+     * }
+     */
+    public function imapProbeSettingsForDraft(int $supplierId, array $data, ?int $profileId = null): array
+    {
+        $draft = $data;
+        if ($profileId !== null) {
+            $current = $this->findProfile($supplierId, $profileId);
+            if ($current === null) {
+                throw new \InvalidArgumentException('E-mailový profil nenalezen.');
+            }
+            $currentWithSecret = $this->findProfile($supplierId, $profileId, false, true);
+            $draft = $current;
+            foreach ($data as $key => $value) {
+                $draft[$key] = $value;
+            }
+            if ($currentWithSecret !== null
+                && (!array_key_exists('imap_password', $data) || trim((string) ($data['imap_password'] ?? '')) === '')
+            ) {
+                $draft['imap_password'] = $currentWithSecret['imap_password'] ?? null;
+            }
+        }
+
+        $password = $this->nullableString($draft['imap_password'] ?? null, 'imap_password', 255);
+        if ($password === null) {
+            throw new \InvalidArgumentException('Pole imap_password je pro načtení složek povinné.');
+        }
+
+        return [
+            'imap_sent_enabled' => true,
+            'imap_host' => $this->nonEmpty((string) ($draft['imap_host'] ?? ''), 'imap_host', 190),
+            'imap_port' => max(1, min(65535, (int) ($draft['imap_port'] ?? 993))),
+            'imap_encryption' => $this->oneOf((string) ($draft['imap_encryption'] ?? 'ssl'), self::IMAP_ENCRYPTIONS, 'imap_encryption'),
+            'imap_validate_cert' => (bool) ($draft['imap_validate_cert'] ?? true),
+            'imap_username' => $this->nonEmpty((string) ($draft['imap_username'] ?? ''), 'imap_username', 190),
+            'imap_password' => $password,
+            'imap_folder' => $this->nonEmpty((string) ($draft['imap_folder'] ?? 'Sent'), 'imap_folder', 190),
+            'imap_create_folder' => (bool) ($draft['imap_create_folder'] ?? false),
+            'imap_mark_seen' => (bool) ($draft['imap_mark_seen'] ?? true),
+            'imap_timeout' => max(1, min(300, (int) ($draft['imap_timeout'] ?? 30))),
+            'imap_on_failure' => $this->oneOf((string) ($draft['imap_on_failure'] ?? 'log_only'), self::IMAP_ON_FAILURES, 'imap_on_failure'),
+        ];
     }
 
     public function softDeleteProfile(int $supplierId, int $profileId): bool
@@ -300,7 +395,12 @@ final class EmailProfileRepository
      *   smtp_auth_enabled:bool,smtp_auth_type:string,smtp_username:?string,smtp_password_enc:?string,
      *   smtp_password:?string,
      *   smtp_verify_peer:bool,smtp_verify_peer_name:bool,smtp_allow_self_signed:bool,
-     *   smtp_timeout:?int,smtp_keepalive:bool,sendmail_command:?string,is_default:bool,is_active:bool
+     *   smtp_timeout:?int,smtp_keepalive:bool,sendmail_command:?string,
+     *   imap_sent_enabled:bool,imap_host:?string,imap_port:?int,imap_encryption:string,
+     *   imap_validate_cert:bool,imap_username:?string,imap_password_enc:?string,
+     *   imap_password:?string,imap_folder:?string,imap_create_folder:bool,
+     *   imap_mark_seen:bool,imap_timeout:int,imap_on_failure:string,
+     *   is_default:bool,is_active:bool
      * }
      */
     private function normalize(int $supplierId, array $data, bool $updating, ?int $profileId = null): array
@@ -348,6 +448,19 @@ final class EmailProfileRepository
         $smtpTimeout = null;
         $smtpKeepalive = false;
         $sendmailCommand = null;
+        $imapSentEnabled = (bool) ($data['imap_sent_enabled'] ?? false);
+        $imapHost = null;
+        $imapPort = null;
+        $imapEncryption = 'ssl';
+        $imapValidateCert = true;
+        $imapUsername = null;
+        $imapPassword = null;
+        $imapPasswordEnc = null;
+        $imapFolder = null;
+        $imapCreateFolder = false;
+        $imapMarkSeen = true;
+        $imapTimeout = 30;
+        $imapOnFailure = 'log_only';
 
         if ($transportType === 'smtp') {
             $smtpHost = $this->nonEmpty((string) ($data['smtp_host'] ?? ''), 'smtp_host', 190);
@@ -363,10 +476,31 @@ final class EmailProfileRepository
             if ($smtpAuthEnabled) {
                 $smtpUsername = $this->nonEmpty((string) ($data['smtp_username'] ?? ''), 'smtp_username', 190);
                 $smtpPassword = $this->nullableString($data['smtp_password'] ?? null, 'smtp_password', 255);
-                $smtpPasswordEnc = $smtpPassword !== null ? $this->secrets->encrypt($smtpPassword) : null;
+                if ($smtpPassword === null) {
+                    throw new \InvalidArgumentException('Při zapnutém SMTP ověření je pole smtp_password povinné.');
+                }
+                $smtpPasswordEnc = $this->secrets->encrypt($smtpPassword);
             }
         } elseif ($transportType === 'sendmail') {
             $sendmailCommand = $this->nullableString($data['sendmail_command'] ?? null, 'sendmail_command', 255);
+        }
+
+        if ($imapSentEnabled) {
+            $imapHost = $this->nonEmpty((string) ($data['imap_host'] ?? ''), 'imap_host', 190);
+            $imapPort = max(1, min(65535, (int) ($data['imap_port'] ?? 993)));
+            $imapEncryption = $this->oneOf((string) ($data['imap_encryption'] ?? 'ssl'), self::IMAP_ENCRYPTIONS, 'imap_encryption');
+            $imapValidateCert = (bool) ($data['imap_validate_cert'] ?? true);
+            $imapUsername = $this->nonEmpty((string) ($data['imap_username'] ?? ''), 'imap_username', 190);
+            $imapPassword = $this->nullableString($data['imap_password'] ?? null, 'imap_password', 255);
+            if ($imapPassword === null) {
+                throw new \InvalidArgumentException('Při zapnutém ukládání do IMAP je pole imap_password povinné.');
+            }
+            $imapPasswordEnc = $this->secrets->encrypt($imapPassword);
+            $imapFolder = $this->nonEmpty((string) ($data['imap_folder'] ?? 'Sent'), 'imap_folder', 190);
+            $imapCreateFolder = (bool) ($data['imap_create_folder'] ?? false);
+            $imapMarkSeen = (bool) ($data['imap_mark_seen'] ?? true);
+            $imapTimeout = max(1, min(300, (int) ($data['imap_timeout'] ?? 30)));
+            $imapOnFailure = $this->oneOf((string) ($data['imap_on_failure'] ?? 'log_only'), self::IMAP_ON_FAILURES, 'imap_on_failure');
         }
 
         $isActive = (bool) ($data['is_active'] ?? true);
@@ -402,6 +536,19 @@ final class EmailProfileRepository
             'smtp_timeout' => $smtpTimeout,
             'smtp_keepalive' => $smtpKeepalive,
             'sendmail_command' => $sendmailCommand,
+            'imap_sent_enabled' => $imapSentEnabled,
+            'imap_host' => $imapHost,
+            'imap_port' => $imapPort,
+            'imap_encryption' => $imapEncryption,
+            'imap_validate_cert' => $imapValidateCert,
+            'imap_username' => $imapUsername,
+            'imap_password' => $imapPassword,
+            'imap_password_enc' => $imapPasswordEnc,
+            'imap_folder' => $imapFolder,
+            'imap_create_folder' => $imapCreateFolder,
+            'imap_mark_seen' => $imapMarkSeen,
+            'imap_timeout' => $imapTimeout,
+            'imap_on_failure' => $imapOnFailure,
             'is_default' => $isDefault,
             'is_active' => $isActive,
         ];
@@ -558,6 +705,7 @@ final class EmailProfileRepository
     private function hydrate(array $row, bool $includeSecret = false): array
     {
         $passwordEnc = trim((string) ($row['smtp_password_enc'] ?? ''));
+        $imapPasswordEnc = trim((string) ($row['imap_password_enc'] ?? ''));
         $profile = [
             'id' => (int) $row['id'],
             'supplier_id' => (int) $row['supplier_id'],
@@ -588,6 +736,18 @@ final class EmailProfileRepository
             'smtp_timeout' => ($row['smtp_timeout'] ?? null) !== null ? (int) $row['smtp_timeout'] : null,
             'smtp_keepalive' => (int) ($row['smtp_keepalive'] ?? 0) === 1,
             'sendmail_command' => ($row['sendmail_command'] ?? null) !== null ? (string) $row['sendmail_command'] : null,
+            'imap_sent_enabled' => (int) ($row['imap_sent_enabled'] ?? 0) === 1,
+            'imap_host' => ($row['imap_host'] ?? null) !== null ? (string) $row['imap_host'] : null,
+            'imap_port' => ($row['imap_port'] ?? null) !== null ? (int) $row['imap_port'] : null,
+            'imap_encryption' => (string) ($row['imap_encryption'] ?? 'ssl'),
+            'imap_validate_cert' => (int) ($row['imap_validate_cert'] ?? 1) === 1,
+            'imap_username' => ($row['imap_username'] ?? null) !== null ? (string) $row['imap_username'] : null,
+            'has_imap_password' => $imapPasswordEnc !== '',
+            'imap_folder' => ($row['imap_folder'] ?? null) !== null ? (string) $row['imap_folder'] : null,
+            'imap_create_folder' => (int) ($row['imap_create_folder'] ?? 0) === 1,
+            'imap_mark_seen' => (int) ($row['imap_mark_seen'] ?? 1) === 1,
+            'imap_timeout' => (int) ($row['imap_timeout'] ?? 30),
+            'imap_on_failure' => (string) ($row['imap_on_failure'] ?? 'log_only'),
             'is_default' => (int) $row['is_default'] === 1,
             'is_active' => (int) $row['is_active'] === 1,
             'created_by' => $row['created_by'] !== null ? (int) $row['created_by'] : null,
@@ -598,6 +758,9 @@ final class EmailProfileRepository
 
         if ($includeSecret && $passwordEnc !== '') {
             $profile['smtp_password'] = $this->secrets->decrypt($passwordEnc);
+        }
+        if ($includeSecret && $imapPasswordEnc !== '') {
+            $profile['imap_password'] = $this->secrets->decrypt($imapPasswordEnc);
         }
 
         return $profile;

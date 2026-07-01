@@ -14,6 +14,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Mail\SentMailImapAppender;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -24,6 +25,7 @@ final class EmailProfilesAction
         private readonly Connection $db,
         private readonly Config $config,
         private readonly Mailer $mailer,
+        private readonly SentMailImapAppender $imap,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
     ) {}
@@ -66,6 +68,9 @@ final class EmailProfilesAction
             'reply_to_enabled' => $profile['reply_to_enabled'] ?? false,
             'dkim_enabled' => $profile['dkim_enabled'] ?? false,
             'transport_type' => $profile['transport_type'] ?? 'global',
+            'imap_sent_enabled' => $profile['imap_sent_enabled'] ?? false,
+            'imap_folder' => $profile['imap_folder'] ?? null,
+            'imap_on_failure' => $profile['imap_on_failure'] ?? 'log_only',
             'is_default' => $profile['is_default'] ?? false,
             'signing_profile_id' => $profile['signing_profile_id'] ?? null,
         ]);
@@ -103,13 +108,16 @@ final class EmailProfilesAction
         $this->log($request, 'email_profile.updated', $profileId, [
             'changed_fields' => array_values(array_filter(
                 array_keys($body),
-                static fn (string $field): bool => $field !== 'smtp_password',
+                static fn (string $field): bool => !in_array($field, ['smtp_password', 'imap_password'], true),
             )),
             'code' => $profile['code'] ?? null,
             'from_email' => $profile['from_email'] ?? null,
             'reply_to_enabled' => $profile['reply_to_enabled'] ?? false,
             'dkim_enabled' => $profile['dkim_enabled'] ?? false,
             'transport_type' => $profile['transport_type'] ?? 'global',
+            'imap_sent_enabled' => $profile['imap_sent_enabled'] ?? false,
+            'imap_folder' => $profile['imap_folder'] ?? null,
+            'imap_on_failure' => $profile['imap_on_failure'] ?? 'log_only',
             'is_default' => $profile['is_default'] ?? false,
             'signing_profile_id' => $profile['signing_profile_id'] ?? null,
         ]);
@@ -165,6 +173,82 @@ final class EmailProfilesAction
         return $this->sendProfileTest($request, $response, $profile, $profileId, true);
     }
 
+    public function browseImapFolders(Request $request, Response $response, array $args = []): Response
+    {
+        if (!$this->isAdmin($request)) {
+            return Json::error($response, 'forbidden', 'Pouze admin.', 403);
+        }
+
+        try {
+            $settings = $this->imapProbeSettings($request, $args);
+        } catch (\InvalidArgumentException $e) {
+            return $this->imapProbeError($request, $response, $args, $e);
+        } catch (\Throwable) {
+            return Json::error($response, 'validation_failed', 'IMAP nastavení se nepodařilo připravit.', 400);
+        }
+
+        $result = $this->imap->folders($settings);
+        return Json::ok($response, $result, !empty($result['ok']) ? 200 : 400);
+    }
+
+    public function testImapSettings(Request $request, Response $response, array $args = []): Response
+    {
+        if (!$this->isAdmin($request)) {
+            return Json::error($response, 'forbidden', 'Pouze admin.', 403);
+        }
+
+        try {
+            $settings = $this->imapProbeSettings($request, $args);
+        } catch (\InvalidArgumentException $e) {
+            return $this->imapProbeError($request, $response, $args, $e);
+        } catch (\Throwable) {
+            return Json::error($response, 'validation_failed', 'IMAP nastavení se nepodařilo připravit.', 400);
+        }
+
+        $result = $this->imap->test($settings);
+        return Json::ok($response, $result, !empty($result['ok']) ? 200 : 400);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function imapProbeSettings(Request $request, array $args = []): array
+    {
+        $supplierId = $this->supplierId($request);
+        $profileId = isset($args['id']) ? (int) $args['id'] : null;
+        $body = (array) ($request->getParsedBody() ?? []);
+        if ($profileId === null && isset($body['id']) && (int) $body['id'] > 0) {
+            $profileId = (int) $body['id'];
+        }
+        if ($profileId === null && isset($body['profile_id']) && (int) $body['profile_id'] > 0) {
+            $profileId = (int) $body['profile_id'];
+        }
+
+        $profileData = isset($body['profile']) && is_array($body['profile'])
+            ? (array) $body['profile']
+            : $body;
+        unset($profileData['id'], $profileData['profile_id'], $profileData['profile']);
+
+        return $this->profiles->imapProbeSettingsForDraft($supplierId, $profileData, $profileId);
+    }
+
+    private function imapProbeError(Request $request, Response $response, array $args, \InvalidArgumentException $e): Response
+    {
+        $body = (array) ($request->getParsedBody() ?? []);
+        $profileId = isset($args['id']) ? (int) $args['id'] : null;
+        if ($profileId === null && isset($body['id']) && (int) $body['id'] > 0) {
+            $profileId = (int) $body['id'];
+        }
+        if ($profileId === null && isset($body['profile_id']) && (int) $body['profile_id'] > 0) {
+            $profileId = (int) $body['profile_id'];
+        }
+        if ($profileId !== null && $this->profiles->findProfile($this->supplierId($request), $profileId) === null) {
+            return Json::error($response, 'not_found', 'E-mailový profil nenalezen.', 404);
+        }
+
+        return Json::error($response, 'validation_failed', $e->getMessage(), 400);
+    }
+
     /**
      * @param array<string,mixed> $profile
      */
@@ -180,9 +264,10 @@ final class EmailProfilesAction
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $locale = in_array(($user['locale'] ?? 'cs'), ['cs', 'en'], true) ? (string) $user['locale'] : 'cs';
         $smtpResponse = '';
+        $imapAppend = ['status' => 'skipped', 'folder' => null, 'error' => null];
 
         try {
-            $smtpResponse = $this->mailer->sendTemplate(
+            $sendResult = $this->mailer->sendTemplateDetailed(
                 'email_profile_test',
                 $locale,
                 [$recipient],
@@ -197,6 +282,10 @@ final class EmailProfilesAction
                 $this->userId($request),
                 $profile,
             );
+            $smtpResponse = (string) ($sendResult['smtp_response'] ?? '');
+            $imapAppend = is_array($sendResult['imap_append'] ?? null)
+                ? $sendResult['imap_append']
+                : $imapAppend;
         } catch (\Throwable $e) {
             $this->log($request, 'email.profile_test_failed', $profileId, [
                 'code' => $profile['code'] ?? null,
@@ -215,12 +304,16 @@ final class EmailProfilesAction
             'draft' => $draft,
             'transport_type' => $profile['transport_type'] ?? 'global',
             'smtp_response' => $smtpResponse,
+            'imap_append_status' => $imapAppend['status'] ?? 'skipped',
+            'imap_append_folder' => $imapAppend['folder'] ?? null,
+            'imap_append_error' => $imapAppend['error'] ?? null,
         ]);
 
         return Json::ok($response, [
             'sent_to' => [$recipient],
             'sent_at' => $sentAt,
             'smtp_response' => $smtpResponse,
+            'imap_append' => $imapAppend,
             'is_test' => true,
             'is_draft' => $draft,
         ]);

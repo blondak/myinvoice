@@ -246,11 +246,17 @@ Profil obsahuje:
   `sendmail`; u vlastního SMTP lze nastavit server, port, šifrování, typ
   autentizace, TLS validaci, timeout a držení spojení, SMTP heslo/token se
   ukládá šifrovaně,
+- volitelnou volbu **Ukládat kopii do IMAP složky odeslané pošty** — po
+  úspěšném odeslání přes SMTP/transport se finální MIME zpráva uloží do zadané
+  IMAP složky; IMAP heslo se ukládá šifrovaně; pole složky umí načíst seznam
+  složek z aktuálně vyplněného IMAP účtu a ověřit připojení i cílovou složku
+  včetně testovacího zápisu bez uložení profilu; lze nastavit timeout, označení
+  uložené kopie jako přečtené a chování při chybě IMAP uložení,
 - přepínače **Výchozí profil** a **Aktivní**.
 
 Povinná pole jsou ve formuláři označená hvězdičkou. Před uložením i před
 odesláním testu aplikace zkontroluje aktuálně zobrazené povinné položky
-(`Reply-To`, DKIM a SMTP autentizace podle zapnutých voleb) a bez jejich
+(`Reply-To`, DKIM, SMTP autentizace a IMAP podle zapnutých voleb) a bez jejich
 vyplnění akci nespustí.
 
 Ve formuláři profilu i u každého uloženého profilu je akce **Test**, která
@@ -258,9 +264,15 @@ pošle krátký testovací e-mail na e-mail přihlášeného uživatele, přípa
 e-mail dodavatele nebo globální `cfg.php → smtp.from_email`. Test ve formuláři
 použije aktuálně vyplněné hodnoty bez uložení do databáze. Test použije přímo
 vybraný profil, i když není výchozí, takže ověřuje jeho `From`, `Reply-To`,
-DKIM/S/MIME i transport. Po testu formulář zobrazí buď chybu vrácenou serverem,
-nebo informaci, že transport e-mail přijal, včetně poslední SMTP/transport
-odpovědi, pokud ji backend získal.
+DKIM/S/MIME, transport i volitelné uložení do IMAP složky. Po testu formulář
+zobrazí buď chybu vrácenou serverem, nebo informaci, že transport e-mail přijal,
+včetně poslední SMTP/transport odpovědi, pokud ji backend získal. Pokud je
+zapnuté IMAP ukládání, test zároveň zobrazí, zda se kopie uložila do zadané
+složky. Při výchozí politice chyba IMAP uložení nemění fakt, že transport
+e-mail přijal.
+Pokud má profil nastaveno **Označit odeslání jako selhané**, aplikace po
+úspěšném přijetí e-mailu transportem vrátí chybu, když se následné uložení do
+IMAP složky nepovede.
 
 Když existuje aktivní výchozí profil, používá ho `Mailer` pro všechny odchozí
 e-maily daného dodavatele. Pokud žádný aktivní výchozí profil není, chování je
@@ -269,6 +281,9 @@ odesílatele z dodavatele. Fallback na e-mail dodavatele nebo globální
 `cfg.php → smtp.reply_to_*` se pro `Reply-To` použije jen v tomto režimu bez
 aktivního profilu. Stejně tak globální DKIM doména/selector z `cfg.php` platí
 jen bez aktivního profilu; profil s vypnutým DKIM se nepodepisuje.
+Ukládání do IMAP složky se také používá jen tehdy, když je zapnuté přímo v
+aktivním profilu. Bez profilu ani při vypnuté volbě se žádný globální fallback
+nepoužije.
 
 Privátní DKIM klíč je stále globální v `cfg.php`. Odesílací profil může kromě
 identity zprávy změnit i samotný transport, pokud je potřeba posílat pro různé

@@ -371,6 +371,18 @@ export interface EmailProfile {
   smtp_timeout: number | null
   smtp_keepalive: boolean
   sendmail_command: string | null
+  imap_sent_enabled: boolean
+  imap_host: string | null
+  imap_port: number | null
+  imap_encryption: 'none' | 'tls' | 'ssl'
+  imap_validate_cert: boolean
+  imap_username: string | null
+  has_imap_password: boolean
+  imap_folder: string | null
+  imap_create_folder: boolean
+  imap_mark_seen: boolean
+  imap_timeout: number
+  imap_on_failure: 'log_only' | 'fail_send'
   is_default: boolean
   is_active: boolean
   created_by: number | null
@@ -405,14 +417,51 @@ export interface EmailProfilePayload {
   smtp_timeout?: number | null
   smtp_keepalive?: boolean
   sendmail_command?: string | null
+  imap_sent_enabled?: boolean
+  imap_host?: string | null
+  imap_port?: number | null
+  imap_encryption?: 'none' | 'tls' | 'ssl'
+  imap_validate_cert?: boolean
+  imap_username?: string | null
+  imap_password?: string | null
+  imap_folder?: string | null
+  imap_create_folder?: boolean
+  imap_mark_seen?: boolean
+  imap_timeout?: number | null
+  imap_on_failure?: 'log_only' | 'fail_send'
   is_default?: boolean
   is_active?: boolean
+}
+
+export interface EmailProfileImapAppendResult {
+  status: 'skipped' | 'saved' | 'failed'
+  folder: string | null
+  error: string | null
+}
+
+export interface EmailProfileImapFoldersResult {
+  ok: boolean
+  message: string
+  folders?: EmailProfileImapFolder[]
+}
+
+export interface EmailProfileImapFolder {
+  path: string
+  full_name: string
+  name: string
+  delimiter: string
+  writable: boolean
+  system: boolean
+  sent: boolean
+  no_select: boolean
+  has_children: boolean
 }
 
 export interface EmailProfileTestResult {
   sent_to: string[]
   sent_at: string
   smtp_response: string
+  imap_append?: EmailProfileImapAppendResult
   is_test: boolean
   is_draft?: boolean
 }
@@ -586,6 +635,16 @@ export const settingsApi = {
     api.post<EmailProfileTestResult>(`/settings/email-profiles/${id}/test`, {}).then(r => r.data),
   testEmailProfileDraft: (payload: EmailProfilePayload, id?: number | null) =>
     api.post<EmailProfileTestResult>('/settings/email-profiles/test', id ? { ...payload, id } : payload).then(r => r.data),
+  testEmailProfileImapSettings: (payload: Partial<EmailProfilePayload>, id?: number | null) =>
+    api.post<EmailProfileImapFoldersResult>(
+      id ? `/settings/email-profiles/${id}/imap-test` : '/settings/email-profiles/imap-test',
+      payload,
+    ).then(r => r.data),
+  browseEmailProfileImapFolders: (payload: Partial<EmailProfilePayload>, id?: number | null) =>
+    api.post<EmailProfileImapFoldersResult>(
+      id ? `/settings/email-profiles/${id}/folders` : '/settings/email-profiles/folders',
+      payload,
+    ).then(r => r.data),
   deleteEmailProfile: (id: number) =>
     api.delete<{ deleted: boolean }>(`/settings/email-profiles/${id}`).then(r => r.data),
 
