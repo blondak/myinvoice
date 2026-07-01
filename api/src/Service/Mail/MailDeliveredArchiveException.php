@@ -14,4 +14,28 @@ namespace MyInvoice\Service\Mail;
  */
 final class MailDeliveredArchiveException extends \RuntimeException
 {
+    /**
+     * @param array{status:'skipped'|'saved'|'failed',folder:?string,error:?string} $imapAppend
+     */
+    public function __construct(
+        string $message,
+        private readonly string $smtpResponse = '',
+        private readonly array $imapAppend = ['status' => 'failed', 'folder' => null, 'error' => null],
+        ?\Throwable $previous = null,
+    ) {
+        parent::__construct($message, 0, $previous);
+    }
+
+    public function smtpResponse(): string
+    {
+        return $this->smtpResponse;
+    }
+
+    /**
+     * @return array{status:'skipped'|'saved'|'failed',folder:?string,error:?string}
+     */
+    public function imapAppend(): array
+    {
+        return $this->imapAppend;
+    }
 }

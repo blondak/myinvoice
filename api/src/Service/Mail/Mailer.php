@@ -83,18 +83,22 @@ final class Mailer
         ?int $userId = null,
         ?array $emailProfileOverride = null,
     ): string {
-        return $this->sendTemplateDetailed(
-            $code,
-            $locale,
-            $to,
-            $vars,
-            $subjectOverride,
-            $cc,
-            $bcc,
-            $attachments,
-            $userId,
-            $emailProfileOverride,
-        )['smtp_response'];
+        try {
+            return $this->sendTemplateDetailed(
+                $code,
+                $locale,
+                $to,
+                $vars,
+                $subjectOverride,
+                $cc,
+                $bcc,
+                $attachments,
+                $userId,
+                $emailProfileOverride,
+            )['smtp_response'];
+        } catch (MailDeliveredArchiveException $e) {
+            return $e->smtpResponse();
+        }
     }
 
     /**
@@ -375,6 +379,8 @@ final class Mailer
             throw new MailDeliveredArchiveException(
                 'E-mail byl transportem přijat, ale uložení do IMAP složky selhalo: '
                 . (string) ($imapAppend['error'] ?? 'neznámá chyba'),
+                $smtpResponse,
+                $imapAppend,
             );
         }
 
