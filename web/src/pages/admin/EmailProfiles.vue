@@ -414,21 +414,22 @@ async function saveProfile() {
   saving.value = true
   try {
     const data = payload()
-    const saved = editingId.value === null
-      ? await settingsApi.createEmailProfile(data)
-      : await settingsApi.updateEmailProfile(editingId.value, data)
-    profiles.value = editingId.value === null
-      ? [saved, ...profiles.value.filter(profile => profile.id !== saved.id)]
-      : profiles.value.map(profile => profile.id === saved.id ? saved : profile)
-    await load()
+    if (editingId.value === null) {
+      await settingsApi.createEmailProfile(data)
+    } else {
+      await settingsApi.updateEmailProfile(editingId.value, data)
+    }
     showForm.value = false
     resetDraft()
     toast.success(t('settings.email_profile_saved'))
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('common.error'))
+    return
   } finally {
     saving.value = false
   }
+
+  await load()
 }
 
 async function deleteProfile(profile: EmailProfile) {
@@ -592,7 +593,9 @@ function validateDraft(): boolean {
     errors.push(t('settings.email_profile_validation_smtp_username'))
   }
   if (smtpPasswordRequired.value && isBlank(draft.smtp_password)) {
-    errors.push(t('settings.email_profile_validation_smtp_password'))
+    errors.push(t(draft.smtp_auth_type === 'XOAUTH2'
+      ? 'settings.email_profile_validation_smtp_access_token'
+      : 'settings.email_profile_validation_smtp_password'))
   }
   if (configureImapSent.value && isBlank(draft.imap_host)) {
     errors.push(t('settings.email_profile_validation_imap_host'))

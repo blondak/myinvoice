@@ -328,6 +328,43 @@ final class MailerDbTemplateSubjectTest extends TestCase
         }
     }
 
+    public function testSimpleSendTemplateTreatsImapFailureFailSendAsDelivered(): void
+    {
+        $appender = new CapturingSentMailAppender([
+            'status' => 'failed',
+            'folder' => 'Sent',
+            'error' => 'APPEND failed',
+        ]);
+        $mailer = new Mailer(
+            $this->mailConfig(['dkim' => ['enabled' => false]]),
+            $this->createStub(LoggerInterface::class),
+            $this->createStub(Connection::class),
+            $this->templateRepository(),
+            null,
+            null,
+            $appender,
+        );
+        $transport = new CapturingTransport();
+        (new \ReflectionProperty(Mailer::class, 'transport'))->setValue($mailer, $transport);
+
+        $smtpResponse = $mailer->sendTemplate(
+            'invoice_send',
+            'cs',
+            ['client@example.test'],
+            $this->supplierVars(),
+            null,
+            [],
+            [],
+            [],
+            null,
+            $this->emailProfile(['imap_on_failure' => 'fail_send']),
+        );
+
+        self::assertSame('', $smtpResponse);
+        self::assertInstanceOf(Email::class, $transport->message);
+        self::assertSame(1, $appender->calls);
+    }
+
     public function testImapArchiveContainsFinalMimeWithAttachmentInlineImageDkimAndBccEnvelope(): void
     {
         $keyPath = tempnam(sys_get_temp_dir(), 'myinvoice-dkim-');

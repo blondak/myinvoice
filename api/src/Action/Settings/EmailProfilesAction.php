@@ -13,6 +13,7 @@ use MyInvoice\Repository\EmailProfileRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Mail\MailDeliveredArchiveException;
 use MyInvoice\Service\Mail\Mailer;
 use MyInvoice\Service\Mail\SentMailImapAppender;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -286,6 +287,9 @@ final class EmailProfilesAction
             $imapAppend = is_array($sendResult['imap_append'] ?? null)
                 ? $sendResult['imap_append']
                 : $imapAppend;
+        } catch (MailDeliveredArchiveException $e) {
+            $smtpResponse = $e->smtpResponse();
+            $imapAppend = $e->imapAppend();
         } catch (\Throwable $e) {
             $this->log($request, 'email.profile_test_failed', $profileId, [
                 'code' => $profile['code'] ?? null,

@@ -270,9 +270,10 @@ včetně poslední SMTP/transport odpovědi, pokud ji backend získal. Pokud je
 zapnuté IMAP ukládání, test zároveň zobrazí, zda se kopie uložila do zadané
 složky. Při výchozí politice chyba IMAP uložení nemění fakt, že transport
 e-mail přijal.
-Pokud má profil nastaveno **Označit odeslání jako selhané**, aplikace po
-úspěšném přijetí e-mailu transportem vrátí chybu, když se následné uložení do
-IMAP složky nepovede.
+Pokud má profil nastaveno **Hlásit chybu archivace**, chyba uložení do IMAP se
+zapíše jako chyba archivace po doručení. Aplikace ale e-mail znovu neposílá,
+protože transport ho už přijal a opakování by mohlo vytvořit duplicitu u
+příjemce.
 
 Když existuje aktivní výchozí profil, používá ho `Mailer` pro všechny odchozí
 e-maily daného dodavatele. Pokud žádný aktivní výchozí profil není, chování je
