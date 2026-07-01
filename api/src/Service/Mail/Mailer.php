@@ -500,22 +500,45 @@ final class Mailer
             return Transport::fromDsn($this->sendmailDsn($command));
         }
 
-        return $this->smtpTransport(
-            (string) $this->config->get('smtp.host'),
-            (int) $this->config->get('smtp.port', 25),
-            (bool) $this->config->get('smtp.auth_enabled', false),
-            // Prázdný default (ne 'PLAIN') → plná negociace authenticatorů jako před
-            // zavedením profilů. Vynucení PLAIN-only by rozbilo servery, které PLAIN
-            // nenabízejí (jen LOGIN/CRAM-MD5) a v cfg.php auth_type nemají nastavený.
-            (string) $this->config->get('smtp.auth_type', ''),
-            (string) $this->config->get('smtp.user', ''),
-            (string) $this->config->get('smtp.pass', ''),
-            (string) $this->config->get('smtp.encryption', ''),
-            (bool) $this->config->get('smtp.verify_peer', true),
-            (bool) $this->config->get('smtp.verify_peer_name', true),
-            (bool) $this->config->get('smtp.allow_self_signed', false),
-            (int) $this->config->get('smtp.timeout', 30),
-        );
+        // Bez profilu (nebo profil s transport_type='global'): použij PŮVODNÍ globální
+        // transport přes Transport::fromDsn(buildDsn()) — bit-za-bit shodný s masterem.
+        // Ruční EsmtpTransport (smtpTransport) se tak dotkne JEN profilů s vlastním SMTP;
+        // instalace, které si SMTP v profilu vědomě nenastaví, mají zaručeně 0 regresí.
+        return Transport::fromDsn($this->buildDsn());
+    }
+
+    /**
+     * Původní globální SMTP DSN (shodné s chováním před zavedením odesílacích profilů).
+     * Symfony `smtp://` schéma → plná negociace authenticatorů; STARTTLS auto dle portu.
+     */
+    private function buildDsn(): string
+    {
+        $host = (string) $this->config->get('smtp.host');
+        $port = (int) $this->config->get('smtp.port', 25);
+        $authEnabled = (bool) $this->config->get('smtp.auth_enabled', false);
+        $user = (string) $this->config->get('smtp.user', '');
+        $pass = (string) $this->config->get('smtp.pass', '');
+        $encryption = (string) $this->config->get('smtp.encryption', '');
+        $verifyPeer = (bool) $this->config->get('smtp.verify_peer', true);
+
+        $userPart = '';
+        if ($authEnabled && $user !== '') {
+            $userPart = rawurlencode($user) . ':' . rawurlencode($pass) . '@';
+        }
+
+        $params = [];
+        // encryption: ssl (port 465 implicit TLS), tls (STARTTLS), '' = plain
+        if ($encryption === '') {
+            // Plain — disable peer verify implicitly
+            $verifyPeer = false;
+        }
+        if (!$verifyPeer) {
+            $params[] = 'verify_peer=0';
+        }
+
+        $query = $params ? '?' . implode('&', $params) : '';
+
+        return sprintf('smtp://%s%s:%d%s', $userPart, $host, $port, $query);
     }
 
     private function smtpTransport(

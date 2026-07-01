@@ -465,7 +465,11 @@ final class MailerDbTemplateSubjectTest extends TestCase
         self::assertSame('cfg-smtp.example.test', $stream->getHost());
         self::assertSame(2525, $stream->getPort());
         self::assertFalse($stream->isTLS());
-        self::assertSame(42.0, $stream->getTimeout());
+        // Globální (bezprofilová) cesta i profil s transport_type='global' jedou přes
+        // legacy Transport::fromDsn(buildDsn()) = bit-za-bit shodné s masterem. Socket
+        // timeout je proto default PHP (cfg.smtp.timeout ani profilový timeout=1 se u
+        // globálního transportu nehonorují — má je jen profil s vlastním SMTP).
+        self::assertSame((float) (int) ini_get('default_socket_timeout'), $stream->getTimeout());
     }
 
     public function testBuildsProfileSmtpAndSendmailTransport(): void
