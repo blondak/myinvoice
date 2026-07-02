@@ -20,6 +20,10 @@ import { formatMoney, formatDate } from '@/composables/useFormat'
 import { useChartColors } from '@/composables/useTheme'
 import BalanceTrendChart from '@/components/charts/BalanceTrendChart.vue'
 
+// embedded = vykresleno jako záložky uvnitř BankPage.vue (Finance → Bankovní účty);
+// hlavičku a lištu záložek pak dodává obálka, aktivní tab řídí přes ?tab=.
+defineProps<{ embedded?: boolean }>()
+
 const { t } = useI18n()
 const toast = useToast()
 const route = useRoute()
@@ -36,6 +40,11 @@ const tab = ref<Tab>(initialTab())
 watch(tab, (v) => {
   if (route.query.tab !== v) router.replace({ query: { ...route.query, tab: v } })
   if (v === 'balances') loadBalances()
+})
+// Obrácený směr (embedded): přepnutí záložky v obálce mění jen ?tab= → propiš dovnitř.
+watch(() => route.query.tab, (q) => {
+  const v = String(q || '')
+  if ((VALID_TABS as string[]).includes(v) && tab.value !== v) tab.value = v as Tab
 })
 
 function tabLabel(tt: Tab): string {
@@ -689,7 +698,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
 
 <template>
   <div>
-    <div class="mb-4">
+    <div v-if="!embedded" class="mb-4">
       <h1 class="text-2xl font-semibold">{{ t('bank_accounts.title') }}</h1>
       <p class="text-sm text-neutral-500 mt-0.5">{{ t('bank_accounts.subtitle') }}</p>
     </div>
@@ -697,8 +706,8 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
     <div v-if="loading" class="text-sm text-neutral-500">{{ t('bank_accounts.loading') }}</div>
 
     <div v-else>
-      <!-- Záložky ve stylu Číselníků / admin/emails -->
-      <div class="border-b border-neutral-200 mb-4 flex gap-1 overflow-x-auto">
+      <!-- Záložky ve stylu Číselníků / admin/emails; v embedded režimu je dodává BankPage. -->
+      <div v-if="!embedded" class="border-b border-neutral-200 mb-4 flex gap-1 overflow-x-auto">
         <button v-for="tt in VALID_TABS" :key="tt"
           @click="tab = tt"
           class="cursor-pointer px-4 py-2 text-sm border-b-2 transition whitespace-nowrap"

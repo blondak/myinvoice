@@ -2227,7 +2227,7 @@
   },
   "bank_accounts": {
     "title": "Bank accounts",
-    "subtitle": "Currencies, supplier bank accounts, IMAP polling and bank e-mail notice mappings.",
+    "subtitle": "Bank statements, supplier currencies and accounts, account balances and e-mail notices (IMAP).",
     "tab_accounts": "Currencies & accounts",
     "tab_balances": "Account balances",
     "tab_email_notices": "Bank e-mail notices",

@@ -1,9 +1,13 @@
 # 37. Bankovní účty a e-mailová avíza (IMAP)
 
-**Cesta: `Systém → Bankovní účty`**
+**Cesta: `Finance → Bankovní účty`**
 
-Tato stránka spravuje **bankovní účty dodavatele** (pro PDF faktury, QR platby
-a GPC výpisy) a navíc **bankovní e-mailová avíza přes IMAP**. Bankovní avízo je
+Stránka sdružuje čtyři záložky: **Bankovní výpisy** (import GPC a párování
+plateb — viz [24. Banka](24_Banka.md)), **Měny a účty**, **Stavy na účtech**
+a **Bankovní avíza z e-mailu**. Záložky kromě výpisů vidí jen administrátor.
+
+Tato kapitola popisuje správu **bankovních účtů dodavatele** (pro PDF faktury,
+QR platby a GPC výpisy) a **bankovních e-mailových avíz přes IMAP**. Bankovní avízo je
 e-mail od banky s údaji o platbě — MyInvoice ho umí pravidelně načítat, vytěžit
 z něj VS, částku, měnu, datum a cílový účet a vytvořit z něj bankovní transakci
 stejně jako z [výpisu](24_Banka.md).

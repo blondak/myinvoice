@@ -4,7 +4,6 @@ V hlavním menu **Systém** je rozbalovací podmenu se sekcemi pro konfiguraci
 aplikace:
 
 - **Dodavatelé** — viz [35. Multi-supplier](35_Multi_supplier.md)
-- **Bankovní účty** — měny, účty dodavatele, IMAP účty a bankovní e-mailová avíza
 - **Číselníky** — DPH sazby, země, jednotky a další pomocné seznamy
 - **Uživatelé** — správa lidí, kteří se přihlašují
 - **E-mail šablony** — texty automatických e-mailů
@@ -21,8 +20,9 @@ aplikace:
 
 ### 36.1.1 Měny
 
-Měny a bankovní účty aktuálního dodavatele jsou nově soustředěné na stránce
-**Systém → Bankovní účty**. Každý řádek představuje jeden bankovní účet v dané
+Měny a bankovní účty aktuálního dodavatele jsou soustředěné na stránce
+**Finance → Bankovní účty** (viz [37. Bankovní účty](37_Bankovni_ucty.md)).
+Každý řádek představuje jeden bankovní účet v dané
 měně; pokud máš víc účtů pro stejnou měnu, založ více řádků se stejným kódem
 měny.
 

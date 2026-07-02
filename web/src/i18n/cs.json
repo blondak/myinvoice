@@ -2227,7 +2227,7 @@
   },
   "bank_accounts": {
     "title": "Bankovní účty",
-    "subtitle": "Měny, bankovní účty dodavatele, IMAP polling a mapování bankovních e-mailových avíz.",
+    "subtitle": "Bankovní výpisy, měny a účty dodavatele, stavy na účtech a e-mailová avíza (IMAP).",
     "tab_accounts": "Měny a účty",
     "tab_balances": "Stavy na účtech",
     "tab_email_notices": "Bankovní avíza z e-mailu",
