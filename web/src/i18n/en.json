@@ -1963,6 +1963,8 @@
     "manual_match_hint_html": "Enter the numeric invoice ID from the URL (e.g. /invoices/<b>6</b>).",
     "prev_balance": "Previous balance",
     "curr_balance": "New balance",
+    "available_balance": "Available balance",
+    "available_balance_as_of": "As of",
     "credit_total": "Credit total",
     "debit_total": "Debit total",
     "match_status": {
@@ -2232,7 +2234,9 @@
     "balances_loading": "Loading balances…",
     "balances_load_failed": "Failed to load account balances.",
     "balances_title": "Current account balances",
-    "balances_subtitle": "Closing balance from each account's latest GPC statement.",
+    "balances_subtitle": "Closing balance from the latest GPC statement, or a fresher available balance from an e-mail notice.",
+    "balances_source_email": "from notice",
+    "balances_source_email_hint": "Available balance from an e-mail bank notice (newer than the latest GPC statement).",
     "balances_empty": "No GPC statements imported yet — balances appear after the first import (Bank statements).",
     "balances_th_account": "Account",
     "balances_th_current": "Current balance",
@@ -2415,7 +2419,8 @@
     "field_counterparty_name": "Counterparty name",
     "field_constant_symbol": "Constant symbol",
     "field_message": "Message",
-    "field_bank_ref": "Bank reference"
+    "field_bank_ref": "Bank reference",
+    "field_balance": "Available balance"
   },
   "settings": {
     "title": "Settings",

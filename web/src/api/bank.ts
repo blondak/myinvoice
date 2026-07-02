@@ -34,6 +34,8 @@ export interface BankTransaction {
   statement_id: number
   posted_at: string
   amount: number
+  /** Disponibilní zůstatek účtu z e-mailového avíza (Creditas/Fio/RB); u GPC transakcí null. */
+  balance?: number | null
   currency: string | null
   variable_symbol: string | null
   constant_symbol: string | null
@@ -163,7 +165,7 @@ export interface AccountBalanceMonth {
   balance: number | null
 }
 
-/** Stav jednoho bankovního účtu dle GPC výpisů. */
+/** Stav jednoho bankovního účtu dle GPC výpisů a zůstatků z e-mailových avíz. */
 export interface AccountBalance {
   /** currencies.id */
   id: number
@@ -172,12 +174,14 @@ export interface AccountBalance {
   account_number: string
   bank_code: string | null
   is_default: boolean
-  /** Aktuální stav = konečný zůstatek posledního GPC výpisu (nativní měna). */
+  /** Aktuální stav = nejnovější známý zůstatek (GPC výpis, nebo čerstvější avízo). */
   current_balance: number
   /** Aktuální stav přepočtený na CZK aktuálním kurzem; null když měna nemá kurz. */
   current_balance_czk: number | null
-  /** Datum posledního GPC výpisu. */
+  /** Datum, ke kterému aktuální stav platí (výpis / avízo). */
   statement_date: string
+  /** Odkud aktuální stav pochází: GPC výpis, nebo disponibilní zůstatek z avíza. */
+  current_source: 'gpc' | 'email_notice'
   statement_count: number
   months: AccountBalanceMonth[]
 }

@@ -375,13 +375,15 @@ final class BankStatementAction
     /**
      * GET /api/bank-statements/account-balances
      *
-     * Přehled zůstatků na bankovních účtech dodavatele podle GPC výpisů:
+     * Přehled zůstatků na bankovních účtech dodavatele:
      *   • aktuální stav (konečný zůstatek posledního GPC výpisu daného účtu),
      *   • měsíční vývoj (závěrečný zůstatek za každý měsíc, carry-forward),
      *   • celkový součet přepočtený na CZK kurzem ČNB ke konci každého měsíce.
      *
-     * Zdroj = jen `source = 'gpc'` (autoritativní zůstatek z hlavičky 074). E-mailová
-     * avíza se nezapočítávají (nenesou spolehlivý konečný stav účtu).
+     * Zdroje zůstatku (per měsíc/aktuální stav vyhrává novější datum, při shodě GPC):
+     *   • `source = 'gpc'` — autoritativní konečný zůstatek z hlavičky 074,
+     *   • e-mailová avíza (`bank_transactions.balance`) — disponibilní zůstatek
+     *     z těla avíza (Creditas/Fio/RB), typicky čerstvější než poslední výpis.
      *
      * Přepočet na CZK: kurz z cache `exchange_rates`, nejbližší rate_date ≤ konec měsíce
      * (fallback nejstarší známý). Měny bez jakéhokoli kurzu → `missing_rates`.
@@ -422,6 +424,24 @@ final class BankStatementAction
               ORDER BY bs.statement_date ASC, bs.id ASC"
         );
 
+        // Zůstatky z e-mailových avíz pro konkrétní účet (bank_transactions.balance,
+        // migrace 0125): měsíční email_notice statement má statement_date = 1. den
+        // měsíce, proto se datum bere z transakce (posted_at), ne z výpisu.
+        $emStmt = $pdo->prepare(
+            "SELECT DATE_FORMAT(bt.posted_at, '%Y-%m') AS ym,
+                    bt.posted_at AS sdate,
+                    bt.balance   AS bal
+               FROM bank_transactions bt
+               JOIN bank_statements bs ON bs.id = bt.statement_id
+              WHERE bs.source = 'email_notice'
+                AND bt.balance IS NOT NULL
+                AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''), '[^0-9]', ''))
+                  = TRIM(LEADING '0' FROM REGEXP_REPLACE(?, '[^0-9]', ''))
+                AND (bs.bank_code IS NULL OR ? IS NULL OR bs.bank_code = ?)
+                AND (bs.currency IS NULL OR bs.currency = '' OR bs.currency = ?)
+              ORDER BY bt.posted_at ASC, bt.id ASC"
+        );
+
         /** @var array<int,array<string,mixed>> $perAcc */
         $perAcc = [];
         $allMonths = [];   // set 'YYYY-MM' napříč účty (osa celkového grafu)
@@ -429,23 +449,36 @@ final class BankStatementAction
 
         foreach ($currencyAccounts as $ca) {
             $code = strtoupper((string) $ca['code']);
-            $stStmt->execute([
+            $params = [
                 (string) $ca['account_number'],
                 $ca['bank_code'], $ca['bank_code'],
                 $code,
-            ]);
+            ];
+            $stStmt->execute($params);
             $rows = $stStmt->fetchAll(\PDO::FETCH_ASSOC);
-            if ($rows === []) {
-                continue; // účet bez GPC výpisů se nezobrazuje
+            $emStmt->execute($params);
+            $emailRows = $emStmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows === [] && $emailRows === []) {
+                continue; // účet bez GPC výpisů i avíz se zůstatkem se nezobrazuje
             }
 
-            // Závěrečný zůstatek za měsíc = poslední výpis v měsíci (řazeno ASC → přepíše se).
-            $monthClosings = [];
+            // Závěrečný zůstatek za měsíc = poslední záznam v měsíci (řazeno ASC →
+            // přepíše se); avízo přebije GPC jen s ostře novějším datem (shoda → GPC).
+            $closings = [];
             foreach ($rows as $r) {
-                $monthClosings[(string) $r['ym']] = (float) $r['bal'];
+                $closings[(string) $r['ym']] = ['bal' => (float) $r['bal'], 'date' => (string) $r['sdate'], 'src' => 'gpc'];
             }
-            $last = $rows[count($rows) - 1];
-            $months = array_keys($monthClosings);
+            foreach ($emailRows as $r) {
+                $ym = (string) $r['ym'];
+                $prev = $closings[$ym] ?? null;
+                if ($prev === null || $prev['src'] === 'email_notice' || (string) $r['sdate'] > $prev['date']) {
+                    $closings[$ym] = ['bal' => (float) $r['bal'], 'date' => (string) $r['sdate'], 'src' => 'email_notice'];
+                }
+            }
+            ksort($closings);
+            $monthClosings = array_map(static fn (array $c): float => $c['bal'], $closings);
+            $months = array_keys($closings);
+            $last = $closings[$months[count($months) - 1]];
 
             $perAcc[] = [
                 'ca'            => $ca,
@@ -453,8 +486,9 @@ final class BankStatementAction
                 'monthClosings' => $monthClosings,
                 'firstYm'       => $months[0],
                 'lastYm'        => $months[count($months) - 1],
-                'current'       => (float) $last['bal'],
-                'currentDate'   => (string) $last['sdate'],
+                'current'       => $last['bal'],
+                'currentDate'   => $last['date'],
+                'currentSource' => $last['src'],
                 'count'         => count($rows),
             ];
             foreach ($months as $m) { $allMonths[$m] = true; }
@@ -538,6 +572,7 @@ final class BankStatementAction
                 'current_balance'     => round($pa['current'], 2),
                 'current_balance_czk' => $curRate !== null ? round($pa['current'] * $curRate, 2) : null,
                 'statement_date'      => $pa['currentDate'],
+                'current_source'      => $pa['currentSource'],
                 'statement_count'     => (int) $pa['count'],
                 'months'              => $series,
             ];
@@ -981,6 +1016,7 @@ final class BankStatementAction
         foreach ($transactions as &$t) {
             $t['id'] = (int) $t['id'];
             $t['amount'] = (float) $t['amount'];
+            $t['balance'] = isset($t['balance']) ? (float) $t['balance'] : null;
             $t['matched_invoice_id'] = $t['matched_invoice_id'] !== null ? (int) $t['matched_invoice_id'] : null;
             $t['matched_purchase_invoice_id'] = $t['matched_purchase_invoice_id'] !== null ? (int) $t['matched_purchase_invoice_id'] : null;
             $t['matched_purchase_ref'] = isset($t['matched_purchase_ref']) && $t['matched_purchase_ref'] !== null ? (string) $t['matched_purchase_ref'] : null;

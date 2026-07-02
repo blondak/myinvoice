@@ -132,6 +132,7 @@ const regexFieldDefinitions = [
   { key: 'constant_symbol', required: false },
   { key: 'message', required: false },
   { key: 'bank_ref', required: false },
+  { key: 'balance', required: false },
 ] as const
 type RegexFieldKey = typeof regexFieldDefinitions[number]['key']
 interface RegexProviderDraft {
@@ -853,7 +854,13 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                       <td class="px-3 py-2 text-right font-mono whitespace-nowrap text-neutral-600">
                         {{ a.current_balance_czk !== null ? formatMoney(a.current_balance_czk, 'CZK') : '—' }}
                       </td>
-                      <td class="px-3 py-2 text-xs whitespace-nowrap">{{ formatDate(a.statement_date) }}</td>
+                      <td class="px-3 py-2 text-xs whitespace-nowrap">
+                        {{ formatDate(a.statement_date) }}
+                        <span v-if="a.current_source === 'email_notice'" :title="t('bank_accounts.balances_source_email_hint')"
+                          class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
+                          {{ t('bank_accounts.balances_source_email') }}
+                        </span>
+                      </td>
                       <td class="px-3 py-2 text-right text-xs">{{ a.statement_count }}</td>
                     </tr>
                   </tbody>
@@ -880,7 +887,13 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                     <span class="font-mono font-semibold">{{ formatMoney(a.current_balance, a.code) }}</span>
                     <span v-if="a.current_balance_czk !== null && a.code !== 'CZK'" class="font-mono text-xs text-neutral-500">≈ {{ formatMoney(a.current_balance_czk, 'CZK') }}</span>
                   </div>
-                  <div class="text-xs text-neutral-500">{{ t('bank_accounts.balances_th_as_of') }}: {{ formatDate(a.statement_date) }}</div>
+                  <div class="text-xs text-neutral-500">
+                    {{ t('bank_accounts.balances_th_as_of') }}: {{ formatDate(a.statement_date) }}
+                    <span v-if="a.current_source === 'email_notice'" :title="t('bank_accounts.balances_source_email_hint')"
+                      class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
+                      {{ t('bank_accounts.balances_source_email') }}
+                    </span>
+                  </div>
                 </div>
                 <div class="p-3 flex items-baseline justify-between bg-neutral-50">
                   <span class="font-medium">{{ t('bank_accounts.balances_total_czk') }}</span>

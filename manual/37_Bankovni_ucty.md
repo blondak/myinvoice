@@ -119,6 +119,8 @@ Volitelná pole:
 - `constant_symbol`
 - `message`
 - `bank_ref`
+- `balance` (disponibilní zůstatek účtu z avíza — zobrazí se v detailu
+  měsíčního avízo-výpisu a promítne se do přehledu **Stavy na účtech**)
 
 Regex parser používá první zachycenou skupinu nebo pojmenovanou skupinu se
 stejným názvem jako pole. Pro částku umí formáty typu `+1.234,56`, datum např.
@@ -183,6 +185,7 @@ Regexy pro vytěžená pole:
 | Konstantní symbol | `Konstantní\s+symbol\s*([0-9]+)` |
 | Zpráva | `Zpráva\s+pro\s+příjemce\s*(.*?)\s*Disponibilní\s+zůstatek` |
 | Reference banky | prázdné |
+| Disponibilní zůstatek | `Disponibilní\s+zůstatek(?:\s+po\s+pohybu)?\s*([+\-]?[0-9 .]+,[0-9]{2})` |
 
 > 🛈 Do UI zadávej regex bez krajních oddělovačů (`/.../`). Parser je doplní
 > sám.

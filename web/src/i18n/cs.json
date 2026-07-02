@@ -1963,6 +1963,8 @@
     "manual_match_hint_html": "Zadej numerické ID faktury z URL (např. /invoices/<b>6</b>).",
     "prev_balance": "Předchozí zůstatek",
     "curr_balance": "Nový zůstatek",
+    "available_balance": "Disponibilní zůstatek",
+    "available_balance_as_of": "K datu",
     "credit_total": "Příchozí celkem",
     "debit_total": "Odchozí celkem",
     "match_status": {
@@ -2232,7 +2234,9 @@
     "balances_loading": "Načítám zůstatky…",
     "balances_load_failed": "Zůstatky na účtech se nepodařilo načíst.",
     "balances_title": "Aktuální stav na účtech",
-    "balances_subtitle": "Konečný zůstatek z posledního GPC výpisu každého účtu.",
+    "balances_subtitle": "Konečný zůstatek z posledního GPC výpisu, případně čerstvější disponibilní zůstatek z e-mailového avíza.",
+    "balances_source_email": "z avíza",
+    "balances_source_email_hint": "Disponibilní zůstatek z e-mailového avíza (novější než poslední GPC výpis).",
     "balances_empty": "Zatím nejsou naimportované žádné GPC výpisy — stavy se doplní po prvním importu (Bankovní výpisy).",
     "balances_th_account": "Účet",
     "balances_th_current": "Aktuální stav",
@@ -2415,7 +2419,8 @@
     "field_counterparty_name": "Název protistrany",
     "field_constant_symbol": "Konstantní symbol",
     "field_message": "Zpráva",
-    "field_bank_ref": "Reference banky"
+    "field_bank_ref": "Reference banky",
+    "field_balance": "Disponibilní zůstatek"
   },
   "settings": {
     "title": "Nastavení",

@@ -573,15 +573,16 @@ final class BankEmailNoticeRepository
 
         $pdo->prepare(
             'INSERT INTO bank_transactions
-                (source, source_ref, statement_id, posted_at, amount, currency, variable_symbol, constant_symbol,
+                (source, source_ref, statement_id, posted_at, amount, balance, currency, variable_symbol, constant_symbol,
                  counterparty_account, counterparty_bank, counterparty_name, description, bank_ref, match_tolerance)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
             'email_notice',
             $sourceRef,
             $statementId,
             $notice->postedAt,
             $notice->amount,
+            $notice->balance,
             $currency,
             $notice->variableSymbol,
             $notice->constantSymbol,
