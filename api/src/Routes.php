@@ -579,6 +579,10 @@ final class Routes
         $app->post   ('/api/settings/email-branding/logo',            [EmailBrandingAction::class, 'uploadLogo']);
         $app->delete ('/api/settings/email-branding/logo',            [EmailBrandingAction::class, 'deleteLogo']);
         $app->get    ('/api/settings/email-branding/preview',         [EmailBrandingAction::class, 'preview']);
+        // Veřejné API aliasy pro logo (bearer allowlist) — stejná logika, jiná cesta.
+        // Preview zůstává interní (čte soubory z disku → jen session admin).
+        $app->post   ('/api/settings/supplier/logo',                  [EmailBrandingAction::class, 'uploadLogo']);
+        $app->delete ('/api/settings/supplier/logo',                  [EmailBrandingAction::class, 'deleteLogo']);
 
         $app->get    ('/api/settings/units',                          [SettingsAction::class, 'listUnits']);
         $app->post   ('/api/settings/units',                          [SettingsAction::class, 'createUnit']);
