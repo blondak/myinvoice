@@ -141,7 +141,36 @@ Všechny chyby v unifikovaném formátu:
 | `not_found` | Zdroj neexistuje (nebo nepatří aktuálnímu supplier-ovi) |
 | `rate_limited` | Překročen limit (viz `Retry-After`) |
 
-## 41.8 Bezpečnost tokenů — best practices
+## 41.8 Nastavení dodavatele a číslování dokladů přes API
+
+Veřejný subset nastavení dodavatele jde měnit tokenem se scope `read_write`
+(uživatel tokenu musí být admin):
+
+- **`PUT /api/v1/settings/supplier`** — částečný update: fakturační údaje,
+  defaulty, **číslování dokladů** (`invoice_number_format`,
+  `proforma_number_format`, `credit_note_number_format`,
+  `purchase_invoice_number_format`, `invoice_number_period`) a **branding**
+  (`email_branding_enabled`, `email_accent_color`, `pdf_logo_show_name`,
+  `display_name`, `tagline`). Logo se přes tento endpoint nastavit nedá.
+
+- **`PUT /api/v1/settings/supplier/invoice-counter`** — nastaví counter číselné
+  řady tak, aby příští vystavený doklad dostal zadané číslo. Hodí se při
+  migraci z jiného fakturačního software (navázání na existující řadu):
+
+```bash
+curl -X PUT https://mojefirma.example/api/v1/settings/supplier/invoice-counter \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{ "type": "invoice", "next_number": 42 }'
+# → { "type": "invoice", "next_number": 42, "counter": 41,
+#     "period": "202607", "preview": "2607042" }
+```
+
+Counter jde i **snížit**; pokud by nové číslo kolidovalo s už vystaveným
+dokladem, vystavení se samoopravně posune na první volné číslo — duplicitní
+číslo nikdy nevznikne. Volitelné `date` (YYYY-MM-DD) určuje období řady
+(při `invoice_number_period` = `year`/`month`), default je dnešek.
+
+## 41.9 Bezpečnost tokenů — best practices
 
 - **Ukládej token jako secret** (password manager, Make encrypted variable, GitHub Secrets…).
   Nepushuj do gitu.
@@ -152,12 +181,13 @@ Všechny chyby v unifikovaném formátu:
 - **Sleduj `last_used_at`** v UI — token, který se 3 měsíce nepoužil, asi nepotřebuješ.
 - **Při ztrátě/podezření** — okamžitě **Zrušit** v UI. Revokace je instantní (žádný cache).
 
-## 41.9 Co API nepokrývá
+## 41.10 Co API nepokrývá
 
-- **Admin a settings endpointy** (`/api/admin/*`, `/api/settings/*`) nejsou v
-  `openapi.yaml` - jsou určené pro interní administraci, integrace na nich
-  stavět nemá smysl. Platí to i pro interní podpisové endpointy, například
-  per-dokladový výběr podpisu (`/api/documents/.../signature-selection`).
+- **Admin a settings endpointy** (`/api/admin/*` a `/api/settings/*` mimo
+  veřejný subset — supplier, číselníky) nejsou v `openapi.yaml` - jsou určené
+  pro interní administraci, integrace na nich stavět nemá smysl. Platí to
+  i pro interní podpisové endpointy, například per-dokladový výběr podpisu
+  (`/api/documents/.../signature-selection`).
 - **Webhooks** zatím nejsou — pokud potřebuješ notifikaci o platbě, použij polling
   `/api/v1/invoices?status=paid&from=<last_check>`.
 - **OAuth2** nepodporujeme — PAT je vědomé zjednodušení pro tenhle typ produktu.
