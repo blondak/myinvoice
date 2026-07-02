@@ -1329,7 +1329,10 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
                   <div class="font-mono text-xs truncate">{{ m.message_id || m.fallback_hash }}</div>
                   <div class="text-xs text-neutral-500 truncate">{{ m.sender }} · {{ m.subject }}</div>
                 </td>
-                <td class="px-3 py-2">{{ m.status }}<div v-if="m.error_message" class="text-xs text-danger-500">{{ m.error_message }}</div></td>
+                <td class="px-3 py-2">
+                  <span :class="m.matched ? 'text-success-600' : (['match_failed','parse_failed','security_rejected','postprocess_failed'].includes(m.effective_status || m.status) ? 'text-danger-500' : '')">{{ m.effective_status || m.status }}</span>
+                  <div v-if="m.error_message" class="text-xs text-danger-500">{{ m.error_message }}</div>
+                </td>
                 <td class="px-3 py-2">{{ m.provider_code || '—' }}</td>
                 <td class="px-3 py-2 font-mono text-xs">
                   {{ m.parsed_payload?.variable_symbol || '—' }}

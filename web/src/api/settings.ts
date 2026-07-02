@@ -196,9 +196,16 @@ export interface BankEmailProcessedMessage {
   subject: string | null
   provider_code: string | null
   status: string
+  /** Stav odvozený ze živého párování transakce (řeší zastaralý snapshot `status`). */
+  effective_status?: string
+  /** true = transakce je aktuálně spárovaná (i když `status` říká match_failed). */
+  matched?: boolean
+  /** Živý match_status navázané bank_transaction (auto_exact/auto_partial/manual/unmatched). */
+  tx_match_status?: string | null
   parsed_payload: Record<string, any> | null
   bank_transaction_id: number | null
   matched_invoice_id: number | null
+  matched_purchase_invoice_id?: number | null
   matched_varsymbol?: string | null
   error_message: string | null
   processed_at: string
