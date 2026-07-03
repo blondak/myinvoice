@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **iDoklad import — přílohy přijatých účtenek se nikdy nestáhly (a fotky se zahazovaly).** Stahování příloh se dotazovalo jen scope `documentType=ReceivedInvoice`, ale přílohy účtenek žijí v odděleném scope `ReceivedReceipt` (SDK enum 11) — dotaz se špatným scope vrací 404, takže účtenky zůstaly bez zdrojového dokladu (`imported_pdf_path = NULL`) i s `download_attachments=true`, tiše. Navíc se archivovaly jen přílohy `%PDF` — fotka paragonu z telefonu (JPG, u účtenek nejběžnější případ) se zahodila i u přijatých faktur. Nově: přílohy účtenek se stahují přes správný scope a fotky se konvertují na PDF stejnou cestou jako ruční upload (`ImageToPdfConverter`, EXIF rotace, přejmenování `.jpg → .pdf`), takže výsledek je od ručně nahraného dokladu k nerozeznání. Výběr přílohy (preferuj PDF, jinak první obrázek) je vytažený do čisté testované funkce.
+
+
 ## [4.44.0] — 2026-07-02
 
 ### Added
