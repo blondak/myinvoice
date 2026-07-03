@@ -2013,6 +2013,78 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /api/v1/settings/supplier/logo:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    post:
+      tags: [Settings]
+      summary: Nahrání loga dodavatele
+      description: |
+        Multipart upload loga (pole `file`). Formáty PNG / JPG / SVG / WebP,
+        max **1 MiB**. Rastr se zmenší na max 240×800 px; SVG se sanitizuje
+        a rasterizuje (vektorová kopie se zachová pro ostré PDF). Logo se
+        v e-mailech a PDF fakturách zobrazuje jen při
+        `email_branding_enabled = true` (nastavíš přes
+        `PUT /api/v1/settings/supplier`).
+
+        `logo_path` NELZE měnit přes mass-assign na supplier update — vždy jen
+        tímto endpointem (bezpečnost).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PNG / JPG / SVG / WebP, max 1 MiB
+      responses:
+        '200':
+          description: Logo uloženo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logo_path: { type: string, example: "storage/supplier-logos/sup-1.png" }
+                  width: { type: integer, example: 480 }
+                  height: { type: integer, example: 160 }
+        '400':
+          description: Chybí soubor / nepodporovaný formát / konverze selhala
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Uživatel není admin nebo token nemá scope `read_write`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: Soubor přes 1 MiB
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Settings]
+      summary: Odebrání loga dodavatele
+      responses:
+        '200':
+          description: Logo odstraněno
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean, example: true }
+        '403':
+          description: Uživatel není admin nebo token nemá scope `read_write`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /api/v1/suppliers:
     get:
       tags: [Settings]

@@ -170,6 +170,18 @@ dokladem, vystavení se samoopravně posune na první volné číslo — duplici
 číslo nikdy nevznikne. Volitelné `date` (YYYY-MM-DD) určuje období řady
 (při `invoice_number_period` = `year`/`month`), default je dnešek.
 
+- **`POST /api/v1/settings/supplier/logo`** — multipart upload loga (pole
+  `file`; PNG / JPG / SVG / WebP, max 1 MiB). Logo se v e-mailech a PDF
+  zobrazuje při `email_branding_enabled = true`. `DELETE` na stejné cestě
+  logo odebere:
+
+```bash
+curl -X POST https://mojefirma.example/api/v1/settings/supplier/logo \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@logo.png"
+# → { "logo_path": "storage/supplier-logos/sup-1.png", "width": 480, "height": 160 }
+```
+
 ## 41.9 Bezpečnost tokenů — best practices
 
 - **Ukládej token jako secret** (password manager, Make encrypted variable, GitHub Secrets…).
