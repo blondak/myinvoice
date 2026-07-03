@@ -77,6 +77,7 @@ final class ApiScopeMiddleware implements MiddlewareInterface
         // Nastavení — JEN veřejný subset (supplier + číselníky), NE signing/
         // pdf-signing/email-branding/bank-email-notices.
         '#^/api/settings/supplier$#',
+        '#^/api/settings/supplier/invoice-counter$#',
         '#^/api/settings/currencies(/|$)#',
         '#^/api/settings/vat-rates(/|$)#',
         '#^/api/settings/units(/|$)#',
