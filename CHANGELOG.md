@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **iDoklad import — přílohy přijatých účtenek se nikdy nestáhly (a fotky se zahazovaly).** Stahování příloh se dotazovalo jen scope `documentType=ReceivedInvoice`, ale přílohy účtenek žijí v odděleném scope `ReceivedReceipt` (SDK enum 11) — dotaz se špatným scope vrací 404, takže účtenky zůstaly bez zdrojového dokladu (`imported_pdf_path = NULL`) i s `download_attachments=true`, tiše. Navíc se archivovaly jen přílohy `%PDF` — fotka paragonu z telefonu (JPG, u účtenek nejběžnější případ) se zahodila i u přijatých faktur. Nově: přílohy účtenek se stahují přes správný scope a fotky se konvertují na PDF stejnou cestou jako ruční upload (`ImageToPdfConverter`, EXIF rotace, přejmenování `.jpg → .pdf`), takže výsledek je od ručně nahraného dokladu k nerozeznání. Výběr přílohy (preferuj PDF, jinak první obrázek) je vytažený do čisté testované funkce.
-
+- **Počet jednotek na PDF faktury měl zbytečné koncové nuly.** Množství se na PDF formátovalo buď jako celé číslo, nebo natvrdo na 3 desetinná místa — takže `15,25` se zobrazilo jako `15,250` a `16,2` jako `16,200`. Nově se počet desetin řídí skutečnou hodnotou (0–3 místa) a nevýznamné nuly se neuvádějí. (#187)
 
 ## [4.44.0] — 2026-07-02
 
