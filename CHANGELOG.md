@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.44.1] — 2026-07-04
+
+### Added
+
+- **Nastavení counteru číselné řady dokladů přes veřejné API.** Nový endpoint `PUT /api/v1/settings/supplier/invoice-counter` nastaví counter supplier-wide řady tak, aby příští vystavený doklad dostal zadané číslo — typicky při migraci z jiného fakturačního software (převzetí existující řady). Kolize s existujícími čísly řeší stávající self-heal, duplicitní číslo nikdy nevznikne.
+- **Upload loga dodavatele přes veřejné API.** Veřejné aliasy `POST`/`DELETE /api/v1/settings/supplier/logo` na existující branding pipeline — externí systém (SaaS integrace, provisioning) může nastavit branding faktur kompletně přes API: logo tímto endpointem, barvu/toggle/display_name/tagline přes `PUT /settings/supplier`. Žádná nová upload logika, stejný sanitizovaný pipeline (magic bytes, pixel-bomb guard, SVG sanitizace + rasterizace).
+
 ### Fixed
 
 - **iDoklad import — přílohy přijatých účtenek se nikdy nestáhly (a fotky se zahazovaly).** Stahování příloh se dotazovalo jen scope `documentType=ReceivedInvoice`, ale přílohy účtenek žijí v odděleném scope `ReceivedReceipt` (SDK enum 11) — dotaz se špatným scope vrací 404, takže účtenky zůstaly bez zdrojového dokladu (`imported_pdf_path = NULL`) i s `download_attachments=true`, tiše. Navíc se archivovaly jen přílohy `%PDF` — fotka paragonu z telefonu (JPG, u účtenek nejběžnější případ) se zahodila i u přijatých faktur. Nově: přílohy účtenek se stahují přes správný scope a fotky se konvertují na PDF stejnou cestou jako ruční upload (`ImageToPdfConverter`, EXIF rotace, přejmenování `.jpg → .pdf`), takže výsledek je od ručně nahraného dokladu k nerozeznání. Výběr přílohy (preferuj PDF, jinak první obrázek) je vytažený do čisté testované funkce.
