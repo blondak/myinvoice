@@ -50,6 +50,7 @@ final class IdokladImportService
         private readonly LoggerInterface $logger,
         private readonly PurchaseInvoiceCnbApplier $cnbApplier,
         private readonly SnapshotBuilder $snapshots,
+        private readonly ImageToPdfConverter $imageToPdf,
     ) {}
 
     /**
@@ -634,7 +635,7 @@ final class IdokladImportService
                 )->execute([$idokladId, $purchaseId]);
                 $this->purCalc->recompute($purchaseId);
                 if ($downloadAttachments) {
-                    $this->archiveReceivedPdf($supplierId, $purchaseId, $idokladId);
+                    $this->archiveReceivedPdf($supplierId, $purchaseId, $idokladId, 'ReceivedReceipt');
                 }
                 $created++;
             } catch (\Throwable $e) {
@@ -1200,28 +1201,35 @@ final class IdokladImportService
     }
 
     /**
-     * Stáhne první PDF přílohu pro přijatou fakturu (typically jedna od dodavatele).
+     * Stáhne první archivovatelnou přílohu dokladu (typically jedna od dodavatele).
+     *
+     * $documentType = iDoklad Attachments scope: 'ReceivedInvoice' pro přijaté faktury,
+     * 'ReceivedReceipt' pro účtenky (SDK enum 5 / 11) — přílohy žijí v odděleném scope
+     * per typ dokladu, dotaz se špatným scope vrací 404/nic.
+     *
+     * Fotka (JPG/PNG… z telefonu — u účtenek běžný případ) se konvertuje na PDF stejnou
+     * cestou jako ruční upload (ImageToPdfConverter, issue #75), vč. přejmenování na .pdf.
      */
-    private function archiveReceivedPdf(int $supplierId, int $purchaseInvoiceId, int $idokladInvoiceId): void
+    private function archiveReceivedPdf(int $supplierId, int $purchaseInvoiceId, int $idokladInvoiceId, string $documentType = 'ReceivedInvoice'): void
     {
-        $attachments = $this->idoklad->listReceivedAttachments($supplierId, $idokladInvoiceId);
-        // iDoklad v3 vrací bajty přílohy inline v `FileBytes` (base64) — žádný extra download
-        // request. Vyber první PDF (může být víc příloh: obrázky atd.).
-        $pdf = null;
-        $name = 'invoice.pdf';
-        foreach ($attachments as $a) {
-            $bytes = $a['FileBytes'] ?? null;
-            if ($bytes === null || $bytes === '') continue;
-            $raw = base64_decode((string) $bytes, true);
-            if ($raw === false || $raw === '') continue;
-            $fileName = (string) ($a['FileName'] ?? '');
-            if (str_ends_with(strtolower($fileName), '.pdf') || str_starts_with($raw, '%PDF')) {
-                $pdf = $raw;
-                $name = $fileName !== '' ? $fileName : 'invoice.pdf';
-                break;
+        $attachments = $this->idoklad->listReceivedAttachments($supplierId, $idokladInvoiceId, $documentType);
+        $picked = self::pickArchivableAttachment($attachments);
+        if ($picked === null) return;
+        [$pdf, $name] = $picked;
+
+        if (!str_starts_with($pdf, '%PDF')) {
+            $mime = $this->imageToPdf->detectImageMime($pdf);
+            if ($mime === null) {
+                return; // ani PDF, ani podporovaný obrázek — nearchivujeme
             }
+            try {
+                $pdf = $this->imageToPdf->convert($pdf, $mime);
+            } catch (\Throwable $e) {
+                $this->logger->info('iDoklad attachment image→PDF conversion failed', ['purchase_invoice_id' => $purchaseInvoiceId, 'error' => $e->getMessage()]);
+                return;
+            }
+            $name = (string) preg_replace('/\.[^.]+$/', '', $name) . '.pdf';
         }
-        if ($pdf === null) return;
 
         $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
         if ($archiveRoot === '') {
@@ -1238,6 +1246,33 @@ final class IdokladImportService
         }
         $relPath = \MyInvoice\Service\Import\PurchaseInvoicePdfArchiver::shardedRelPath($supplierId, $sha);
         $this->purchaseRepo->setPdfMetadata($purchaseInvoiceId, $supplierId, $relPath, $sha, $size, $name);
+    }
+
+    /**
+     * Vybere z iDoklad příloh první archivovatelnou: preferuje PDF (podle přípony
+     * `.pdf` NEBO magic `%PDF` — název může chybět), jinak první přílohu
+     * s dekódovatelnými bajty (typicky fotka; o konverzi/odmítnutí rozhodne caller).
+     *
+     * Čistá funkce (bez IO) — viz IdokladAttachmentPickTest.
+     *
+     * @param list<array<string,mixed>> $attachments  [{FileName, FileBytes(base64)}, …]
+     * @return array{0:string,1:string}|null  [raw bajty, jméno souboru] nebo null
+     */
+    public static function pickArchivableAttachment(array $attachments): ?array
+    {
+        $fallback = null;
+        foreach ($attachments as $a) {
+            $bytes = $a['FileBytes'] ?? null;
+            if ($bytes === null || $bytes === '') continue;
+            $raw = base64_decode((string) $bytes, true);
+            if ($raw === false || $raw === '') continue;
+            $name = (string) ($a['FileName'] ?? '');
+            if (str_ends_with(strtolower($name), '.pdf') || str_starts_with($raw, '%PDF')) {
+                return [$raw, $name !== '' ? $name : 'invoice.pdf'];
+            }
+            $fallback ??= [$raw, $name !== '' ? $name : 'attachment'];
+        }
+        return $fallback;
     }
 
     /**
