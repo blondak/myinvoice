@@ -63,6 +63,7 @@ use MyInvoice\Action\Invoice\DeleteInvoiceAction;
 use MyInvoice\Action\Invoice\ExportCsvAction;
 use MyInvoice\Action\Invoice\InvoiceActivityAction;
 use MyInvoice\Action\Invoice\GetInvoiceAction;
+use MyInvoice\Action\Invoice\InvoiceIsdocAction;
 use MyInvoice\Action\Invoice\IssueInvoiceAction;
 use MyInvoice\Action\Invoice\ListInvoicesAction;
 use MyInvoice\Action\Invoice\PreviewVarsymbolAction;
@@ -279,6 +280,9 @@ final class Routes
         // Invoices (M3 — draft + editor + sumace; vystavení/odeslání/PDF přijde v M4)
         $app->get    ('/api/invoices',              ListInvoicesAction::class);
         $app->get    ('/api/invoices/export.csv',   ExportCsvAction::class);
+        // Veřejný alias admin exportu (bearer allowlist pokrývá /api/invoices/*):
+        // ?format=pdf-zip|isdoc|pohoda|stereo & month=YYYY-MM nebo period=quarterly&year&quarter
+        $app->get    ('/api/invoices/export',       ExportAction::class);
         $app->get    ('/api/invoices/preview-varsymbol', PreviewVarsymbolAction::class);
         $app->post   ('/api/invoices',              CreateInvoiceAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}',  GetInvoiceAction::class);
@@ -294,6 +298,7 @@ final class Routes
         $app->delete ('/api/invoices/{id:[0-9]+}/payments/{paymentId:[0-9]+}', DeletePaymentAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/payments/{paymentId:[0-9]+}/tax-document', CreatePaymentTaxDocumentAction::class);
         $app->post   ('/api/invoices/{id:[0-9]+}/cancel',    CancelInvoiceAction::class);
+        $app->get    ('/api/invoices/{id:[0-9]+}/isdoc',     InvoiceIsdocAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/pdf',       PdfAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/pdfs',      ListPdfsAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/pdfs/{archiveId:[0-9]+}', DownloadArchivedPdfAction::class);
