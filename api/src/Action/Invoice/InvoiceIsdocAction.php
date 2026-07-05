@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace MyInvoice\Action\Invoice;
 
 use MyInvoice\Http\Json;
+use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Middleware\AuthMiddleware;
-use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
+use MyInvoice\Service\Currency\ExchangeRateApplier;
 use MyInvoice\Service\Export\IsdocExporter;
 use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -31,20 +32,39 @@ final class InvoiceIsdocAction
         private readonly IsdocExporter $isdoc,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly ExchangeRateApplier $rateApplier,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
     {
         $id  = (int) ($args['id'] ?? 0);
-        $sid = (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0);
+        $sid = SupplierGuard::currentId($request);
 
         $invoice = $this->repo->find($id);
-        if ($invoice === null || (int) ($invoice['supplier_id'] ?? 0) !== $sid) {
+        if (!SupplierGuard::owns($request, $invoice)) {
             return Json::error($response, 'not_found', 'Faktura nenalezena.', 404);
         }
         // Draft nemá číslo (varsymbol) — ISDOC dává smysl až pro vystavený doklad.
         if (($invoice['status'] ?? '') === 'draft') {
             return Json::error($response, 'validation_failed', 'Koncept nelze exportovat do ISDOC — nejdřív fakturu vystavte.', 400);
+        }
+        // Stornovanou fakturu (status=cancelled, viz CancelInvoiceAction) hromadný
+        // export za období (ExportAction::findInvoiceIds) záměrně vynechává —
+        // stejné pravidlo platí i tady, ať účetní software nedostane tentýž doklad
+        // jinak podle toho, kterým z obou endpointů ho stáhne.
+        if (($invoice['status'] ?? '') === 'cancelled') {
+            return Json::error($response, 'invalid_state', 'Stornovanou fakturu nelze exportovat do ISDOC.', 409);
+        }
+
+        // Backfill kurzu (cache → ČNB → last known) pro cizí měnu bez zafixovaného
+        // kurzu — stejně jako GetInvoiceAction / PdfAction; jinak IsdocExporter::buildXml
+        // padá na kurz 1.0 u starších dokladů bez uloženého exchange_rate.
+        if (
+            (string) ($invoice['currency'] ?? 'CZK') !== 'CZK'
+            && empty($invoice['exchange_rate'])
+        ) {
+            $this->rateApplier->ensureRate($id);
+            $invoice = $this->repo->find($id);
         }
 
         try {

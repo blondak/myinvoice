@@ -497,7 +497,8 @@ paths:
       description: |
         Strojově čitelná faktura (ISDOC) — symetrie
         s `/api/v1/purchase-invoices/{id}/isdoc`. Koncept (draft) nelze
-        exportovat (400) — nemá přidělené číslo.
+        exportovat (400) — nemá přidělené číslo. Stornovanou fakturu (409)
+        také ne — stejné pravidlo jako u hromadného exportu.
       parameters:
         - $ref: '#/components/parameters/SupplierIdHeader'
         - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
@@ -511,6 +512,11 @@ paths:
           $ref: '#/components/responses/ValidationFailed'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Stornovanou fakturu nelze exportovat do ISDOC
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /api/v1/invoices/{id}:
     parameters:
