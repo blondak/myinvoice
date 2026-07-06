@@ -98,7 +98,7 @@ final class DphBookBuilderTest extends TestCase
         $this->pdo->exec("CREATE TABLE vat_classifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT, supplier_id INTEGER NULL, code TEXT NOT NULL, label TEXT NOT NULL,
             direction TEXT NOT NULL, dphdp3_line TEXT NULL, dphdp3_line_secondary TEXT NULL, kh_section TEXT NULL,
-            vat_rate REAL NULL, is_reverse_charge INTEGER NOT NULL DEFAULT 0, display_order INTEGER NOT NULL DEFAULT 0,
+            vat_rate REAL NULL, is_reverse_charge INTEGER NOT NULL DEFAULT 0, kod_pred_pl TEXT NULL, display_order INTEGER NOT NULL DEFAULT 0,
             archived INTEGER NOT NULL DEFAULT 0
         )");
         $this->pdo->exec("CREATE TABLE purchase_invoices (

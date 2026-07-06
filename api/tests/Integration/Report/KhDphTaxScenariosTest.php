@@ -1101,6 +1101,25 @@ final class KhDphTaxScenariosTest extends TestCase
             'SH Q2: musí zahrnout duben+květen+červen (10000+20000+30000), ne jen duben');
     }
 
+    /**
+     * Audit 2026-07 (fix 6): KH kod_pred_pl se čte z klasifikace, ne natvrdo '5'.
+     * Tuzemský RC (kód 5 = stavební/montážní práce, seed kod_pred_pl='4') musí mít
+     * na VetaB1 kod_pred_pl='4' (§92e), ne blanket '5' (odpad/šrot §92c).
+     */
+    public function testDomesticReverseChargeUsesClassificationKodPredPl(): void
+    {
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $vend = $this->client('Dodavatel stavební práce', $this->czId, 'CZ22222220', vendor: true);
+
+        // Tuzemský RC příjemce (kód 5 → seed kod_pred_pl='4').
+        $this->purchase('P-2099-KPP', $vend, '5', false, 'invoice', $d(10), $d(10), [[9000, 0, 21]]);
+
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(1, $kh->DPHKH1->VetaB1, 'B.1: tuzemský RC příjemce');
+        $this->assertSame('4', (string) $kh->DPHKH1->VetaB1[0]['kod_pred_pl'],
+            'kod_pred_pl musí přijít z klasifikace (4 = stavební práce §92e), ne natvrdo 5');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int

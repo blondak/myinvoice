@@ -113,7 +113,7 @@ final class KontrolniHlaseniBuilder
             $v->setAttribute('dic_odb', $cleanDic);
             $v->setAttribute('duzp', $this->formatDate($r['tax_date']));
             $v->setAttribute('zakl_dane1', $this->formatAmount($r['base']));
-            $v->setAttribute('kod_pred_pl', '5');
+            $v->setAttribute('kod_pred_pl', $this->resolveKodPredPl($r['kod_pred_pl'] ?? null, $warnings));
             $dphkh->appendChild($v);
         }
 
@@ -195,7 +195,7 @@ final class KontrolniHlaseniBuilder
             $v->setAttribute('dan1', $this->formatAmount($r['vat21']));
             $v->setAttribute('zakl_dane2', $this->formatAmount($r['base12']));
             $v->setAttribute('dan2', $this->formatAmount($r['vat12']));
-            $v->setAttribute('kod_pred_pl', '5'); // tuzemský reverse charge
+            $v->setAttribute('kod_pred_pl', $this->resolveKodPredPl($r['kod_pred_pl'] ?? null, $warnings));
             $dphkh->appendChild($v);
         }
 
@@ -322,6 +322,7 @@ final class KontrolniHlaseniBuilder
                     'dic_raw'               => $r['counterparty_dic'], // syrové VAT ID pro A.2 (EU alfanum.)
                     'country_iso2'          => $r['country_iso2'],
                     'total_czk'             => (float) $r['total_with_vat_czk'],
+                    'kod_pred_pl'           => null, // KH kód předmětu plnění (RC) z klasifikace
                     'is_rc' => false, 'has_a2' => false, 'has_b1' => false, 'is_pomer' => false,
                     'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0, 'base_total' => 0.0,
                     'a2_base21' => 0.0, 'a2_vat21' => 0.0, 'a2_base12' => 0.0, 'a2_vat12' => 0.0,
@@ -332,6 +333,7 @@ final class KontrolniHlaseniBuilder
             if ($r['kh_section'] === 'A.2') $g['has_a2'] = true;
             if ($r['kh_section'] === 'B.1') $g['has_b1'] = true;
             if (!empty($r['vat_deduction_partial'])) $g['is_pomer'] = true;
+            if (!empty($r['kod_pred_pl'])) $g['kod_pred_pl'] = (string) $r['kod_pred_pl'];
             $base = (float) $r['base_czk'];
             $vat  = (float) $r['vat_czk'];
             $g['base_total'] += $base;
@@ -363,7 +365,8 @@ final class KontrolniHlaseniBuilder
             if ($g['source'] === 'sale') {
                 if ($g['is_rc']) {
                     $a1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['varsymbol'],
-                             'tax_date' => $g['tax_date'], 'base' => $g['base_total']];
+                             'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
+                             'kod_pred_pl' => $g['kod_pred_pl']];
                     continue;
                 }
                 if ($zeroBase($g)) continue; // osvobozené / EU dodání / vývoz → ne A.4/A.5
@@ -391,7 +394,8 @@ final class KontrolniHlaseniBuilder
                     $b1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['vendor_invoice_number'],
                              'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
                              'base21' => $g['base21'], 'vat21' => $g['vat21'],
-                             'base12' => $g['base12'], 'vat12' => $g['vat12']];
+                             'base12' => $g['base12'], 'vat12' => $g['vat12'],
+                             'kod_pred_pl' => $g['kod_pred_pl']];
                     continue;
                 }
                 // Zbylé samovyměřené (RC) plnění bez KH sekce = dovoz zboží ze 3. země
@@ -458,6 +462,27 @@ final class KontrolniHlaseniBuilder
     {
         $verFile = __DIR__ . '/../../../../VERSION';
         return is_file($verFile) ? trim((string) file_get_contents($verFile)) : null;
+    }
+
+    /**
+     * KH „Kód předmětu plnění" (VetaA1/VetaB1.kod_pred_pl) z klasifikace. Není-li na
+     * klasifikaci vyplněn, spadne na '5' (odpad/šrot §92c) + jednorázový warning —
+     * nejčastější tuzemský RC jsou ale stavební/montážní práce (§92e, kód '4').
+     *
+     * @param list<string> $warnings by-ref
+     */
+    private function resolveKodPredPl(?string $value, array &$warnings): string
+    {
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+        $w = 'U některých plnění v přenesené povinnosti není na klasifikaci vyplněn kód '
+           . 'předmětu plnění — použit default „5" (odpad/šrot §92c). Ověřte správný kód '
+           . '(stavební/montážní práce = „4").';
+        if (!in_array($w, $warnings, true)) {
+            $warnings[] = $w;
+        }
+        return '5';
     }
 
     /** DIČ pro KH XML — odstraní CZ prefix, jen číslice. */

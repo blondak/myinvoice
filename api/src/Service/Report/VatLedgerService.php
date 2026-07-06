@@ -79,7 +79,7 @@ final class VatLedgerService
         // ORDER BY supplier_id IS NULL DESC → globální (NULL) řádky první, per-tenant
         // override poslední → v loopu přepíše globální seed (per-tenant override VYHRAJE).
         $stmt = $this->db->pdo()->prepare(
-            'SELECT code, label, dphdp3_line, dphdp3_line_secondary, kh_section, vat_rate, is_reverse_charge
+            'SELECT code, label, dphdp3_line, dphdp3_line_secondary, kh_section, vat_rate, is_reverse_charge, kod_pred_pl
                FROM vat_classifications
               WHERE (supplier_id IS NULL OR supplier_id = ?)
                 AND archived = 0
@@ -95,6 +95,7 @@ final class VatLedgerService
                 'kh_section'            => $r['kh_section'] !== null ? (string) $r['kh_section'] : null,
                 'vat_rate'              => $r['vat_rate'] !== null ? (float) $r['vat_rate'] : null,
                 'is_reverse_charge'     => (bool) $r['is_reverse_charge'],
+                'kod_pred_pl'           => isset($r['kod_pred_pl']) && $r['kod_pred_pl'] !== null ? (string) $r['kod_pred_pl'] : null,
             ];
         }
         return $map;
@@ -327,6 +328,7 @@ final class VatLedgerService
             'dphdp3_line'           => $clsf['dphdp3_line'] ?? null,
             'dphdp3_line_secondary' => $clsf['dphdp3_line_secondary'] ?? null,
             'kh_section'            => $clsf['kh_section'] ?? null,
+            'kod_pred_pl'           => $clsf['kod_pred_pl'] ?? null,
             'is_reverse_charge'     => $isRc,
             'vat_deduction_partial' => $isPartialDeduction,
             'vat_rate'              => $vatRate,
