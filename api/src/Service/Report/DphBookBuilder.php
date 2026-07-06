@@ -385,8 +385,10 @@ final class DphBookBuilder
         if (!in_array($kh, ['A.4', 'A.5', 'B.2', 'B.3'], true)) {
             return $kh;
         }
+        // § 101e: „nad 10 000 Kč" = OSTŘE více → přesně 10 000 jde do sumace (A.5/B.3),
+        // ne jednotlivě (A.4/B.2). Proto '>' (ne '>='), shodně s KontrolniHlaseniBuilder.
         $itemized = KontrolniHlaseniBuilder::cleanDic($g['counterparty_dic'] ?? null) !== ''
-            && abs((float) $g['total_with_vat_czk']) >= $itemThreshold;
+            && abs((float) $g['total_with_vat_czk']) > $itemThreshold;
         return str_starts_with($kh, 'A.')
             ? ($itemized ? 'A.4' : 'A.5')
             : ($itemized ? 'B.2' : 'B.3');

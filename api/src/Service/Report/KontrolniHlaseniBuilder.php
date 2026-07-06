@@ -360,7 +360,9 @@ final class KontrolniHlaseniBuilder
 
         foreach ($inv as $g) {
             $hasDic = $g['dic'] !== '';
-            $overLimit = abs($g['total_czk']) >= $itemThreshold;
+            // § 101e: „nad 10 000 Kč" = OSTŘE více → přesně 10 000 patří do sumace
+            // A.5/B.3, ne do jednotlivé A.4/B.2. Proto '>' (ne '>=').
+            $overLimit = abs($g['total_czk']) > $itemThreshold;
 
             if ($g['source'] === 'sale') {
                 if ($g['is_rc']) {

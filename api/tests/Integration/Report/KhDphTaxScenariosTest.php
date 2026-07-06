@@ -1148,6 +1148,34 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('EL123456789', (string) $veta[0]['c_vat'], 'VAT ID prefix musí být EL, ne GR');
     }
 
+    /**
+     * Audit 2026-07 (fix 8): práh 10 000 Kč je „nad 10 000" = ostře více (§101e).
+     * Doklad přesně 10 000 Kč vč. DPH patří do sumace A.5/B.3, ne jednotlivě A.4/B.2 —
+     * v KH i v Knize DPH (efektivní sekce).
+     */
+    public function testExactly10000ThresholdGoesToSummarySection(): void
+    {
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $vend = $this->client('Dodavatel práh 10k', $this->czId, 'CZ22222220', vendor: true);
+        // Přesně 10 000 Kč vč. DPH (8264 + 1736), dodavatel s DIČ.
+        $this->purchase('P-2099-10K', $vend, '40', false, 'invoice', $d(10), $d(10), [[8264, 1736, 21]]);
+
+        // KH: přesně na prahu → B.3 (sumace), NE B.2.
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(0, $kh->DPHKH1->VetaB2, 'přesně 10 000 nepatří do B.2 (jednotlivě)');
+        $this->assertSame('8264.00', (string) $kh->DPHKH1->VetaB3['zakl_dane1'], 'přesně 10 000 → sumace B.3');
+
+        // Kniha DPH: efektivní KH sekce dokladu = B.3.
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        $khByDoc = [];
+        foreach ($book['sections'] as $s) {
+            foreach ($s['rows'] as $r) {
+                if (!empty($r['original_doc_number'])) $khByDoc[$r['original_doc_number']] = $r['kh_section'];
+            }
+        }
+        $this->assertSame('B.3', $khByDoc['P-2099-10K'] ?? null, 'Kniha DPH: přesně 10 000 → B.3, ne B.2');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int
