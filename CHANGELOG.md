@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.44.2] — 2026-07-06
+
+### Fixed
+
+Sada oprav z adversariálního auditu DPH/KH/Souhrnného hlášení (2026-07) — bez dopadu na UI, jen daňová korektnost přiznání a hlášení.
+
+- **KH VetaB1 (tuzemský reverse charge, odběratel) — správný XSD atribut `duzp` + samovyměřená daň.** Sekce B.1 zapisovala datum do atributu `dppd`, který XSD (`dphkh1.xsd`) u VetaB1 vůbec nezná — každé KH s řádkem B.1 tak neprošlo XSD validací. Navíc B.1 nikdy nevykazoval samovyměřenou daň (`dan1`/`dan2`), jen základ. Opraveno na `duzp` a doplněny per-sazbové agregáty daně.
+- **KH/SH — konec kvartálního období počítaný z konce kvartálu, ne z předaného měsíce.** `build($s, $rok, 4, 'quarterly')` (duben, Q2) dával konec období 30.4. místo 30.6. a výkaz tiše vynechal květen a červen. Konec kvartálu se nově odvozuje z `quarter*3` nezávisle na měsíci (stejně jako už dělá Kniha DPH).
+- **DPHDP3 ř.50 (tuzemská osvobozená plnění §51) se vůbec nepromítal do přiznání.** Kód `3` měl `dphdp3_line=NULL` — Veta5 se nikdy negenerovala (migrace 0126).
+- **Kurz vystavené faktury se zjišťoval k datu vystavení, ne k DUZP.** Podle § 4 odst. 5 / § 8 ZDPH se kurz váže k datu vzniku daňové povinnosti (DUZP), které se od vystavení může lišit až o 15 dní (§ 28 odst. 8). Kurz se nově zjišťuje z `COALESCE(tax_date, issue_date)`.
+- **EU reverse-charge prodej bez signálu zboží defaultoval na kód '20' (dodání zboží), ne '22' (služba).** U typického uživatele (OSVČ/malá firma) jsou služby častější — sjednoceno na '22' jako výchozí, dodání zboží si uživatel zvolí ručně.
+- **KH `kod_pred_pl` byl natvrdo `'5'` (odpad/šrot §92c) pro všechna tuzemská RC plnění**, i pro nejčastější reálný případ — stavební/montážní práce §92e (kód `'4'`). Nově se čte z klasifikace (migrace 0127).
+- **SH (souhrnné hlášení) — Řecko vykazovalo ISO kód `GR` místo DPH/VIES kódu `EL`.** VIES kontrola u řeckých DIČ s prefixem `GR` neprošla; sjednoceno na `khCountryCode` (Řecko je jediná výjimka ISO ≠ VIES kód).
+- **Práh 10 000 Kč pro A.4/B.2 vs. A.5/B.3 byl `>=`, má být striktně `>`** (§ 101e „nad 10 000 Kč"). Doklad přesně na 10 000 Kč nyní správně patří do sumace A.5/B.3.
+- **SH nově varuje na povinnost měsíčního podání, když je v kvartálu zboží (§ 102 odst. 6).** Kvartální souhrnné hlášení smí obsahovat jen služby — builder dosud kvartál se zbožím vygeneroval tiše bez upozornění.
+- **RC prodej do EU — klasifikace zboží/služba podle reálného signálu** (měrná jednotka položky, CZ-NACE dodavatele, statistický default), místo slepé konstanty, která jen prohodila, který případ je špatně.
+
 ## [4.44.1] — 2026-07-04
 
 ### Added
