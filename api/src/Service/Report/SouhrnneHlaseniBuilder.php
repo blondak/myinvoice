@@ -149,7 +149,8 @@ final class SouhrnneHlaseniBuilder
             $v = $dom->createElement('VetaR');
             $v->setAttribute('c_rad', (string) $rowNum);
             $v->setAttribute('k_storno', 'N'); // N = řádné, není to oprava
-            $v->setAttribute('k_stat', $r['country_iso2']);
+            // k_stat = kód státu pro DPH/VIES (Řecko má ISO "GR", ale DPH kód "EL").
+            $v->setAttribute('k_stat', KontrolniHlaseniBuilder::khCountryCode($r['country_iso2']));
             $v->setAttribute('c_vat', $r['vat_id']);
             $v->setAttribute('k_pln_eu', $r['sh_type']);
             $v->setAttribute('pln_hodnota', $this->formatAmount($r['amount']));
@@ -235,9 +236,13 @@ final class SouhrnneHlaseniBuilder
     {
         $dic = preg_replace('/\s+/', '', strtoupper(trim($dic))) ?? '';
         if ($dic === '') return '';
-        // Pokud začíná country code (2 písmena), je OK. Jinak prepend.
-        if (preg_match('/^[A-Z]{2}/', $dic)) return $dic;
-        return $countryIso2 . $dic;
+        // Kód státu pro DPH/VIES (Řecko: ISO "GR" → DPH "EL").
+        $code = KontrolniHlaseniBuilder::khCountryCode($countryIso2);
+        // Pokud už začíná kódem země (2 písmena), ponech — jen GR převeď na EL.
+        if (preg_match('/^[A-Z]{2}/', $dic)) {
+            return str_starts_with($dic, 'GR') ? 'EL' . substr($dic, 2) : $dic;
+        }
+        return $code . $dic;
     }
 
     /**

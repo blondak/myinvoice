@@ -1120,6 +1120,34 @@ final class KhDphTaxScenariosTest extends TestCase
             'kod_pred_pl musí přijít z klasifikace (4 = stavební práce §92e), ne natvrdo 5');
     }
 
+    /**
+     * Audit 2026-07 (fix 7): Souhrnné hlášení — Řecko se vykazuje DPH kódem 'EL',
+     * ne ISO 'GR'. Platí pro k_stat i prefix VAT ID (VIES používá 'EL').
+     */
+    public function testShGreeceReportedAsElNotGr(): void
+    {
+        $grId = $this->countryId('GR');
+        if ($grId === 0) {
+            $this->markTestSkipped('Země GR není v číselníku countries.');
+        }
+        $grEu = (int) ($this->db->pdo()->query("SELECT COALESCE(is_eu,0) FROM countries WHERE iso2='GR' LIMIT 1")->fetchColumn() ?: 0);
+        if ($grEu !== 1) {
+            $this->markTestSkipped('GR není označeno jako EU — SH test přeskočen.');
+        }
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        // Řecký odběratel, VAT ID BEZ prefixu → normalizeVatId prefix doplní (musí být EL).
+        $euCust = $this->client('Řecký odběratel', $grId, '123456789', customer: true);
+        // Poskytnutí služby do JČS (kód 22 → SHV typ 3).
+        $this->sale('2099067701', $euCust, '22', false, $d(10), $d(10), [[15000, 0, 0]]);
+
+        $sh = $this->shv->build($this->supplierId, self::YEAR, self::MONTH);
+        $xml = new \SimpleXMLElement($sh['xml']);
+        $veta = $xml->DPHSHV->VetaR;
+        $this->assertCount(1, $veta, 'SH: jeden řádek pro řeckého odběratele');
+        $this->assertSame('EL', (string) $veta[0]['k_stat'], 'k_stat musí být DPH kód EL, ne ISO GR');
+        $this->assertSame('EL123456789', (string) $veta[0]['c_vat'], 'VAT ID prefix musí být EL, ne GR');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int
