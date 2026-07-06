@@ -60,4 +60,30 @@ final class VatClassificationDefaulterTest extends TestCase
             'Tuzemský RC dodavatel → 25s (ř.25)'
         );
     }
+
+    /**
+     * Audit follow-up (nahrazuje slepou konstantu z 88794465): měrná jednotka položky
+     * je reálný signál zboží/služba pro RC prodej do EU.
+     */
+    public function testEuReverseChargeUsesUnitSignalGoodsVsServices(): void
+    {
+        // Fyzikální jednotka „kg" → dodání zboží do JČS '20' (ř.20).
+        $this->assertSame(
+            '20',
+            $this->defaulter->defaultForSale(0.0, true, null, 0, customerEuForeign: true, units: ['kg']),
+            'EU RC prodej s jednotkou zboží (kg) → dodání zboží 20 (ř.20)'
+        );
+        // Časová jednotka „h" (hodina) → poskytnutí služby '22' (ř.21).
+        $this->assertSame(
+            '22',
+            $this->defaulter->defaultForSale(0.0, true, null, 0, customerEuForeign: true, units: ['h']),
+            'EU RC prodej s jednotkou služby (h) → služba 22 (ř.21)'
+        );
+        // Neutrální „ks" bez NACE dodavatele → statistický default služba '22'.
+        $this->assertSame(
+            '22',
+            $this->defaulter->defaultForSale(0.0, true, null, 0, customerEuForeign: true, units: ['ks']),
+            'EU RC prodej bez jednoznačného signálu → default služba 22'
+        );
+    }
 }

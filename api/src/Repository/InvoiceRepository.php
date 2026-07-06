@@ -933,7 +933,7 @@ final class InvoiceRepository
             // Auto-klasifikace pro DPH přiznání / KH — bez ní by faktura nedorazila
             // do výkazů (VatClassificationMapper SKIPNE řádky s code=NULL).
             $code = $item['vat_classification_code']
-                ?? self::defaultSaleClassificationCode($rate, $reverseCharge, $countryIso);
+                ?? self::defaultSaleClassificationCode($rate, $reverseCharge, $countryIso, (string) ($item['unit'] ?? '') ?: null);
             $orderIndex = (int) ($item['order_index'] ?? $i);
             $stmt->execute([
                 $invoiceId,
@@ -1054,13 +1054,16 @@ final class InvoiceRepository
      *     0%  → '26' (vývoz do 3. země)
      *     jinak tuzemsko sazby
      *
-     * Pro dodávky zboží do EU (kód '20') si user musí kód změnit ručně —
-     * default rate=0% pro EU mapujeme na služby ('22'), což je častější.
+     * Pro dodávky zboží do EU (kód '20') vs služby ('22') rozhoduje měrná jednotka
+     * položky (`$unit`): fyzikální míra (kg/l/m…) → '20', časová (h/den…) → '22';
+     * bez signálu ('ks'/neznámé) statistický default '22'. Sdílená logika s
+     * VatClassificationDefaulter::classifyUnitsGoodsVsServices.
      */
     public static function defaultSaleClassificationCode(
         float $rate,
         bool $reverseCharge,
         ?string $clientCountryIso2 = null,
+        ?string $unit = null,
     ): ?string {
         $r = (int) round($rate);
         $iso = strtoupper((string) ($clientCountryIso2 ?? 'CZ'));
@@ -1072,9 +1075,13 @@ final class InvoiceRepository
         $isEu = in_array($iso, $euCountries, true);
         $isForeign = $iso !== 'CZ' && $iso !== '';
 
-        // Zahraniční klient + nulová sazba → EU služby nebo vývoz
+        // Zahraniční klient + nulová sazba → EU služby/zboží nebo vývoz do 3. země
         if ($isForeign && $r === 0) {
-            return $isEu ? '22' : '26';
+            if (!$isEu) return '26';
+            // EU: dodání zboží ('20') vs poskytnutí služby ('22') dle měrné jednotky.
+            return \MyInvoice\Service\Report\VatClassificationDefaulter::classifyUnitsGoodsVsServices(
+                $unit !== null && $unit !== '' ? [$unit] : []
+            ) === 'goods' ? '20' : '22';
         }
         // Tuzemsko / B2C cizinec s českou DPH sazbou
         if ($r >= 21)            return '1';
