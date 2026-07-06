@@ -1022,6 +1022,37 @@ final class KhDphTaxScenariosTest extends TestCase
         }
     }
 
+    /**
+     * Audit 2026-07 (fix 1): KH oddíl B.1 (tuzemský reverse charge — odběratel) MUSÍ
+     * mít atribut 'duzp' (ne 'dppd' — to XSD u VetaB1 nezná) a vykázat SAMOVYMĚŘENOU
+     * daň (dan1), ne jen základ. B.1 s atributem 'dppd' a bez daně neprojde XSD validací.
+     */
+    public function testReverseChargeB1UsesDuzpAndReportsSelfAssessedTax(): void
+    {
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $vend = $this->client('Dodavatel RC stavební', $this->czId, 'CZ22222220', vendor: true);
+
+        // Tuzemský RC příjemce (kód 5): dodavatel fakturuje bez DPH, příjemce si daň
+        // samovyměří 21 %. Základ 50 000 → samovyměřená daň 10 500.
+        $this->purchase('P-2099-B1', $vend, '5', false, 'invoice', $d(10), $d(10), [[50000, 0, 21]]);
+
+        $khResult = $this->kh->build($this->supplierId, self::YEAR, self::MONTH);
+        $kh = new \SimpleXMLElement($khResult['xml']);
+        $b1 = $kh->DPHKH1->VetaB1;
+        $this->assertCount(1, $b1, 'B.1: tuzemský RC příjemce (kód 5)');
+        // Datum MUSÍ být v atributu 'duzp' (XSD VetaB1), NE v 'dppd'.
+        $this->assertSame('10.06.2099', (string) $b1[0]['duzp'], 'B.1 datum patří do atributu duzp');
+        $this->assertSame('', (string) $b1[0]['dppd'], 'B.1 NESMÍ mít dppd (XSD ho u VetaB1 nezná)');
+        // Samovyměřená daň 50000 × 21 % = 10500 (dříve se nevykazovala vůbec).
+        $this->assertSame('50000.00', (string) $b1[0]['zakl_dane1'], 'B.1 základ 21 %');
+        $this->assertSame('10500.00', (string) $b1[0]['dan1'], 'B.1 samovyměřená daň 21 %');
+
+        // Celé KH XML musí projít XSD validací MFČR — B.1 s 'dppd' / bez 'duzp' by neprošlo.
+        $res = (new \MyInvoice\Service\Validation\XmlSchemaValidator())->validate($khResult['xml'], 'dphkh1');
+        $this->assertNotSame('failed', $res['status'],
+            'KH XML s B.1 musí projít XSD validací: ' . implode('; ', $res['errors']));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int

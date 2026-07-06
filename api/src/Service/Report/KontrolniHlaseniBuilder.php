@@ -182,8 +182,14 @@ final class KontrolniHlaseniBuilder
             $v->setAttribute('c_radku', (string) $rowNum);
             $v->setAttribute('c_evid_dd', (string) $r['vendor_invoice_number']);
             $v->setAttribute('dic_dod', $cleanDic);
-            $v->setAttribute('dppd', $this->formatDate($r['tax_date']));
-            $v->setAttribute('zakl_dane1', $this->formatAmount($r['base']));
+            // XSD VetaB1 zná atribut 'duzp' (NE 'dppd' jako A.2/B.2) — odběratel v režimu
+            // přenesení přiznává daň ke DUZP. Zároveň B.1 vykazuje SAMOVYMĚŘENOU daň
+            // (dan1/dan2), ne jen základ — příjemce si daň sám přiznává (a odečítá).
+            $v->setAttribute('duzp', $this->formatDate($r['tax_date']));
+            $v->setAttribute('zakl_dane1', $this->formatAmount($r['base21']));
+            $v->setAttribute('dan1', $this->formatAmount($r['vat21']));
+            $v->setAttribute('zakl_dane2', $this->formatAmount($r['base12']));
+            $v->setAttribute('dan2', $this->formatAmount($r['vat12']));
             $v->setAttribute('kod_pred_pl', '5'); // tuzemský reverse charge
             $dphkh->appendChild($v);
         }
@@ -375,8 +381,12 @@ final class KontrolniHlaseniBuilder
                     continue;
                 }
                 if ($g['has_b1']) { // TUZEMSKÝ režim přenesení (§ 92a–92e) — jen explicitní sekce B.1
+                    // Per-sazbové agregáty (stejný tvar jako B.2) nesou i samovyměřenou daň
+                    // (vat21/vat12 z rcSelfAssess) — B.1 ji musí vykázat, ne jen základ.
                     $b1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['vendor_invoice_number'],
-                             'tax_date' => $g['tax_date'], 'base' => $g['base_total']];
+                             'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
+                             'base21' => $g['base21'], 'vat21' => $g['vat21'],
+                             'base12' => $g['base12'], 'vat12' => $g['vat12']];
                     continue;
                 }
                 // Zbylé samovyměřené (RC) plnění bez KH sekce = dovoz zboží ze 3. země
