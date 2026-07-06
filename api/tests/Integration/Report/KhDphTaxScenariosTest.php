@@ -750,6 +750,14 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertNotSame('80000', (string) $dp->Veta1['p_zb23'], 'osvobozený prodej nesmí korumpovat ř.3');
         $this->assertSame('', (string) $dp->Veta1['p_zb23'], 'ř.3 musí zůstat prázdný (žádné pořízení z EU)');
 
+        // Audit 2026-07 (fix 3): osvobozené plnění (kód 3) PATŘÍ na ř.50 (Veta5.plnosv_kf).
+        $this->assertNotNull($dp->Veta5, 'Veta5 (ř.50 osvobozená plnění) musí existovat');
+        $this->assertSame('80000', (string) $dp->Veta5['plnosv_kf'], 'ř.50 plnosv_kf = 80000 (osvobozený prodej)');
+        // Veta5 musí sedět v XSD pořadí (Veta4 → Veta5 → Veta6) a mít validní atribut.
+        $resDp = (new \MyInvoice\Service\Validation\XmlSchemaValidator())
+            ->validate($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml'], 'dphdp3');
+        $this->assertNotSame('failed', $resDp['status'], 'DPHDP3 s Veta5 musí projít XSD: ' . implode('; ', $resDp['errors']));
+
         // KH — osvobozené plnění (0 %) nepatří do A.4/A.5.
         $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
         $this->assertCount(0, $kh->DPHKH1->VetaA4, 'osvobozený prodej nepatří do A.4');

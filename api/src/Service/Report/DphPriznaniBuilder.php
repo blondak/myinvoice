@@ -185,6 +185,12 @@ final class DphPriznaniBuilder
             //   (třístranný obchod § 17). Hodnota z ř.31 jde do souhrnného hlášení s kódem 2.
             '30' => ['veta' => 3, 'base' => 'tri_pozb',   'vat' => null],
             '31' => ['veta' => 3, 'base' => 'tri_dozb',   'vat' => null],
+            // Veta5 (oddíl B — krácení nároku na odpočet §76):
+            //   ř.50 plnosv_kf = plnění osvobozená od daně bez nároku na odpočet (§51),
+            //   sloupec „S nárokem na odpočet" vstupující do koeficientu §76. Jen základ,
+            //   bez daně (osvobozené plnění daň nenese). Plný koeficient (koef_p20_*,
+            //   ř.52/53) se needituje — mimo rozsah, řeší účetní.
+            '50' => ['veta' => 5, 'base' => 'plnosv_kf',  'vat' => null],
             // Veta4 (odpočet)
             '40' => ['veta' => 4, 'base' => 'pln23',      'vat' => 'odp_tuz23_nar'],
             '41' => ['veta' => 4, 'base' => 'pln5',       'vat' => 'odp_tuz5_nar'],
@@ -199,6 +205,7 @@ final class DphPriznaniBuilder
         $veta2Attrs = [];
         $veta3Attrs = [];
         $veta4Attrs = [];
+        $veta5Attrs = [];
 
         foreach ($lines as $lineNum => $data) {
             $lineKey = (string) $lineNum;
@@ -250,6 +257,13 @@ final class DphPriznaniBuilder
             $veta4 = $dom->createElement('Veta4');
             foreach ($veta4Attrs as $k => $v) $veta4->setAttribute($k, $v);
             $dphdp3->appendChild($veta4);
+        }
+        // Veta5 — oddíl B, ř.50 (osvobozená plnění bez nároku na odpočet, §76 koeficient).
+        // XSD pořadí Veta4 → Veta5 → Veta6; emit jen když je co vykázat (jako Veta2/3/4).
+        if (!empty($veta5Attrs)) {
+            $veta5 = $dom->createElement('Veta5');
+            foreach ($veta5Attrs as $k => $v) $veta5->setAttribute($k, $v);
+            $dphdp3->appendChild($veta5);
         }
 
         $vlastniDan = $totalDanZdanitelne - $totalDanOdpocitatelne;
