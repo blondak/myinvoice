@@ -15,7 +15,7 @@ use MyInvoice\Infrastructure\Database\Connection;
  *
  * Pravidla per MF ČR (DPHDP3, aktuální seed):
  *   - Vystavená (sale, tuzemsko):    21% → 1,  12% → 2,  0% → 3
- *   - Vystavená (sale, reverse):     20 (EU dodání zboží)
+ *   - Vystavená (sale, reverse):     22 (EU služba §9/1; dodání zboží '20' se volí ručně)
  *   - Přijatá (purchase, tuzemsko):  21% → 40, 12% → 41, 0% → 42
  *   - Přijatá (purchase, reverse):   5  (tuzemský reverse charge)
  *
@@ -30,7 +30,11 @@ final class VatClassificationDefaulter
     /** Hard-coded fallback (matchne seed v migrace 0037 pro CZ 2025-2026 sazby) */
     private const FALLBACK_SALE_TUZEMSKO    = ['21.0' => '1',  '12.0' => '2',  '0.0' => '3'];
     private const FALLBACK_PURCHASE_TUZEMSKO = ['21.0' => '40', '12.0' => '41', '0.0' => '42'];
-    private const FALLBACK_SALE_REVERSE_EU       = '20';   // RC + EU odběratel = dodání do JČS → ř.20 (dod_zb)
+    // RC + EU odběratel: bez signálu „zboží" defaultujeme na SLUŽBU '22' (§ 9 odst. 1,
+    // ř.21) — u typického uživatele (OSVČ / malá firma) jsou přeshraniční služby častější
+    // než dodání zboží '20'. Sjednoceno s InvoiceRepository::defaultSaleClassificationCode
+    // (EU + 0 % → '22'). Pro dodání zboží do JČS si uživatel zvolí '20' ručně.
+    private const FALLBACK_SALE_REVERSE_EU       = '22';
     private const FALLBACK_SALE_REVERSE_DOMESTIC = '25s';  // RC + tuzemský odběratel = §92a dodavatel → ř.25 (pln_rez_pren), KH A.1
     private const FALLBACK_PURCHASE_REVERSE  = '5';
 
@@ -53,7 +57,8 @@ final class VatClassificationDefaulter
     public function defaultForSale(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null, int $supplierId = 0, bool $customerEuForeign = false): string
     {
         if ($reverseCharge) {
-            // Tuzemský §92a dodavatel → '25s' (ř.25); dodání do JČS (zahraniční EU odběratel) → '20' (ř.20).
+            // Tuzemský §92a dodavatel → '25s' (ř.25); zahraniční EU odběratel → služba '22'
+            // (ř.21) jako výchozí (dodání zboží do JČS '20' si uživatel zvolí ručně).
             return $this->lookup('sale', $vatRate, true, $taxDate, $supplierId)
                 ?? ($customerEuForeign ? self::FALLBACK_SALE_REVERSE_EU : self::FALLBACK_SALE_REVERSE_DOMESTIC);
         }
