@@ -1053,6 +1053,46 @@ final class KhDphTaxScenariosTest extends TestCase
             'KH XML s B.1 musí projít XSD validací: ' . implode('; ', $res['errors']));
     }
 
+    /**
+     * Audit 2026-07 (fix 2): kvartální období KH musí končit posledním dnem
+     * KVARTÁLU (quarter*3), ne posledním dnem předaného měsíce. build(..., 4,
+     * 'quarterly') = Q2 (duben–červen) musí zahrnout i květen a červen.
+     */
+    public function testKhQuarterlyPeriodSpansWholeQuarter(): void
+    {
+        $cust = $this->client('Odběratel KH Q2', $this->czId, 'CZ70707075', customer: true);
+        // Tři tuzemská plnění pod limitem (A.5 sumace) v dubnu/květnu/červnu.
+        $this->sale('2099049101', $cust, '1', false, sprintf('%04d-04-10', self::YEAR), sprintf('%04d-04-10', self::YEAR), [[5000, 1050, 21]]);
+        $this->sale('2099059101', $cust, '1', false, sprintf('%04d-05-10', self::YEAR), sprintf('%04d-05-10', self::YEAR), [[6000, 1260, 21]]);
+        $this->sale('2099069101', $cust, '1', false, sprintf('%04d-06-10', self::YEAR), sprintf('%04d-06-10', self::YEAR), [[7000, 1470, 21]]);
+
+        // MONTH=4 (duben) + 'quarterly' → Q2. Konec období musí být 30.6., ne 30.4.
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, 4, 'quarterly')['xml']);
+        $this->assertSame('18000.00', (string) $kh->DPHKH1->VetaA5['zakl_dane1'],
+            'KH Q2: A.5 musí zahrnout duben+květen+červen (5000+6000+7000), ne jen duben');
+    }
+
+    /**
+     * Audit 2026-07 (fix 2): totéž pro Souhrnné hlášení — kvartální rozsah musí
+     * pokrýt celý kvartál, ne jen předaný měsíc.
+     */
+    public function testShQuarterlyPeriodSpansWholeQuarter(): void
+    {
+        $skEu = (int) ($this->db->pdo()->query("SELECT COALESCE(is_eu,0) FROM countries WHERE iso2='SK' LIMIT 1")->fetchColumn() ?: 0);
+        if ($skEu !== 1) {
+            $this->markTestSkipped('SK není v countries označeno jako EU — SH test přeskočen.');
+        }
+        $euCust = $this->client('EU odběratel SH Q2', $this->skId, 'SK7654321', customer: true);
+        // Služby do JČS (kód 22 → SHV typ 3) v dubnu/květnu/červnu.
+        $this->sale('2099043201', $euCust, '22', false, sprintf('%04d-04-10', self::YEAR), sprintf('%04d-04-10', self::YEAR), [[10000, 0, 0]]);
+        $this->sale('2099053201', $euCust, '22', false, sprintf('%04d-05-10', self::YEAR), sprintf('%04d-05-10', self::YEAR), [[20000, 0, 0]]);
+        $this->sale('2099063201', $euCust, '22', false, sprintf('%04d-06-10', self::YEAR), sprintf('%04d-06-10', self::YEAR), [[30000, 0, 0]]);
+
+        $sh = $this->shv->build($this->supplierId, self::YEAR, 4, 'quarterly');
+        $this->assertEqualsWithDelta(60000, $sh['summary']['total_amount'], 0.01,
+            'SH Q2: musí zahrnout duben+květen+červen (10000+20000+30000), ne jen duben');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int

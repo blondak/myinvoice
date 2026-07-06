@@ -65,12 +65,17 @@ final class SouhrnneHlaseniBuilder
         if ($period === 'quarterly') {
             $quarter = (int) ceil($month / 3);
             $startMonth = ($quarter - 1) * 3 + 1;
+            // Konec kvartálu = poslední den měsíce quarter*3, NEZÁVISLE na předaném
+            // $month (jinak build(..., 4, 'quarterly') utne období na duben a zahodí
+            // květen+červen). Stejná logika jako DphBookBuilder::build().
+            $endMonth = $quarter * 3;
             $start = sprintf('%04d-%02d-01', $year, $startMonth);
         } else {
             $quarter = null;
+            $endMonth = $month;
             $start = sprintf('%04d-%02d-01', $year, $month);
         }
-        $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->modify('last day of this month')->format('Y-m-d');
+        $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $endMonth)))->modify('last day of this month')->format('Y-m-d');
 
         $rows = $this->collectEuSupplies($supplierId, $start, $end);
 
