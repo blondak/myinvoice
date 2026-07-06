@@ -167,11 +167,16 @@ final class UpdateInvoiceAction
         // Exchange rate logika:
         //   1. User manuálně nastavil kurz v payloadu → uložit (ruční override má prioritu)
         //   2. Vystavená faktura (force-edit) — NIKDY auto-přefetch (klient ji už má)
-        //   3. Draft + změna currency NEBO issue_date → fetch nový kurz
+        //   3. Draft + změna currency NEBO issue_date NEBO tax_date (DUZP) → fetch nový kurz
         //   4. Jinak → kurz beze změny, jen ensureRate pro backfill když chybí
         $wasDraft = $existing['status'] === 'draft';
         $currencyChanged = (int) ($existing['currency_id'] ?? 0) !== (int) ($body['currency_id'] ?? 0);
         $issueDateChanged = (string) ($existing['issue_date'] ?? '') !== (string) ($body['issue_date'] ?? '');
+        // Kurz se váže k DUZP (tax_date) — změna DUZP musí vyvolat přefetch stejně jako
+        // změna vystavení. Jen když payload tax_date obsahuje (jinak by prázdný payload
+        // falešně signalizoval změnu proti uloženému DUZP).
+        $taxDateChanged = array_key_exists('tax_date', $body)
+            && (string) ($existing['tax_date'] ?? '') !== (string) ($body['tax_date'] ?? '');
         $rateMeta = null;
 
         $userRate = $body['exchange_rate'] ?? null;
@@ -180,7 +185,7 @@ final class UpdateInvoiceAction
         if ($userRateProvided) {
             // Manuální override z UI — preserve s issue_date jako rate_date
             $this->repo->setExchangeRate($id, (float) $userRate, (string) $body['issue_date']);
-        } elseif ($wasDraft && ($currencyChanged || $issueDateChanged)) {
+        } elseif ($wasDraft && ($currencyChanged || $issueDateChanged || $taxDateChanged)) {
             $rateMeta = $this->rateApplier->applyToInvoice($id);
         } else {
             $this->rateApplier->ensureRate($id);
