@@ -86,6 +86,20 @@ final class SouhrnneHlaseniBuilder
             $warnings[] = "V {$periodLabel} nejsou žádné EU dodávky — SH se nepodává.";
         }
 
+        // § 102 odst. 6 ZDPH: kvartální podání SH je přípustné JEN u výhradně
+        // poskytovaných služeb (kód plnění 3). Jakmile je v období dodání zboží do JČS
+        // (sh_type '0' nebo třístranný obchod '2'), musí se podávat MĚSÍČNĚ.
+        if ($period === 'quarterly') {
+            foreach ($rows as $r) {
+                if (in_array((string) $r['sh_type'], ['0', '2'], true)) {
+                    $warnings[] = 'Dodání zboží do JČS vyžaduje měsíční podání souhrnného '
+                        . 'hlášení (§ 102 odst. 6 ZDPH) — kvartální podání je přípustné jen '
+                        . 'u výhradně poskytovaných služeb. Toto kvartální podání obsahuje zboží.';
+                    break;
+                }
+            }
+        }
+
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $dom->preserveWhiteSpace = false;
         $dom->formatOutput = true;

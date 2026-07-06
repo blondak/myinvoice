@@ -1176,6 +1176,34 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('B.3', $khByDoc['P-2099-10K'] ?? null, 'Kniha DPH: přesně 10 000 → B.3, ne B.2');
     }
 
+    /**
+     * Audit 2026-07 (fix 9): kvartální souhrnné hlášení obsahující dodání zboží do
+     * JČS musí varovat, že § 102 odst. 6 ZDPH vyžaduje MĚSÍČNÍ podání (kvartál je jen
+     * pro výhradně služby).
+     */
+    public function testShQuarterlyWithGoodsWarnsMonthlyRequired(): void
+    {
+        $skEu = (int) ($this->db->pdo()->query("SELECT COALESCE(is_eu,0) FROM countries WHERE iso2='SK' LIMIT 1")->fetchColumn() ?: 0);
+        if ($skEu !== 1) {
+            $this->markTestSkipped('SK není v countries označeno jako EU — SH test přeskočen.');
+        }
+        $euCust = $this->client('EU odběratel zboží Q', $this->skId, 'SK7654321', customer: true);
+        // Dodání ZBOŽÍ do JČS (kód 20 → sh_type 0) v Q2.
+        $this->sale('2099059201', $euCust, '20', false, sprintf('%04d-05-10', self::YEAR), sprintf('%04d-05-10', self::YEAR), [[10000, 0, 0]]);
+
+        $sh = $this->shv->build($this->supplierId, self::YEAR, 4, 'quarterly');
+        $joined = implode(' | ', $sh['warnings']);
+        $this->assertStringContainsString('§ 102 odst. 6', $joined,
+            'kvartální SH se zbožím musí varovat na nutnost měsíčního podání');
+
+        // Kontrola: služby-only kvartál (kód 22) NESMÍ varovat — Q3 jen se službami.
+        $euCust2 = $this->client('EU odběratel služby Q', $this->skId, 'SK7654322', customer: true);
+        $this->sale('2099089202', $euCust2, '22', false, sprintf('%04d-08-10', self::YEAR), sprintf('%04d-08-10', self::YEAR), [[5000, 0, 0]]);
+        $shServicesOnly = $this->shv->build($this->supplierId, self::YEAR, 8, 'quarterly'); // Q3 — jen služby
+        $this->assertStringNotContainsString('§ 102 odst. 6', implode(' | ', $shServicesOnly['warnings']),
+            'kvartál jen se službami nesmí varovat');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int
