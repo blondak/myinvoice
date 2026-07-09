@@ -394,7 +394,7 @@ async function rematchStatement() {
       </div>
       <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
         <div class="text-xs text-neutral-500 uppercase">{{ t('bank.debit_total') }}</div>
-        <div class="text-lg font-mono text-danger-500">−{{ formatMoney(statement.debit_total, statement.currency ?? 'CZK') }}</div>
+        <div class="text-lg font-mono text-danger-500">−{{ formatMoney(Math.abs(statement.debit_total), statement.currency ?? 'CZK') }}</div>
       </div>
     </div>
 

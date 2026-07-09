@@ -25,6 +25,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  * Bank statement endpoints (M5b).
  *
  *   POST   /api/bank-statements/upload         multipart file=...
+ *   POST   /api/bank-statements/upload-pdf     multipart file=... (banky bez GPC — Creditas)
  *   GET    /api/bank-statements                list
  *   GET    /api/bank-statements/{id}           detail (+ transactions)
  *   POST   /api/bank-transactions/{id}/match   { invoice_id }  manual match
@@ -69,6 +70,7 @@ final class BankStatementAction
         private readonly \MyInvoice\Service\Mail\PaymentThanksMailer $paymentThanks,
         private readonly \MyInvoice\Service\Invoice\InvoicePaymentService $payments,
         private readonly \MyInvoice\Service\Invoice\PaymentTaxDocumentCreator $taxDocCreator,
+        private readonly \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry $pdfParsers,
     ) {}
 
     public function scan(Request $request, Response $response): Response
@@ -153,77 +155,13 @@ final class BankStatementAction
         } catch (\Throwable $e) {
             return Json::error($response, 'parse_failed', 'Nelze parsovat: ' . $e->getMessage(), 400);
         }
-        // MS-P2-1 + #167: ověř, že account_number patří currencies aktuálního supplieru,
-        // a vyber cílový měnový účet. U víceměnového účtu se SDÍLENÝM číslem (Raiffeisenbank:
-        // CZK/EUR/USD = jedno číslo) nelze měnu z GPC odvodit → vyžádej `account_id`.
-        $currencyId = null;
-        $accountNumber = (string) ($parsed['header']['account_number'] ?? '');
-        if ($accountNumber !== '') {
-            $sid = SupplierGuard::currentId($request);
-            $stmt = $this->db->pdo()->prepare(
-                'SELECT id, code, label, account_number, iban FROM currencies WHERE supplier_id = ?'
-            );
-            $stmt->execute([$sid]);
-            $matches = [];
-            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-                $iban = isset($row['iban']) && is_string($row['iban']) ? $row['iban'] : null;
-                if (\MyInvoice\Service\Bank\AccountNumberNormalizer::matchesAny($accountNumber, $row['account_number'] ?? null, $iban)) {
-                    $matches[] = $row;
-                }
-            }
-            if ($matches === []) {
-                return Json::error(
-                    $response,
-                    'wrong_supplier_account',
-                    "Bankovní účet $accountNumber není registrovaný u aktuálního supplier (Settings → měny → bankovní spojení).",
-                    409
-                );
-            }
-
-            $body = (array) ($request->getParsedBody() ?? []);
-            $rawAccountId = $body['account_id'] ?? null;
-            if ($rawAccountId !== null && $rawAccountId !== '') {
-                // Zvolený účet musí být mezi shodami (tím je vynucený scope na supplieru
-                // i shoda čísla účtu — nelze podstrčit cizí účet/měnu).
-                $accId = (int) $rawAccountId;
-                $chosen = null;
-                foreach ($matches as $m) {
-                    if ((int) $m['id'] === $accId) { $chosen = $m; break; }
-                }
-                if ($chosen === null) {
-                    return Json::error(
-                        $response,
-                        'invalid_account',
-                        'Zvolený měnový účet neodpovídá číslu účtu ve výpisu nebo nepatří aktuálnímu dodavateli.',
-                        422
-                    );
-                }
-                $currencyId = $accId;
-            } else {
-                // Bez volby: víc měnových variant téhož čísla = nejednoznačné → vrať kandidáty.
-                $distinctCodes = array_values(array_unique(array_map(static fn ($m) => (string) $m['code'], $matches)));
-                if (count($distinctCodes) > 1) {
-                    $candidates = array_map(static fn ($m) => [
-                        'account_id' => (int) $m['id'],
-                        'code'       => (string) $m['code'],
-                        'label'      => (string) ($m['label'] ?? '') !== '' ? (string) $m['label'] : (string) $m['code'],
-                    ], $matches);
-                    return Json::error(
-                        $response,
-                        'ambiguous_account_currency',
-                        'Toto číslo účtu má více měnových variant — zvolte cílový měnový účet.',
-                        409,
-                        ['candidates' => array_values($candidates)]
-                    );
-                }
-                // Jednoznačný účet: použij konkrétní supplier-scoped řádek (autoritativní
-                // měna i kód banky, tenant-safe — na rozdíl od tenant-less lookupu v importeru).
-                $currencyId = (int) $matches[0]['id'];
-            }
+        $resolved = $this->resolveTargetCurrency($request, (string) ($parsed['header']['account_number'] ?? ''));
+        if ($resolved['error'] !== null) {
+            return $resolved['error']($response);
         }
 
         try {
-            $r = $this->importer->import($content, $name, (int) ($user['id'] ?? 0), $currencyId);
+            $r = $this->importer->import($content, $name, (int) ($user['id'] ?? 0), $resolved['currency_id']);
         } catch (\Throwable $e) {
             return Json::error($response, 'parse_failed', 'Nelze parsovat: ' . $e->getMessage(), 400);
         }
@@ -232,6 +170,147 @@ final class BankStatementAction
         $this->logger->log('bank.statement_imported', $user['id'] ?? null, 'bank_statement', $r['statement_id'], $r, $ip, $request->getHeaderLine('User-Agent'));
 
         return Json::ok($response, $r);
+    }
+
+    /**
+     * POST /api/bank-statements/upload-pdf  (multipart file=...)
+     *
+     * „Upload PDF" — pro banky bez GPC/ABO exportu (Creditas jako první). Text
+     * extrahuje a rozparsuje {@see \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry}
+     * (bank-specifický parser dle rozpoznaného layoutu, se self-checkem proti hlavičkovým
+     * součtům), persist stejnou cestou jako GPC import (dedupe, currency/account
+     * resolution, matching — {@see \MyInvoice\Service\Bank\StatementImporter::importParsedPdf()}).
+     */
+    public function importPdf(Request $request, Response $response): Response
+    {
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        if (!in_array(($user['role'] ?? ''), ['admin', 'accountant'], true)) {
+            return Json::error($response, 'forbidden', 'Pouze admin nebo účetní.', 403);
+        }
+
+        $files = $request->getUploadedFiles();
+        $file = $files['file'] ?? null;
+        if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+            return Json::error($response, 'no_file', 'Soubor chybí.', 400);
+        }
+
+        $maxSize = 5 * 1024 * 1024;
+        $declaredSize = $file->getSize() ?? $file->getStream()->getSize();
+        if ($declaredSize !== null && $declaredSize > $maxSize) {
+            return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 5 MiB).', 413);
+        }
+
+        $name = (string) $file->getClientFilename();
+        if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'pdf') {
+            return Json::error($response, 'invalid_extension', 'Nepovolená přípona souboru. Povolené: pdf', 400);
+        }
+
+        $pdfBytes = (string) $file->getStream()->getContents();
+        if (strlen($pdfBytes) > $maxSize) {
+            return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 5 MiB).', 413);
+        }
+        if (!str_starts_with($pdfBytes, '%PDF')) {
+            return Json::error($response, 'invalid_pdf', 'Soubor není platné PDF.', 400);
+        }
+
+        try {
+            $parsed = $this->pdfParsers->parse($pdfBytes);
+        } catch (\Throwable $e) {
+            return Json::error($response, 'parse_failed', 'Nelze parsovat: ' . $e->getMessage(), 400);
+        }
+
+        $resolved = $this->resolveTargetCurrency($request, (string) ($parsed['header']['account_number'] ?? ''));
+        if ($resolved['error'] !== null) {
+            return $resolved['error']($response);
+        }
+
+        try {
+            $r = $this->importer->importParsedPdf($parsed, $pdfBytes, $name, (int) ($user['id'] ?? 0), $resolved['currency_id']);
+        } catch (\Throwable $e) {
+            return Json::error($response, 'parse_failed', 'Nelze parsovat: ' . $e->getMessage(), 400);
+        }
+
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $this->logger->log('bank.statement_pdf_imported', $user['id'] ?? null, 'bank_statement', $r['statement_id'], $r + ['parser' => $parsed['parser'] ?? null], $ip, $request->getHeaderLine('User-Agent'));
+
+        return Json::ok($response, $r);
+    }
+
+    /**
+     * MS-P2-1 + #167: ověří, že account_number patří currencies aktuálního supplieru,
+     * a vybere cílový měnový účet. U víceměnového účtu se SDÍLENÝM číslem (Raiffeisenbank:
+     * CZK/EUR/USD = jedno číslo) nelze měnu z výpisu odvodit → vyžádej `account_id`.
+     * Sdíleno mezi GPC (`upload`) a PDF (`importPdf`) uploadem.
+     *
+     * @return array{currency_id: ?int, error: null|(callable(Response): Response)}
+     */
+    private function resolveTargetCurrency(Request $request, string $accountNumber): array
+    {
+        if ($accountNumber === '') {
+            return ['currency_id' => null, 'error' => null];
+        }
+
+        $sid = SupplierGuard::currentId($request);
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id, code, label, account_number, iban FROM currencies WHERE supplier_id = ?'
+        );
+        $stmt->execute([$sid]);
+        $matches = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $iban = isset($row['iban']) && is_string($row['iban']) ? $row['iban'] : null;
+            if (\MyInvoice\Service\Bank\AccountNumberNormalizer::matchesAny($accountNumber, $row['account_number'] ?? null, $iban)) {
+                $matches[] = $row;
+            }
+        }
+        if ($matches === []) {
+            return ['currency_id' => null, 'error' => fn (Response $response) => Json::error(
+                $response,
+                'wrong_supplier_account',
+                "Bankovní účet $accountNumber není registrovaný u aktuálního supplier (Settings → měny → bankovní spojení).",
+                409
+            )];
+        }
+
+        $body = (array) ($request->getParsedBody() ?? []);
+        $rawAccountId = $body['account_id'] ?? null;
+        if ($rawAccountId !== null && $rawAccountId !== '') {
+            // Zvolený účet musí být mezi shodami (tím je vynucený scope na supplieru
+            // i shoda čísla účtu — nelze podstrčit cizí účet/měnu).
+            $accId = (int) $rawAccountId;
+            $chosen = null;
+            foreach ($matches as $m) {
+                if ((int) $m['id'] === $accId) { $chosen = $m; break; }
+            }
+            if ($chosen === null) {
+                return ['currency_id' => null, 'error' => fn (Response $response) => Json::error(
+                    $response,
+                    'invalid_account',
+                    'Zvolený měnový účet neodpovídá číslu účtu ve výpisu nebo nepatří aktuálnímu dodavateli.',
+                    422
+                )];
+            }
+            return ['currency_id' => $accId, 'error' => null];
+        }
+
+        // Bez volby: víc měnových variant téhož čísla = nejednoznačné → vrať kandidáty.
+        $distinctCodes = array_values(array_unique(array_map(static fn ($m) => (string) $m['code'], $matches)));
+        if (count($distinctCodes) > 1) {
+            $candidates = array_map(static fn ($m) => [
+                'account_id' => (int) $m['id'],
+                'code'       => (string) $m['code'],
+                'label'      => (string) ($m['label'] ?? '') !== '' ? (string) $m['label'] : (string) $m['code'],
+            ], $matches);
+            return ['currency_id' => null, 'error' => fn (Response $response) => Json::error(
+                $response,
+                'ambiguous_account_currency',
+                'Toto číslo účtu má více měnových variant — zvolte cílový měnový účet.',
+                409,
+                ['candidates' => array_values($candidates)]
+            )];
+        }
+        // Jednoznačný účet: použij konkrétní supplier-scoped řádek (autoritativní
+        // měna i kód banky, tenant-safe — na rozdíl od tenant-less lookupu v importeru).
+        return ['currency_id' => (int) $matches[0]['id'], 'error' => null];
     }
 
     public function list(Request $request, Response $response): Response

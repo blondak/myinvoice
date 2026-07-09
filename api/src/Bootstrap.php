@@ -146,6 +146,13 @@ final class Bootstrap
                 $c->get(\MyInvoice\Service\Logbook\Fuel\AiFuelStatementParser::class),
                 $c->get(\MyInvoice\Service\Logbook\Fuel\SummaryFuelParser::class),
             ]),
+
+            // "Upload PDF" bankovních výpisů — registry bank-specifických PDF parserů
+            // (banky bez GPC/ABO exportu). PŘIDÁNÍ NOVÉ BANKY: nová třída implements
+            // BankStatementPdfParserInterface a vlož ji do tohoto pole.
+            \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry([
+                $c->get(\MyInvoice\Service\Bank\Pdf\CreditasStatementPdfParser::class),
+            ]),
         ]);
 
         $container = $builder->build();

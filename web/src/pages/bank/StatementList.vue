@@ -227,6 +227,13 @@ async function onDelete(s: BankStatement, ev: MouseEvent) {
   }
 }
 
+// Jeden vstup pro GPC/ABO i PDF — rozhoduje se PER SOUBOR podle přípony (uživatel
+// může naráz vybrat mix obojího), backend endpointy zůstávají oddělené (GPC parser
+// vs bank-specifický PDF parser — Creditas jako první, viz BankStatementPdfParserRegistry).
+function uploadFnFor(file: File): (file: File, accountId?: number) => Promise<ImportResult> {
+  return file.name.toLowerCase().endsWith('.pdf') ? bankApi.importPdf : bankApi.upload
+}
+
 async function onFileSelected(e: Event) {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -248,8 +255,9 @@ async function onFileSelected(e: Event) {
 
   const results: ImportResult[] = []
   for (const file of files) {
+    const uploadFn = uploadFnFor(file)
     try {
-      results.push(await bankApi.upload(file))
+      results.push(await uploadFn(file))
     } catch (e) {
       // #167: sdílené číslo účtu napříč měnami → nech uživatele zvolit cílový účet a zkus znovu.
       const candidates = ambiguousCandidates(e)
@@ -257,7 +265,7 @@ async function onFileSelected(e: Event) {
         const accountId = await askForAccount(file.name, candidates)
         if (accountId === null) continue  // uživatel zrušil → soubor přeskočíme (ne chyba)
         try {
-          results.push(await bankApi.upload(file, accountId))
+          results.push(await uploadFn(file, accountId))
         } catch (e2) {
           errorCount++
           errors.push(`${file.name}: ${apiErrorMessage(e2)}`)
@@ -307,10 +315,11 @@ async function onFileSelected(e: Event) {
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
           {{ scanning ? '…' : t('bank.scan_folder') }}
         </button>
-        <label v-if="authStore.canWrite" class="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md">
+        <label v-if="authStore.canWrite" class="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md"
+          :title="t('bank.upload_hint')">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           {{ uploading ? '…' : t('bank.upload_gpc') }}
-          <input type="file" accept=".gpc,.txt,*/*" multiple class="hidden" @change="onFileSelected" />
+          <input type="file" accept=".gpc,.txt,.pdf,*/*" multiple class="hidden" @change="onFileSelected" />
         </label>
       </div>
     </div>
@@ -387,6 +396,10 @@ async function onFileSelected(e: Event) {
                   class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
                   {{ t('bank.email_notice_badge') }}
                 </span>
+                <span v-else-if="s.source === 'pdf'" :title="t('bank.pdf_source_hint')"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
+                  {{ t('bank.pdf_source_badge') }}
+                </span>
                 <span v-if="s.statement_number" class="text-neutral-400">#{{ s.statement_number }}</span>
               </span>
             </td>
@@ -449,6 +462,10 @@ async function onFileSelected(e: Event) {
               <span v-if="s.source === 'email_notice'" :title="t('bank.email_notice_hint')"
                 class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
                 {{ t('bank.email_notice_badge') }}
+              </span>
+              <span v-else-if="s.source === 'pdf'" :title="t('bank.pdf_source_hint')"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
+                {{ t('bank.pdf_source_badge') }}
               </span>
               <span v-if="s.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ s.currency }}</span>
             </div>

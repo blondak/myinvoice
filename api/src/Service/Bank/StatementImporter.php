@@ -8,7 +8,8 @@ use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
 
 /**
- * Persist parsed GPC do DB. Dedupe podle file_hash.
+ * Persist naparsovaného výpisu do DB (GPC nebo bank-specifický PDF parser — obojí
+ * vrací stejný tvar `['header'=>..., 'transactions'=>...]`). Dedupe podle file_hash.
  */
 final class StatementImporter
 {
@@ -34,7 +35,31 @@ final class StatementImporter
      */
     public function import(string $content, string $fileName, ?int $userId, ?int $currencyId = null): array
     {
-        $hash = hash('sha256', $content);
+        $parsed = $this->parser->parse($content);
+        return $this->persist($parsed, $content, $fileName, $userId, $currencyId, 'gpc');
+    }
+
+    /**
+     * Persist výpis naparsovaný bank-specifickým PDF parserem (Creditas a další —
+     * viz {@see \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry}). Stejná
+     * dedupe/matcher/reconciler logika jako {@see import()}, ale zdrojové bajty jsou
+     * PDF (uloží se do pdf_content, ne file_content — žádný GPC ekvivalent neexistuje).
+     *
+     * @param array{header:array,transactions:list<array>} $parsed
+     */
+    public function importParsedPdf(array $parsed, string $pdfBytes, string $fileName, ?int $userId, ?int $currencyId = null): array
+    {
+        return $this->persist($parsed, $pdfBytes, $fileName, $userId, $currencyId, 'pdf');
+    }
+
+    /**
+     * @param array{header:array,transactions:list<array>} $parsed
+     * @param string $rawBytes Originální bajty souboru — hashují se pro dedup a ukládají
+     *   se buď do file_content (source='gpc') nebo pdf_content (source='pdf').
+     */
+    private function persist(array $parsed, string $rawBytes, string $fileName, ?int $userId, ?int $currencyId, string $source): array
+    {
+        $hash = hash('sha256', $rawBytes);
         $pdo = $this->db->pdo();
 
         // Dedupe
@@ -45,7 +70,6 @@ final class StatementImporter
             return ['statement_id' => (int) $existingId, 'transactions' => 0, 'matched' => 0, 'duplicate' => true];
         }
 
-        $parsed = $this->parser->parse($content);
         $h = $parsed['header'];
 
         // GPC header (074) NEMÁ pole pro měnu — máme to jen v 075 transakcích
@@ -73,14 +97,27 @@ final class StatementImporter
         $statementCurrency = $accountCurrency
             ?? $this->detectStatementCurrency($parsed['transactions']);
 
+        // GPC: raw bajty jdou do file_content (zpětně stažitelný originál). PDF: do
+        // pdf_content (existující sloupce z migrace 0052 — „Stáhnout PDF" tak funguje
+        // bez jakékoli FE změny i pro tyto výpisy; file_content zůstává NULL, protože
+        // žádný GPC ekvivalent neexistuje).
+        $fileContent   = $source === 'gpc' ? $rawBytes : null;
+        $pdfContent    = $source === 'pdf' ? $rawBytes : null;
+        $pdfName       = $source === 'pdf' ? $fileName : null;
+        $pdfHash       = $source === 'pdf' ? $hash : null;
+        $pdfSize       = $source === 'pdf' ? strlen($rawBytes) : null;
+        $pdfUploadedAt = $source === 'pdf' ? date('Y-m-d H:i:s') : null;
+
         $pdo->prepare(
             'INSERT INTO bank_statements
-                 (file_name, file_hash, file_content, account_number, bank_code, currency,
+                 (source, file_name, file_hash, file_content, pdf_content, pdf_name, pdf_hash, pdf_size_bytes, pdf_uploaded_at,
+                  account_number, bank_code, currency,
                   statement_number, statement_date,
                   prev_balance, curr_balance, credit_total, debit_total, transaction_count, imported_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
-            $fileName, $hash, $content, $h['account_number'], $accountBankCode, $statementCurrency,
+            $source, $fileName, $hash, $fileContent, $pdfContent, $pdfName, $pdfHash, $pdfSize, $pdfUploadedAt,
+            $h['account_number'], $accountBankCode, $statementCurrency,
             $h['statement_number'], $h['statement_date'],
             $h['prev_balance'], $h['curr_balance'], $h['credit_total'], $h['debit_total'],
             count($parsed['transactions']), $userId,

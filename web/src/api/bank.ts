@@ -2,8 +2,8 @@ import { api } from './client'
 
 export interface BankStatement {
   id: number
-  /** Zdroj výpisu: 'gpc' = nahraný/importovaný výpis, 'email_notice' = měsíční agregát e-mailových avíz. */
-  source?: 'gpc' | 'email_notice'
+  /** Zdroj výpisu: 'gpc' = nahraný/importovaný GPC výpis, 'pdf' = rozparsovaný PDF výpis (banka bez GPC exportu), 'email_notice' = měsíční agregát e-mailových avíz. */
+  source?: 'gpc' | 'pdf' | 'email_notice'
   file_name: string
   account_number: string
   /** Kód banky (4místný), pokud je u výpisu evidovaný — pro zobrazení „účet / kód". */
@@ -219,6 +219,18 @@ export const bankApi = {
     fd.append('file', file)
     if (accountId !== undefined) fd.append('account_id', String(accountId))
     return api.post<ImportResult>('/bank-statements/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
+  /**
+   * Nahraje a rozparsuje PDF výpis banky bez GPC/ABO exportu (Creditas jako první,
+   * rozšiřitelné). Stejná 409 `ambiguous_account_currency` volba účtu jako `upload()`.
+   */
+  importPdf: (file: File, accountId?: number) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (accountId !== undefined) fd.append('account_id', String(accountId))
+    return api.post<ImportResult>('/bank-statements/upload-pdf', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },

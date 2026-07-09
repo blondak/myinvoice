@@ -602,6 +602,7 @@ final class Routes
 
         // Bank statements (M5b)
         $app->post ('/api/bank-statements/upload',           [BankStatementAction::class, 'upload']);
+        $app->post ('/api/bank-statements/upload-pdf',       [BankStatementAction::class, 'importPdf']);
         $app->post ('/api/bank-statements/scan',             [BankStatementAction::class, 'scan']);
         $app->get  ('/api/bank-statements',                  [BankStatementAction::class, 'list']);
         $app->get  ('/api/bank-statements/account-balances', [BankStatementAction::class, 'accountBalances']);
