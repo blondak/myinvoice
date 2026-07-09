@@ -246,6 +246,27 @@ final class CreditasStatementPdfParserTest extends TestCase
         self::assertFalse($parser->supports("Nějaký jiný bankovní výpis\n"));
     }
 
+    /**
+     * Regrese: Creditas má 4 varianty nadpisu — CZ/EN × běžný/spořicí účet (layout
+     * je jinak identický). Dřívější supports() znal jen běžný účet (CZ+EN) — spořicí
+     * účet (VÝPIS ZE SPOŘICÍHO ÚČTU / SAVINGS ACCOUNT STATEMENT) vůbec nerozpoznal,
+     * takže "Upload PDF" spadl na "žádný podporovaný bankovní parser" u KAŽDÉHO
+     * spořicího výpisu (odhaleno až na reálných datech — testy s parser->parse()
+     * přímo tenhle bug neodhalily, protože supports() obchází).
+     */
+    public function testSupportsRecognizesAllFourTitleVariants(): void
+    {
+        $parser = $this->parser();
+        foreach ([
+            'VÝPIS Z BĚŽNÉHO ÚČTU',
+            'CURRENT ACCOUNT STATEMENT',
+            'VÝPIS ZE SPOŘICÍHO ÚČTU',
+            'SAVINGS ACCOUNT STATEMENT',
+        ] as $title) {
+            self::assertTrue($parser->supports("$title\nBanka CREDITAS a.s.\n"), "supports() selhalo pro nadpis: $title");
+        }
+    }
+
     public function testEmptyMonthWithZeroTransactionsIsValid(): void
     {
         // Regrese: Creditas u dormantního účtu vytiskne výpis s "Během období výpisu

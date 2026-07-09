@@ -7,9 +7,10 @@ namespace MyInvoice\Service\Bank\Pdf;
 use Psr\Log\LoggerInterface;
 
 /**
- * Parser PDF výpisu „VÝPIS Z BĚŽNÉHO ÚČTU" od Banky CREDITAS (Creditas neposkytuje
- * GPC/ABO export, jen PDF a interní API). Text extrahuje registry (Smalot\PdfParser),
- * tahle třída ho jen rozparsuje — deterministicky, žádné AI (finanční data).
+ * Parser PDF výpisu od Banky CREDITAS — běžný i spořicí účet, CZ i EN jazyk
+ * (Creditas neposkytuje GPC/ABO export, jen PDF a interní API). Text extrahuje
+ * registry (Smalot\PdfParser), tahle třída ho jen rozparsuje — deterministicky,
+ * žádné AI (finanční data).
  *
  * Layout (ověřeno na reálných výpisech): hlavička výpisu s labely „Číslo účtu:",
  * „Období výpisu:", „Počáteční/Konečný zůstatek:", „Připsáno:/Odepsáno:", pak tabulka
@@ -28,6 +29,8 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
     private const SKIP_LINE_PATTERNS = [
         '/^VÝPIS Z BĚŽNÉHO ÚČTU$/u',
         '/^CURRENT ACCOUNT STATEMENT$/u',
+        '/^VÝPIS ZE SPOŘICÍHO ÚČTU$/u',
+        '/^SAVINGS ACCOUNT STATEMENT$/u',
         '/^Zaúčtování$/u',
         '/^Provedení$/u',
         '/^realizationed$/u',
@@ -64,13 +67,26 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
         return 'creditas';
     }
 
+    /** Nadpis výpisu — 4 varianty: CZ/EN × běžný/spořicí účet (layout je jinak identický). */
+    private const TITLES = [
+        'VÝPIS Z BĚŽNÉHO ÚČTU',
+        'CURRENT ACCOUNT STATEMENT',
+        'VÝPIS ZE SPOŘICÍHO ÚČTU',
+        'SAVINGS ACCOUNT STATEMENT',
+    ];
+
     public function supports(string $text): bool
     {
         // Creditas umí vygenerovat výpis i anglicky (uživatel má EN jako preferovaný
         // jazyk internetbankingu) — nadpis i labely hlavičky se pak přeloží, patička
-        // (Banka CREDITAS a.s. / IČO / creditas.cz) zůstává vždy česky.
-        return (str_contains($text, 'VÝPIS Z BĚŽNÉHO ÚČTU') || str_contains($text, 'CURRENT ACCOUNT STATEMENT'))
-            && (str_contains($text, 'Banka CREDITAS') || str_contains($text, 'creditas.cz') || str_contains($text, 'CTASCZ22'));
+        // (Banka CREDITAS a.s. / IČO / creditas.cz) zůstává vždy česky. Spořicí účet
+        // (SU) má jiný nadpis než běžný účet (BU), ale jinak identický layout.
+        foreach (self::TITLES as $title) {
+            if (str_contains($text, $title)) {
+                return str_contains($text, 'Banka CREDITAS') || str_contains($text, 'creditas.cz') || str_contains($text, 'CTASCZ22');
+            }
+        }
+        return false;
     }
 
     public function parse(string $pdfBytes, string $text): array
