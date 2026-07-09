@@ -65,6 +65,8 @@ const matchError = ref<string>('')
 // Návrhy ke spárování dle částky ±14 dní (vydané i přijaté faktury).
 const matchCandidates = ref<MatchCandidate[]>([])
 const loadingCandidates = ref(false)
+// true = v ±14 dnech nic nesedělo, matchCandidates obsahuje širší (±90 dní) a/nebo cross-currency návrhy.
+const candidatesFallback = ref(false)
 // Návrhy sloučené úhrady: kombinace faktur jednoho klienta, jejichž součet = platba.
 const splitSuggestions = ref<SplitSuggestion[]>([])
 const loadingSplit = ref(false)
@@ -193,9 +195,14 @@ function startMatch(tx: BankTransaction) {
   matchError.value = ''
   // Návrhy dle částky ±14 dní (best-effort — když selže, ruční VS pořád funguje)
   matchCandidates.value = []
+  candidatesFallback.value = false
   loadingCandidates.value = true
   bankApi.matchCandidates(tx.id)
-    .then(list => { if (matchingTx.value === tx.id) matchCandidates.value = list })
+    .then(r => {
+      if (matchingTx.value !== tx.id) return
+      matchCandidates.value = r.candidates
+      candidatesFallback.value = r.fallback
+    })
     .catch(() => {})
     .finally(() => { loadingCandidates.value = false })
   // Návrhy sloučené úhrady (jen příchozí platba — klient zaplatil víc faktur naráz)
@@ -625,9 +632,13 @@ async function rematchStatement() {
           <span v-if="matchCtx.counterparty_name" class="text-neutral-400"> · {{ matchCtx.counterparty_name }}</span>
         </p>
 
-        <!-- Návrhy ke spárování dle částky (±14 dní) -->
+        <!-- Návrhy ke spárování dle částky (±14 dní, fallback ±90 dní) -->
         <div class="mb-4">
           <div class="text-sm font-medium text-neutral-700 mb-1.5">{{ t('bank.candidates_title') }}</div>
+          <p v-if="!loadingCandidates && candidatesFallback && matchCandidates.length > 0"
+            class="text-xs text-warning-600 bg-warning-50 border border-warning-500/30 rounded-md px-2 py-1.5 mb-1.5">
+            {{ t('bank.candidates_fallback_hint') }}
+          </p>
           <div v-if="loadingCandidates" class="text-xs text-neutral-500 py-2">{{ t('common.loading') }}</div>
           <div v-else-if="matchCandidates.length === 0" class="text-xs text-neutral-400 py-2">{{ t('bank.no_candidates') }}</div>
           <ul v-else class="border border-neutral-200 rounded-md divide-y divide-neutral-100 max-h-56 overflow-auto">
@@ -641,6 +652,10 @@ async function rematchStatement() {
                   </span>
                   <span v-if="c.paid" class="text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold bg-neutral-200 text-neutral-600 ml-1">
                     {{ t('bank.candidate_paid') }}
+                  </span>
+                  <span v-if="c.currency_mismatch" :title="t('bank.candidate_currency_mismatch_hint')"
+                    class="text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold bg-danger-50 text-danger-600 ml-1">
+                    {{ t('bank.candidate_currency_mismatch') }}
                   </span>
                   <span class="font-mono text-sm ml-1">{{ c.ref || `#${c.id}` }}</span>
                   <span v-if="c.party" class="text-xs text-neutral-500 block truncate">{{ c.party }}</span>

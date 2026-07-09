@@ -42,6 +42,9 @@ final class BankStatementAction
     private const CANDIDATE_FX_TOLERANCE_PCT = 0.04;
     /** Okno ±N dní kolem data transakce (issue_date nebo due_date faktury). */
     private const CANDIDATE_DAY_WINDOW = 14;
+    /** Fallback okno, když v CANDIDATE_DAY_WINDOW nic nesedí — širší rozsah + povolí
+     *  i shodu bez převodu měny (viz searchMatchCandidates $allowRawAmountFallback). */
+    private const CANDIDATE_FALLBACK_DAY_WINDOW = 90;
 
     /** Sloučená úhrada (split): výchozí okno ±N dní pro hledání kombinací (uživatel může rozšířit). */
     private const SPLIT_DAY_WINDOW = 7;
@@ -1306,7 +1309,13 @@ final class BankStatementAction
      * (CZK = částka × kurz) s relativní tolerancí (bankovní spread + drift). Vrací
      * seznam k výběru vč. přepočtené částky; ruční zadání VS zůstává druhou možností.
      *
-     * GET /api/bank-transactions/{id}/match-candidates → { candidates: [...] }
+     * Když v ±14 dnech nic nesedí, automaticky zkusí širší okno (±90 dní) a navíc
+     * povolí i shodu na syrovou částku bez FX převodu (klient zaplatil "stejné číslo"
+     * z cizoměnového účtu, aniž by šlo o skutečný kurzový přepočet — časté u
+     * zahraničních plateb, kde odesílatel jen přepíše částku bez ohledu na měnu).
+     * Takové kandidáty FE označí příznakem `currency_mismatch`.
+     *
+     * GET /api/bank-transactions/{id}/match-candidates → { candidates: [...], fallback: bool }
      */
     public function matchCandidates(Request $request, Response $response, array $args): Response
     {
@@ -1332,10 +1341,28 @@ final class BankStatementAction
         $posted   = (string) ($tx['posted_at'] ?? date('Y-m-d'));
         $txCcy    = (string) ($tx['ccy'] ?? 'CZK');
         if ($txAmount <= 0.0) {
-            return Json::ok($response, ['candidates' => []]);
+            return Json::ok($response, ['candidates' => [], 'fallback' => false]);
         }
 
-        $win = self::CANDIDATE_DAY_WINDOW;
+        $candidates = $this->searchMatchCandidates($sid, $posted, $txAmount, $txCcy, self::CANDIDATE_DAY_WINDOW, false);
+        $fallback = false;
+        if ($candidates === []) {
+            $fallback = true;
+            $candidates = $this->searchMatchCandidates($sid, $posted, $txAmount, $txCcy, self::CANDIDATE_FALLBACK_DAY_WINDOW, true);
+        }
+
+        return Json::ok($response, ['candidates' => $candidates, 'fallback' => $fallback]);
+    }
+
+    /**
+     * @return list<array{type:string,id:int,ref:?string,amount:float,currency:string,
+     *   converted_amount:?float,converted_currency:?string,issue_date:string,due_date:string,
+     *   party:?string,paid:bool,currency_mismatch:bool}>
+     */
+    private function searchMatchCandidates(int $sid, string $posted, float $txAmount, string $txCcy, int $win, bool $allowRawAmountFallback): array
+    {
+        $pdo = $this->db->pdo();
+
         // Otevřené i zaplacené doklady v okně ±N dní (vydané + přijaté). 'paid' zahrnujeme —
         // uživatel chce spárovat i s už zaplacenou fakturou (duplicitní/druhá platba, doplatek).
         // Částku NEfiltrujeme v SQL — kvůli cizí měně se porovnává přes kurz až v PHP.
@@ -1369,6 +1396,7 @@ final class BankStatementAction
         $absTol = self::CANDIDATE_AMOUNT_TOLERANCE;
         $pct    = self::CANDIDATE_FX_TOLERANCE_PCT;
         $local  = 'CZK';
+        $postedTs = strtotime($posted) ?: time();
 
         $candidates = [];
         foreach ($q->fetchAll(\PDO::FETCH_ASSOC) as $r) {
@@ -1385,6 +1413,7 @@ final class BankStatementAction
             }
 
             $converted = null; // částka přepočtená do měny transakce (jen u cross-currency)
+            $currencyMismatch = false;
             if ($invCcy === $txCcy) {
                 $expected = $invMag;
                 $tol = $absTol;
@@ -1393,6 +1422,14 @@ final class BankStatementAction
                 $expected = $invMag * $rate;
                 $tol = max($absTol, $expected * $pct);
                 $converted = $expected;
+            } elseif ($allowRawAmountFallback) {
+                // Fallback (nic nesedí přesně): porovnej syrovou magnitudu BEZ FX převodu —
+                // typicky zahraniční klient převede "stejné číslo" z cizoměnového účtu, aniž
+                // by šlo o reálný kurzový přepočet. Hodnoty pak ekonomicky nesedí, ale číselně
+                // ano — proto je uživatel musí potvrdit ručně, nikdy se to neděje automaticky.
+                $expected = $invMag;
+                $tol = $absTol;
+                $currencyMismatch = true;
             } else {
                 // Cizoměnový účet × jiná měna faktury — bez kurzu transakce nepřevedeme. Skip.
                 continue;
@@ -1403,6 +1440,7 @@ final class BankStatementAction
                 continue;
             }
 
+            $dueTs = strtotime((string) $r['due_date']) ?: $postedTs;
             $candidates[] = [
                 'type'               => $r['mtype'],
                 'id'                 => (int) $r['id'],
@@ -1415,20 +1453,23 @@ final class BankStatementAction
                 'due_date'           => $r['due_date'],
                 'party'              => $r['party'] !== null ? (string) $r['party'] : null,
                 'paid'               => ($r['status'] ?? '') === 'paid',
+                'currency_mismatch'  => $currencyMismatch,
                 '_rel'               => $expected > 0 ? $diff / $expected : 0.0,
+                '_dayDist'           => (int) round(abs($dueTs - $postedTs) / 86400),
             ];
         }
 
-        // Nejlepší relativní shoda první, pak nejnovější splatnost; cap 25.
+        // Nejlepší relativní shoda první; při shodě nejbližší datum splatnosti (fallback =
+        // "nejlepší shoda" myšleno i časově, ne jen nejnovější); cap 25.
         usort($candidates, static fn (array $a, array $b): int =>
-            ($a['_rel'] <=> $b['_rel']) ?: strcmp((string) $b['due_date'], (string) $a['due_date']));
+            ($a['_rel'] <=> $b['_rel']) ?: ($a['_dayDist'] <=> $b['_dayDist']));
         $candidates = array_slice($candidates, 0, 25);
         foreach ($candidates as &$c) {
-            unset($c['_rel']);
+            unset($c['_rel'], $c['_dayDist']);
         }
         unset($c);
 
-        return Json::ok($response, ['candidates' => $candidates]);
+        return $candidates;
     }
 
     /**

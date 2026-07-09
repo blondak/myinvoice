@@ -69,7 +69,7 @@ export interface MatchedInvoice {
   client_name: string | null
 }
 
-/** Kandidát na spárování dle částky + data (±14 dní) — vystavená i přijatá faktura. */
+/** Kandidát na spárování dle částky + data (±14 dní, fallback ±90 dní) — vystavená i přijatá faktura. */
 export interface MatchCandidate {
   type: 'invoice' | 'purchase_invoice'
   id: number
@@ -84,6 +84,9 @@ export interface MatchCandidate {
   party: string | null
   /** Faktura je už zaplacená — UI zobrazí varovný štítek (duplicitní/druhá platba). */
   paid: boolean
+  /** Fallback kandidát bez FX převodu — syrová částka sedí, ale měna faktury neodpovídá
+   *  měně transakce (klient zaplatil "stejné číslo" z cizoměnového účtu). Ověřit ručně. */
+  currency_mismatch: boolean
 }
 
 /** Jedna faktura v návrhu sloučené úhrady. */
@@ -234,9 +237,10 @@ export const bankApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
+  /** `fallback=true` = v ±14 dnech nic nesedělo, vráceny širší (±90 dní) a/nebo cross-currency návrhy. */
   matchCandidates: (txId: number) =>
-    api.get<{ candidates: MatchCandidate[] }>(`/bank-transactions/${txId}/match-candidates`)
-      .then(r => r.data.candidates),
+    api.get<{ candidates: MatchCandidate[]; fallback: boolean }>(`/bank-transactions/${txId}/match-candidates`)
+      .then(r => r.data),
   matchManual: (txId: number, ref: { invoiceId?: number; purchaseInvoiceId?: number; varsymbol?: string }) =>
     api.post<{ matched: true; paid_at?: string; purchase_invoice_id?: number }>(`/bank-transactions/${txId}/match`, {
       ...(ref.invoiceId ? { invoice_id: ref.invoiceId } : {}),
