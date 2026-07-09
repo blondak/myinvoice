@@ -245,4 +245,102 @@ final class CreditasStatementPdfParserTest extends TestCase
         self::assertTrue($parser->supports("VÝPIS Z BĚŽNÉHO ÚČTU\nBanka CREDITAS a.s.\n"));
         self::assertFalse($parser->supports("Nějaký jiný bankovní výpis\n"));
     }
+
+    public function testEmptyMonthWithZeroTransactionsIsValid(): void
+    {
+        // Regrese: Creditas u dormantního účtu vytiskne výpis s "Během období výpisu
+        // nebyly zpracovány žádné transakce." a všemi zůstatky 0,00 — to je legitimní
+        // stav (self-check 0==0 projde), NE chyba k zamítnutí.
+        $text = $this->header('0,00', '0,00', '0,00', '0,00') . <<<TXT
+        Během období výpisu nebyly zpracovány žádné transakce.
+
+        TXT;
+
+        $result = $this->parser()->parse('%PDF-fake', $text);
+        self::assertSame([], $result['transactions']);
+    }
+
+    public function testAmountIsNotMergedWithPrecedingReferenceNumberAcrossTabBoundary(): void
+    {
+        // Regrese: u interních transakcí (úrok/kapitalizace vkladu) následuje za
+        // referenčním číslem vkladu TAB a pak částka na stejném fyzickém řádku
+        // ("Banka CREDITAS\tKapitalizace vkladu 900000001\t36,69"). Tab je hranice
+        // SLOUPCE, ne oddělovač tisíců uvnitř částky — dřívější regex `[\t ]?\d{3}`
+        // to spolykal a spojil referenční číslo s částkou do jednoho čísla
+        // (900000001 + 36,69 → 90000000136,69).
+        $text = <<<TXT
+        31.1.2026 Převod úroků
+        1000000008
+        Banka CREDITAS\tKapitalizace term. vkladu 900000001\t36,69
+
+
+        TXT;
+
+        $rows = $this->parser()->parseTransactionsFromText($text);
+        self::assertCount(1, $rows);
+        self::assertSame(36.69, $rows[0]['amount']);
+    }
+
+    public function testParsesEnglishHeaderLabels(): void
+    {
+        // Regrese: Creditas umí vygenerovat výpis anglicky (uživatelův preferovaný
+        // jazyk internetbankingu) — nadpis i labely hlavičky se přeloží
+        // ("CURRENT ACCOUNT STATEMENT", "Account number:", "Starting balance:",
+        // "Final Balance:", "Attributed:", "Written of:" — doslovný překlep z
+        // Creditas generátoru, ne naše chyba), patička zůstává vždy česky.
+        $text = <<<TXT
+        CURRENT ACCOUNT STATEMENT
+        Testovací s.r.o.
+
+        Account number: 1234567890/2250\tProduct name: Běžný účet PO
+
+        Statement period:1.6.2026 - 30.6.2026\tCurrency:\tCZK
+
+        Statement number:6 / 2026\tFrequency:\tMěsíčně
+
+        IBAN:\tCZ00 2250 0000 0012 3456 7890 BIC:\tCTASCZ22
+
+
+        Starting balance:10 000,00\tAttributed: 5 000,00
+
+        Final Balance: 15 000,00\tWritten of: 0,00
+
+
+         Posting
+        realizationed
+        Transaction type
+        Transaction code
+        Account number / Payment
+        Card Number
+        Account Type Name
+        Details
+
+        Amount on
+        CZK
+
+
+
+        1.6.2026 Příchozí úhrada
+        1000000009
+        5555555555/0300
+        PATA FIRMA
+        VS:1
+        5 000,00
+
+
+        Banka CREDITAS a.s., Sokolovská 675/9, Karlín, 186 00 Praha 8
+        TXT;
+
+        self::assertTrue($this->parser()->supports($text));
+        $header = $this->parser()->parseHeaderFromText($text);
+        self::assertSame('1234567890', $header['account_number']);
+        self::assertSame('CZK', $header['currency']);
+        self::assertSame(10000.0, $header['prev_balance']);
+        self::assertSame(15000.0, $header['curr_balance']);
+        self::assertSame(5000.0, $header['credit_total']);
+        self::assertSame(0.0, $header['debit_total']);
+
+        $result = $this->parser()->parse('%PDF-fake', $text);
+        self::assertCount(1, $result['transactions']);
+    }
 }

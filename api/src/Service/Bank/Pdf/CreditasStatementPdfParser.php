@@ -27,14 +27,23 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
 {
     private const SKIP_LINE_PATTERNS = [
         '/^VÝPIS Z BĚŽNÉHO ÚČTU$/u',
+        '/^CURRENT ACCOUNT STATEMENT$/u',
         '/^Zaúčtování$/u',
         '/^Provedení$/u',
+        '/^realizationed$/u',
         '/^Typ transakce$/u',
+        '/^Transaction type$/u',
         '/^Číslo transakce$/u',
+        '/^Transaction code$/u',
         '/^Číslo účtu \/ karty$/u',
+        '/^Account number \/ Payment$/u',
+        '/^Card Number$/u',
         '/^Název$/u',
+        '/^Account Type Name$/u',
         '/^Detaily$/u',
+        '/^Details$/u',
         '/^Částka v [A-Z]{3}$/u',
+        '/^Amount on$/u',
         // Patička "Banka CREDITAS a.s., Sokolovská…" — POZOR: "Banka CREDITAS" samotné
         // (bez "a.s.,") je i legitimní protistrana u interních transakcí (např. "Převod
         // úroků" — bance se připisuje/odečítá úrok, counterparty_name = "Banka CREDITAS").
@@ -57,7 +66,10 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
 
     public function supports(string $text): bool
     {
-        return str_contains($text, 'VÝPIS Z BĚŽNÉHO ÚČTU')
+        // Creditas umí vygenerovat výpis i anglicky (uživatel má EN jako preferovaný
+        // jazyk internetbankingu) — nadpis i labely hlavičky se pak přeloží, patička
+        // (Banka CREDITAS a.s. / IČO / creditas.cz) zůstává vždy česky.
+        return (str_contains($text, 'VÝPIS Z BĚŽNÉHO ÚČTU') || str_contains($text, 'CURRENT ACCOUNT STATEMENT'))
             && (str_contains($text, 'Banka CREDITAS') || str_contains($text, 'creditas.cz') || str_contains($text, 'CTASCZ22'));
     }
 
@@ -65,9 +77,9 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
     {
         $header = $this->parseHeaderFromText($text);
         $transactions = $this->parseTransactionsFromText($text);
-        if ($transactions === []) {
-            throw new \RuntimeException('Creditas PDF: nenalezena žádná transakce.');
-        }
+        // Prázdný měsíc je legitimní stav (Creditas tiskne "Během období výpisu
+        // nebyly zpracovány žádné transakce.", zůstatky se nemění) — self-check níže
+        // to ověří (0 == curr-prev), takže žádnou transakci NENÍ potřeba zvlášť odmítat.
 
         // Self-check: součet transakcí musí souhlasit s pohybem zůstatku na haléř přesně
         // (nativní PDF text, ne OCR — žádná tolerance na "skoro sedí").
@@ -100,33 +112,37 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
     {
         $money = '(-?[\d \x{00A0}]+,\d{2})';
 
-        if (!preg_match('/Číslo účtu:\s*([\d\-]+)\/(\d{3,4})/u', $text, $m)) {
+        // Labely hlavičky umí Creditas vygenerovat i anglicky (viz supports()) — každé
+        // pole zkusí obě varianty.
+        if (!preg_match('/(?:Číslo účtu|Account number):\s*([\d\-]+)\/(\d{3,4})/u', $text, $m)) {
             throw new \RuntimeException('Creditas PDF: chybí "Číslo účtu:" v hlavičce.');
         }
         $accountNumber = $m[1];
 
-        if (!preg_match('/Období výpisu:\s*\d{1,2}\.\d{1,2}\.\d{4}\s*-\s*(\d{1,2}\.\d{1,2}\.\d{4})/u', $text, $m)) {
+        if (!preg_match('/(?:Období výpisu|Statement period):\s*\d{1,2}\.\d{1,2}\.\d{4}\s*-\s*(\d{1,2}\.\d{1,2}\.\d{4})/u', $text, $m)) {
             throw new \RuntimeException('Creditas PDF: chybí "Období výpisu:" v hlavičce.');
         }
         $statementDate = $this->parseDateCz($m[1]) ?? date('Y-m-d');
 
-        $statementNumber = preg_match('/Číslo výpisu:\s*(\d+)/u', $text, $m) ? $m[1] : '';
-        $currency = preg_match('/Měna:\s*([A-Z]{3})/u', $text, $m) ? $m[1] : null;
+        $statementNumber = preg_match('/(?:Číslo výpisu|Statement number):\s*(\d+)/u', $text, $m) ? $m[1] : '';
+        $currency = preg_match('/(?:Měna|Currency):\s*([A-Z]{3})/u', $text, $m) ? $m[1] : null;
 
-        if (!preg_match('/Počáteční zůstatek:\s*' . $money . '/u', $text, $m)) {
+        if (!preg_match('/(?:Počáteční zůstatek|Starting balance):\s*' . $money . '/u', $text, $m)) {
             throw new \RuntimeException('Creditas PDF: chybí "Počáteční zůstatek:" v hlavičce.');
         }
         $prevBalance = $this->num($m[1]);
 
-        if (!preg_match('/Konečný zůstatek:\s*' . $money . '/u', $text, $m)) {
+        if (!preg_match('/(?:Konečný zůstatek|Final Balance):\s*' . $money . '/u', $text, $m)) {
             throw new \RuntimeException('Creditas PDF: chybí "Konečný zůstatek:" v hlavičce.');
         }
         $currBalance = $this->num($m[1]);
 
-        $creditTotal = preg_match('/Připsáno:\s*' . $money . '/u', $text, $m) ? $this->num($m[1]) : 0.0;
-        // Na PDF je "Odepsáno:" tištěno se záporným znaménkem, ale bank_statements.debit_total
-        // je (stejně jako u GpcParser) kladná magnituda — UI šablona si znaménko doplňuje sama.
-        $debitTotal = preg_match('/Odepsáno:\s*' . $money . '/u', $text, $m) ? abs($this->num($m[1])) : 0.0;
+        $creditTotal = preg_match('/(?:Připsáno|Attributed):\s*' . $money . '/u', $text, $m) ? $this->num($m[1]) : 0.0;
+        // Na PDF je "Odepsáno:"/"Written of:" tištěno se záporným znaménkem, ale
+        // bank_statements.debit_total je (stejně jako u GpcParser) kladná magnituda —
+        // UI šablona si znaménko doplňuje sama. (Anglický label "Written of:" je
+        // doslovný překlep z Creditas PDF generátoru, ne naše chyba.)
+        $debitTotal = preg_match('/(?:Odepsáno|Written of):\s*' . $money . '/u', $text, $m) ? abs($this->num($m[1])) : 0.0;
 
         return [
             'account_number'   => $accountNumber,
@@ -236,8 +252,14 @@ final class CreditasStatementPdfParser implements BankStatementPdfParserInterfac
             $line = $slice[$idx];
 
             // Částka může být na vlastním řádku, nebo slepená na konci řádku s jiným
-            // obsahem (tab/mezera dle PDF layoutu) — vždy jde o POSLEDNÍ takový výskyt.
-            if (preg_match('/^(.*?)[\t ]*(-?\d{1,3}(?:[\t ]?\d{3})*,\d{2})$/u', $line, $am)) {
+            // obsahem (hranice sloupce = tab NEBO mezera dle PDF layoutu) — vždy jde
+            // o POSLEDNÍ takový výskyt. ⚠️ Uvnitř samotné částky (oddělovač tisíců) smí
+            // být JEN mezera, NIKDY tab — tab je vždy hranice mezi sloupci, ne oddělovač
+            // tisíců. Bug nalezen na reálném výpisu: `[\t ]?` jako oddělovač tisíců
+            // spolklo hranici sloupce a slilo referenční číslo vkladu (u interní
+            // transakce "Banka CREDITAS\t...vkladu <ref>\t<částka>") s částkou do
+            // jednoho obřího čísla — viz regresní test.
+            if (preg_match('/^(.*?)[\t ]*(-?\d{1,3}(?: ?\d{3})*,\d{2})$/u', $line, $am)) {
                 $amount = $this->num($am[2]);
                 $line = trim($am[1]);
                 if ($line === '') continue;
