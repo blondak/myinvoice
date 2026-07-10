@@ -37,9 +37,18 @@ final class EpoSupplierBlockBuilder
         if (($supplier['taxpayer_type'] ?? null) === 'po') {
             $vetaP->setAttribute('zkrobchjm', (string) $supplier['company_name']);
         } else {
-            $parts = explode(' ', trim((string) $supplier['company_name']), 2);
-            $vetaP->setAttribute('jmeno', $parts[0] ?? '');
-            $vetaP->setAttribute('prijmeni', $parts[1] ?? $parts[0] ?? '');
+            // Fyzická osoba (OSVČ) — jmeno/prijmeni = sám daňový subjekt.
+            //   1) Preferuj strukturovaná pole jméno/příjmení, která už plníme jednateli
+            //      u s.r.o. (opr_jmeno/opr_prijmeni) — u OSVČ = tatáž osoba, dá přesnou kontrolu.
+            //   2) Fallback: rozdělení company_name s ODSTRANĚNÍM akademických titulů —
+            //      jinak „MUDr. Josef Novák" → jmeno=„MUDr.", prijmeni=„Josef Novák" (#200).
+            $jmeno = trim((string) ($supplier['opr_jmeno'] ?? ''));
+            $prijmeni = trim((string) ($supplier['opr_prijmeni'] ?? ''));
+            if ($jmeno === '' || $prijmeni === '') {
+                [$jmeno, $prijmeni] = self::splitPersonName((string) ($supplier['company_name'] ?? ''));
+            }
+            $vetaP->setAttribute('jmeno', $jmeno);
+            $vetaP->setAttribute('prijmeni', $prijmeni !== '' ? $prijmeni : $jmeno);
         }
 
         // Adresa: ulice samotná + čísla popisné/orientační zvlášť (per EPO konvence).
@@ -99,6 +108,43 @@ final class EpoSupplierBlockBuilder
         if (!empty($supplier['sest_telefon'])) $vetaP->setAttribute('sest_telef', self::normalizePhone((string) $supplier['sest_telefon']));
         // Pozn.: sest_email a sest_funkce NEJSOU v EPO XSD (DPH/KH/SHV) — držíme je
         // jen v DB pro vnitřní použití (kontakt na účetní v UI).
+    }
+
+    /**
+     * Rozdělí celé jméno fyzické osoby na [jmeno, prijmeni] pro EPO VetaP a odstraní
+     * akademické tituly (vedoucí i koncové), aby nespadly do `jmeno`/`prijmeni` (#200).
+     *
+     *   „MUDr. Josef Novák"            → ['Josef', 'Novák']
+     *   „prof. Ing. Jan Svoboda, CSc." → ['Jan', 'Svoboda']
+     *   „Josef Novák"                  → ['Josef', 'Novák']
+     *   „Josef Karel Novák"            → ['Josef', 'Karel Novák']  (víceslovné příjmení)
+     *   „Novák"                        → ['Novák', 'Novák']        (BC — prijmeni je required)
+     *
+     * Titul = token s tečkou (MUDr., Ing., prof., Ph.D. …) nebo ze seznamu bez tečky
+     * (CSc., DrSc., MBA, DiS, …). Koncové tituly bývají za čárkou — tu urveme celou.
+     *
+     * @return array{0:string, 1:string} [jmeno, prijmeni]
+     */
+    public static function splitPersonName(string $full): array
+    {
+        // Vše za první čárkou (typicky koncové tituly „, Ph.D.", „, CSc.", „, MBA") pryč.
+        $full = preg_replace('/,.*$/us', '', trim($full)) ?? $full;
+        $tokens = array_values(array_filter(preg_split('/\s+/u', trim($full)) ?: [], static fn ($t) => $t !== ''));
+
+        $suffixTitles = ['csc', 'drsc', 'mba', 'dis', 'bsc', 'msc', 'ma', 'ba', 'llm', 'phd', 'dr'];
+        $isTitle = static function (string $t) use ($suffixTitles): bool {
+            if (str_contains($t, '.')) return true;                    // MUDr., Ing., prof., Ph.D.
+            return in_array(mb_strtolower(rtrim($t, '.')), $suffixTitles, true);
+        };
+        // Urvi vedoucí i koncové tituly (nech aspoň 1 token = vlastní jméno).
+        while (count($tokens) > 1 && $isTitle($tokens[0])) array_shift($tokens);
+        while (count($tokens) > 1 && $isTitle($tokens[count($tokens) - 1])) array_pop($tokens);
+
+        if ($tokens === []) return ['', ''];
+        if (count($tokens) === 1) return [$tokens[0], $tokens[0]]; // jen jedno slovo → prijmeni=jmeno
+
+        $jmeno = array_shift($tokens);
+        return [$jmeno, implode(' ', $tokens)];
     }
 
     /**
