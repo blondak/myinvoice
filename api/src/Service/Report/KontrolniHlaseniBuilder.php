@@ -260,8 +260,10 @@ final class KontrolniHlaseniBuilder
         $vetaC->setAttribute('celk_zd_a2',   $this->formatAmount($celkA2));
         $dphkh->appendChild($vetaC);
 
-        // Termín podání = 25. dne měsíce následujícího po konci období
-        $deadlineMonth = $month + 1;
+        // Termín podání = 25. dne měsíce následujícího po konci období.
+        // U kvartálního podání je rozhodující konec kvartálu ($endMonth), NE předaný
+        // $month (jinak build(..., 4, 'quarterly') = Q2 vrátí termín 25.05. místo 25.07.).
+        $deadlineMonth = $endMonth + 1;
         $deadlineYear = $year;
         if ($deadlineMonth > 12) { $deadlineMonth -= 12; $deadlineYear++; }
         $deadline = sprintf('%04d-%02d-25', $deadlineYear, $deadlineMonth);
@@ -324,8 +326,10 @@ final class KontrolniHlaseniBuilder
                     'total_czk'             => (float) $r['total_with_vat_czk'],
                     'kod_pred_pl'           => null, // KH kód předmětu plnění (RC) z klasifikace
                     'is_rc' => false, 'has_a1' => false, 'has_a2' => false, 'has_b1' => false, 'is_pomer' => false,
-                    'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0, 'base_total' => 0.0,
+                    'a1_base' => 0.0,
+                    'dom_base21' => 0.0, 'dom_vat21' => 0.0, 'dom_base12' => 0.0, 'dom_vat12' => 0.0,
                     'a2_base21' => 0.0, 'a2_vat21' => 0.0, 'a2_base12' => 0.0, 'a2_vat12' => 0.0,
+                    'b1_base21' => 0.0, 'b1_vat21' => 0.0, 'b1_base12' => 0.0, 'b1_vat12' => 0.0,
                 ];
             }
             $g = &$inv[$key];
@@ -337,19 +341,34 @@ final class KontrolniHlaseniBuilder
             if (!empty($r['kod_pred_pl'])) $g['kod_pred_pl'] = (string) $r['kod_pred_pl'];
             $base = (float) $r['base_czk'];
             $vat  = (float) $r['vat_czk'];
-            $g['base_total'] += $base;
-            // Přijaté plnění bez nároku na odpočet (dphdp3_line=NULL, např. kód 42
-            // "tuzemsko bez nároku") do B.2/B.3 nepatří — KH eviduje jen plnění,
-            // u kterých příjemce uplatňuje odpočet (a DPHDP3 je rovněž vynechává).
-            // Vystavené (sale) do A.4/A.5 přispívají vždy.
+            $is21 = $r['vat_rate'] >= $bucket;
+            // Rozřazení základu/daně do KH kbelíků PODLE SEKCE klasifikace — každá položka
+            // přispěje jen do JEDNÉ sekce. Tím se mixed faktura (např. §92 RC řádek +
+            // běžný 21% řádek) rozdělí správně (RC část do A.1/B.1, zdanitelná do A.4/B.2),
+            // místo aby celý součet spadl do jedné sekce (issue — audit KH/DPH 2026-07).
+            // khEligible: vystavené vždy, přijaté jen s nárokem na odpočet (dphdp3_line != NULL);
+            // přijaté bez nároku (kód 42, dphdp3_line=NULL) do KH nepatří, DPHDP3 je taky vynechává.
             $khEligible = $r['source'] === 'sale' || $r['dphdp3_line'] !== null;
-            if ($khEligible) {
-                if ($r['vat_rate'] >= $bucket) { $g['base21'] += $base; $g['vat21'] += $vat; }
-                elseif ($r['vat_rate'] > 0)    { $g['base12'] += $base; $g['vat12'] += $vat; }
-            }
-            if ($r['kh_section'] === 'A.2') {
-                if ($r['vat_rate'] >= $bucket) { $g['a2_base21'] += $base; $g['a2_vat21'] += $vat; }
-                elseif ($r['vat_rate'] > 0)    { $g['a2_base12'] += $base; $g['a2_vat12'] += $vat; }
+            switch ($r['kh_section']) {
+                case 'A.1': // tuzemský §92 dodavatel — jen základ (VetaA1 nemá sazbové sloupce)
+                    $g['a1_base'] += $base;
+                    break;
+                case 'A.2': // přeshraniční samovyměřené (§ 24 služby, § 25 pořízení zboží z JČS)
+                    if ($is21) { $g['a2_base21'] += $base; $g['a2_vat21'] += $vat; }
+                    elseif ($r['vat_rate'] > 0) { $g['a2_base12'] += $base; $g['a2_vat12'] += $vat; }
+                    break;
+                case 'B.1': // tuzemský §92 příjemce — samovyměřená daň (vat z rcSelfAssess)
+                    if ($is21) { $g['b1_base21'] += $base; $g['b1_vat21'] += $vat; }
+                    elseif ($r['vat_rate'] > 0) { $g['b1_base12'] += $base; $g['b1_vat12'] += $vat; }
+                    break;
+                default:
+                    // Tuzemská zdanitelná plnění (A.4/A.5, B.2/B.3). RC bez KH sekce — dovoz
+                    // zboží ze 3. země (kód 25), dodání/služba do EU (kód 20/22) — se sem
+                    // NESMÍ dostat (do KH nepatří, jen DPHDP3/SHV) → guard !is_reverse_charge.
+                    if ($khEligible && !$r['is_reverse_charge']) {
+                        if ($is21) { $g['dom_base21'] += $base; $g['dom_vat21'] += $vat; }
+                        elseif ($r['vat_rate'] > 0) { $g['dom_base12'] += $base; $g['dom_vat12'] += $vat; }
+                    }
             }
             unset($g);
         }
@@ -357,67 +376,66 @@ final class KontrolniHlaseniBuilder
         $a1 = []; $a2 = []; $a4 = []; $b1 = []; $b2 = [];
         $a5 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
         $b3 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
-        $zeroBase = fn (array $g) => abs($g['base21']) < 0.005 && abs($g['base12']) < 0.005;
 
         foreach ($inv as $g) {
             $hasDic = $g['dic'] !== '';
             // § 101e: „nad 10 000 Kč" = OSTŘE více → přesně 10 000 patří do sumace
             // A.5/B.3, ne do jednotlivé A.4/B.2. Proto '>' (ne '>=').
             $overLimit = abs($g['total_czk']) > $itemThreshold;
+            // Tuzemská zdanitelná část faktury (může být 0 u čistě RC/osvobozeného dokladu).
+            // Faktura může přispět SOUČASNĚ do RC sekce (A.1/B.1/A.2) i do A.4/A.5/B.2/B.3
+            // (mixed doklad) — proto žádný `continue`, sekce se vyhodnocují nezávisle.
+            $domZero = abs($g['dom_base21']) < 0.005 && abs($g['dom_base12']) < 0.005;
 
             if ($g['source'] === 'sale') {
-                if ($g['has_a1']) { // TUZEMSKÝ režim přenesení (§ 92a–92e, kód 25s) — jen explicitní sekce A.1
+                // A.1 — tuzemský režim přenesení (§ 92a–92e, kód 25s). Jen položky sekce A.1.
+                if ($g['has_a1'] && abs($g['a1_base']) >= 0.005) {
                     $a1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['varsymbol'],
-                             'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
+                             'tax_date' => $g['tax_date'], 'base' => $g['a1_base'],
                              'kod_pred_pl' => $g['kod_pred_pl']];
-                    continue;
                 }
-                // Vydaný reverse charge BEZ sekce A.1 = přeshraniční plnění do JČS (poskytnutí
-                // služby kód 22 → ř.21, dodání zboží do EU kód 20 → ř.20). Do KH NEPATŘÍ —
-                // vykazuje se jen v přiznání + souhrnném hlášení (issue #199). Symetricky
-                // k B.1 fallbacku níže („zbylé RC bez KH sekce → continue").
-                if ($g['is_rc']) continue;
-                if ($zeroBase($g)) continue; // osvobozené / EU dodání / vývoz → ne A.4/A.5
-                $row = ['varsymbol' => $g['varsymbol'], 'tax_date' => $g['tax_date'], 'counterparty_dic' => $g['dic'],
-                        'base21' => $g['base21'], 'vat21' => $g['vat21'], 'base12' => $g['base12'], 'vat12' => $g['vat12']];
-                if ($overLimit && $hasDic) {
-                    $a4[] = $row;
-                } else {
-                    $a5['count']++; $a5['base21'] += $g['base21']; $a5['vat21'] += $g['vat21'];
-                    $a5['base12'] += $g['base12']; $a5['vat12'] += $g['vat12'];
+                // A.4/A.5 — tuzemská zdanitelná část (RC/osvobozené/EU dodání/vývoz nepřispěly).
+                if (!$domZero) {
+                    $row = ['varsymbol' => $g['varsymbol'], 'tax_date' => $g['tax_date'], 'counterparty_dic' => $g['dic'],
+                            'base21' => $g['dom_base21'], 'vat21' => $g['dom_vat21'],
+                            'base12' => $g['dom_base12'], 'vat12' => $g['dom_vat12']];
+                    if ($overLimit && $hasDic) {
+                        $a4[] = $row;
+                    } else {
+                        $a5['count']++; $a5['base21'] += $g['dom_base21']; $a5['vat21'] += $g['dom_vat21'];
+                        $a5['base12'] += $g['dom_base12']; $a5['vat12'] += $g['dom_vat12'];
+                    }
                 }
             } else { // purchase
+                // A.2 — přeshraniční samovyměřená plnění (§ 24 služby z EU i 3. země,
+                // § 25 pořízení zboží z JČS). vatid_dod nese syrové EU VAT ID (alfanum.).
                 if ($g['has_a2']) {
-                    // A.2 = přeshraniční samovyměřená plnění (§ 24 služby z EU i 3. země,
-                    // § 25 pořízení zboží z JČS). vatid_dod nese syrové EU VAT ID (alfanum.).
                     $a2[] = ['vendor_invoice_number' => $g['vendor_invoice_number'], 'tax_date' => $g['tax_date'],
                              'counterparty_dic' => $g['dic_raw'], 'country_iso2' => $g['country_iso2'],
                              'base21' => $g['a2_base21'], 'vat21' => $g['a2_vat21'],
                              'base12' => $g['a2_base12'], 'vat12' => $g['a2_vat12']];
-                    continue;
                 }
-                if ($g['has_b1']) { // TUZEMSKÝ režim přenesení (§ 92a–92e) — jen explicitní sekce B.1
-                    // Per-sazbové agregáty (stejný tvar jako B.2) nesou i samovyměřenou daň
-                    // (vat21/vat12 z rcSelfAssess) — B.1 ji musí vykázat, ne jen základ.
+                // B.1 — tuzemský režim přenesení (§ 92a–92e) příjemce. Per-sazbové agregáty
+                // nesou i samovyměřenou daň (vat z rcSelfAssess) — B.1 ji vykazuje, ne jen základ.
+                if ($g['has_b1']) {
                     $b1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['vendor_invoice_number'],
-                             'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
-                             'base21' => $g['base21'], 'vat21' => $g['vat21'],
-                             'base12' => $g['base12'], 'vat12' => $g['vat12'],
+                             'tax_date' => $g['tax_date'], 'base' => $g['b1_base21'] + $g['b1_base12'],
+                             'base21' => $g['b1_base21'], 'vat21' => $g['b1_vat21'],
+                             'base12' => $g['b1_base12'], 'vat12' => $g['b1_vat12'],
                              'kod_pred_pl' => $g['kod_pred_pl']];
-                    continue;
                 }
-                // Zbylé samovyměřené (RC) plnění bez KH sekce = dovoz zboží ze 3. země
-                // (kód 25, DPHDP3 ř.7/8) — do KH se nevykazuje (jen DPHDP3 + odpočet ř.43/44).
-                if ($g['is_rc']) continue;
-                if ($zeroBase($g)) continue;      // osvobozená přijatá bez nároku → ne B.2/B.3
-                $row = ['vendor_invoice_number' => $g['vendor_invoice_number'], 'tax_date' => $g['tax_date'],
-                        'counterparty_dic' => $g['dic'], 'base21' => $g['base21'], 'vat21' => $g['vat21'],
-                        'base12' => $g['base12'], 'vat12' => $g['vat12'], 'is_pomer' => $g['is_pomer']];
-                if ($overLimit && $hasDic) {
-                    $b2[] = $row;
-                } else {
-                    $b3['count']++; $b3['base21'] += $g['base21']; $b3['vat21'] += $g['vat21'];
-                    $b3['base12'] += $g['base12']; $b3['vat12'] += $g['vat12'];
+                // B.2/B.3 — tuzemská přijatá zdanitelná (s nárokem). RC bez KH sekce (dovoz
+                // ze 3. země kód 25) a plnění bez nároku (kód 42) do dom_* nepřispěly.
+                if (!$domZero) {
+                    $row = ['vendor_invoice_number' => $g['vendor_invoice_number'], 'tax_date' => $g['tax_date'],
+                            'counterparty_dic' => $g['dic'], 'base21' => $g['dom_base21'], 'vat21' => $g['dom_vat21'],
+                            'base12' => $g['dom_base12'], 'vat12' => $g['dom_vat12'], 'is_pomer' => $g['is_pomer']];
+                    if ($overLimit && $hasDic) {
+                        $b2[] = $row;
+                    } else {
+                        $b3['count']++; $b3['base21'] += $g['dom_base21']; $b3['vat21'] += $g['dom_vat21'];
+                        $b3['base12'] += $g['dom_base12']; $b3['vat12'] += $g['dom_vat12'];
+                    }
                 }
             }
         }

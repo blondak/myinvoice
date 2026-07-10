@@ -145,12 +145,15 @@ final class DphPriznaniBuilder
         //   ř.40 pln23/odp_tuz23_nar     = tuzemsko 21 %
         //   ř.41 pln5/odp_tuz5_nar       = tuzemsko 12 %
         //   ř.42 dov_cu/odp_cu_nar       = dovoz CÚ
-        //   ř.43 nar_zdp23/od_zdp23      = odpočet ze samovyměřených plnění (ř. 3-13)
-        //                                  ve sloupci „V plné výši", sazba 21 %.
+        //   ř.43 nar_zdp23/od_zdp23      = odpočet ze samovyměřených plnění (ř. 3-13),
+        //                                  sloupec „V plné výši", ZÁKLADNÍ sazba (21 %).
+        //   ř.44 nar_zdp5/od_zdp5        = totéž ve SNÍŽENÉ sazbě (12 %) — RC řádek s 12%
+        //                                  sazbou se sem remapuje ve VatLedgerService (S3).
         //                                  POZOR: odp_rezim/odp_rez_nar je ř.45 (korekce
         //                                  odpočtu dle §75/§77/§79 — registrace, vyrovnání),
-        //                                  NE ř.43. Číselník nemá 12% RC kód (kódy 5/23/24/25
-        //                                  nesou 21 %), takže 21% sloupec pokryje celý mirror.
+        //                                  NE ř.44. Ř.45 se negeneruje automaticky (mimo
+        //                                  rozsah, řeší účetní) — případný custom kód mířící
+        //                                  na ř.45 se nevykreslí ani nezapočte (viz guard níže).
         //   ř.46 odp_sum_nar             = součtový řádek odpočtu (ř.40-45, „V plné výši")
         //   ř.47 nar_maj/—               = hodnota pořízeného majetku
         //                                  (doplňující údaj, jen základ; XSD má
@@ -196,6 +199,7 @@ final class DphPriznaniBuilder
             '41' => ['veta' => 4, 'base' => 'pln5',       'vat' => 'odp_tuz5_nar'],
             '42' => ['veta' => 4, 'base' => 'dov_cu',     'vat' => 'odp_cu_nar'],
             '43' => ['veta' => 4, 'base' => 'nar_zdp23',  'vat' => 'od_zdp23'],
+            '44' => ['veta' => 4, 'base' => 'nar_zdp5',   'vat' => 'od_zdp5'],
             '47' => ['veta' => 4, 'base' => 'nar_maj',    'vat' => null],
         ];
 
@@ -209,24 +213,31 @@ final class DphPriznaniBuilder
 
         foreach ($lines as $lineNum => $data) {
             $lineKey = (string) $lineNum;
-            if (isset($lineMap[$lineKey])) {
-                $m = $lineMap[$lineKey];
-                $target = &${'veta' . $m['veta'] . 'Attrs'};
-                $target[$m['base']] = $this->formatAmount($data['base']);
-                if ($m['vat'] !== null) {
-                    $target[$m['vat']] = $this->formatAmount($data['vat']);
-                }
-                unset($target);
+            // Řádek mimo lineMap (builder ho neumí vykreslit — např. custom kód na ř.45)
+            // se NEvykreslí ANI nezapočítá do rekapitulace. Dřív se tiše přičítal do
+            // ř.46/62/63, aniž by byl v detailu → EPO hlásilo nekonzistenci (audit 2026-07).
+            if (!isset($lineMap[$lineKey])) {
+                continue;
             }
-            // Rekapitulaci sčítáme ze zaokrouhlených řádků (na celé Kč, jak se vykazují),
-            // aby ř.62/63 přesně seděly se součtem vystavených řádků — EPO jinak hlásí
-            // nekonzistenci mezi detailem a rekapitulací.
+            $m = $lineMap[$lineKey];
+            $target = &${'veta' . $m['veta'] . 'Attrs'};
+            $target[$m['base']] = $this->formatAmount($data['base']);
+            if ($m['vat'] !== null) {
+                $target[$m['vat']] = $this->formatAmount($data['vat']);
+            }
+            unset($target);
+
+            // Rekapitulace jen z řádků, které NESOU daň (mají vat atribut). Řádky jen se
+            // základem — oddíl C (ř.20-31), osvobozené (ř.50), majetek (ř.47) — do ř.62/63
+            // nepatří; jinak by zbloudilá daň na základovém řádku nafoukla ř.62. Sčítáme
+            // zaokrouhleně na celé Kč (jak se vykazují), aby ř.62/63 seděly se součtem detailu.
+            if ($m['vat'] === null) {
+                continue;
+            }
             $lineVat = round($data['vat']);
             if ($this->isOutputLine($lineKey)) {
                 $totalDanZdanitelne += $lineVat;
-            } elseif ((int) $lineKey !== 47) {
-                // ř.47 je doplňující údaj k ř.40-45, jeho daň se NEzapočítává
-                // (jinak by se daň majetku duplikovala s odpočtem z ř.40).
+            } else {
                 $totalDanOdpocitatelne += $lineVat;
             }
         }

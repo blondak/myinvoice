@@ -163,9 +163,11 @@ final class VatClassificationMapper
 
             $this->addLine($byLine, $primary, $baseCzk, $vatCzk, $invId, $invoiceLineSeen, $label);
 
-            // Secondary (typicky ř.43 — mirror odpočet u RC / dovozu služby).
+            // Secondary (typicky ř.43 — mirror odpočet u RC / dovozu služby). U plnění bez
+            // nároku na odpočet ('none', § 72/4 — např. reprezentace ze zahraničí v RC) se
+            // zrcadlový odpočet POTLAČÍ: výstupní samovyměření (primární ř.) zůstává, odpočet ne.
             $secondary = $r['dphdp3_line_secondary'];
-            if ($secondary !== null && $secondary !== '' && $secondary !== $primary) {
+            if ($secondary !== null && $secondary !== '' && $secondary !== $primary && empty($r['vat_deduction_none'])) {
                 $this->addLine($byLine, $secondary, $baseCzk, $vatCzk, $invId, $invoiceLineSeen, $label);
             }
 
