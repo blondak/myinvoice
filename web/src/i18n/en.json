@@ -2860,7 +2860,7 @@
     "street_number_orient": "Orientation number",
     "street_number_hint": "If empty, parsed automatically from the Street field.",
     "opr_section": "Authorized signatory (executive)",
-    "opr_hint": "Required for legal entities — the person signing tax returns. Leave empty for sole traders.",
+    "opr_hint": "Required for legal entities — the person signing tax returns. Optional for sole traders: fill in your own first and last name for a precise split in EPO filings (otherwise derived from the business name, academic titles stripped).",
     "opr_jmeno": "First name",
     "opr_prijmeni": "Last name",
     "opr_postaveni": "Position (e.g. executive)",

@@ -2860,7 +2860,7 @@
     "street_number_orient": "Číslo orientační",
     "street_number_hint": "Pokud necháš prázdné, vyparsuje se z pole Ulice automaticky.",
     "opr_section": "Oprávněná osoba (jednatel / podpisující)",
-    "opr_hint": "Povinné u právnických osob — osoba podepisující daňová přiznání. U OSVČ nech prázdné.",
+    "opr_hint": "Povinné u právnických osob — osoba podepisující daňová přiznání. U OSVČ volitelné: vyplňte vlastní jméno a příjmení pro přesné rozdělení do EPO výkazů (jinak se odvodí z názvu, včetně odstranění akademických titulů).",
     "opr_jmeno": "Jméno",
     "opr_prijmeni": "Příjmení",
     "opr_postaveni": "Postavení (např. jednatel)",
