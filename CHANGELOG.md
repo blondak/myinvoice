@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.44.4] — 2026-07-11
+
+### Added
+
+- **Klikatelný název dodavatele v detailu přijaté faktury.** Kliknutí na jméno dodavatele otevře seznam přijatých faktur filtrovaný na daného dodavatele — stejně jako u vydané faktury odkaz na faktury klienta.
+
+### Changed
+
+- **Popisek „Oprávněná osoba" v nastavení dodavatele dává smysl i pro OSVČ.** Dříve radil „u OSVČ nech prázdné"; nově: u fyzické osoby jde pole volitelně vyplnit vlastním jménem/příjmením pro přesné rozdělení do EPO výkazů (jinak se odvodí z názvu, viz níže).
+
+### Fixed
+
+Návazně na červencový audit DPH/KH proběhla další vlna oprav věcné správnosti výkazů (kontrolní hlášení, přiznání DPH, Kniha DPH). Bez dopadu na běžné UI — mění se jen to, co teče do výkazů. Vše ověřeno křížově KH × DPHDP3 × Kniha DPH a proti reálnému výstupu účetní.
+
+- **Poskytnutí služby do jiného členského státu EU (reverse charge) se chybně zahrnovalo do KH oddílu A.1.** Přeshraniční B2B služba do JČS do kontrolního hlášení nepatří — vykazuje se jen na ř. 21 přiznání a v souhrnném hlášení (kód 3). A.1 zůstává vyhrazen tuzemskému přenesení §92. (#199)
+- **Služba ze 3. země v reverse charge (Anthropic, GitHub apod. z USA) se chybně vykazovala v KH oddílu A.2.** A.2 je určen jen pro dodavatele registrované k DPH v jiném členském státě EU (vyžaduje kód státu EU + EU DIČ). Plnění ze 3. země se vykazuje pouze v přiznání (ř. 12 samovyměření + ř. 43 odpočet), do KH ne. (migrace 0129)
+- **Doklad, kde je na jedné faktuře řádek v přenesené povinnosti (§92) i běžný zdanitelný řádek**, posílal do KH sekce (A.1/B.1) celý základ dokladu a běžný řádek z A.4/B.2 zmizel. Nově se doklad rozdělí správně po řádcích a KH sedí s přiznáním.
+- **Přijaté plnění bez nároku na odpočet u zahraničního reverse charge** (např. reprezentace) zahazovalo celý doklad včetně povinného výstupního samovyměření (§ 108, nezávislé na nároku dle § 72/4). Nově výstup zůstává, odepře se jen odpočet.
+- **Zahraniční spotřebitelský nákup s už naúčtovaným DPH** (B2C přes OSS, chybně označený jako reverse charge) se nově do DPH evidence nezahrnuje — nejde o reverse charge a cizí DPH by se jinak omylem přiznalo na výstup.
+- **Pořízení zboží z JČS ve snížené 12% sazbě** se vykazovalo na ř. 3 / ř. 43 (základní 21 %) místo ř. 4 / ř. 44 (snížená).
+- **Zařazení zahraničního reverse charge do zdaňovacího období** nově reaguje i na reverse charge daný klasifikačním kódem (nejen příznakem) — importovaný doklad bez příznaku se dřív mohl zařadit do jiného období.
+- **Rekapitulace přiznání DPH (ř. 62/63)** už nesčítá daň z řádků, které daň nenesou, ani z řádků mimo mapu výkazu — dřív mohla nesedět s detailem.
+- **Termín podání kontrolního hlášení u kvartálního podání** se počítá z konce kvartálu, ne z předaného měsíce.
+- **Jméno fyzické osoby (OSVČ) s akademickým titulem v EPO XML** — „MUDr. Josef Novák" dávalo `jmeno="MUDr."`. Nově se titul odstraní (vedoucí i koncový za čárkou) a jméno/příjmení se rozdělí správně; volitelně lze použít strukturovaná pole. (#200)
+- **U reverse charge se přestalo hlásit „od neplátce nelze odpočíst".** Zahraniční RC dodavatel je z pohledu české DPH neplátce ze své podstaty, ale příjemce si daň samovyměří a odpočet mu náleží (§ 72/73) — varování při uložení i při AI importu bylo u RC dokladu chybné.
+
 ## [4.44.3] — 2026-07-10
 
 ### Added
