@@ -704,6 +704,47 @@ final class KhDphTaxScenariosTest extends TestCase
     }
 
     /**
+     * Migrace 0129 — přijetí služby ze 3. ZEMĚ v reverse charge (kód 24, § 24 — Anthropic,
+     * GitHub z USA) se vykazuje v přiznání (ř.12 samovyměření + ř.43 odpočet, u plátce
+     * net nula), ale do KH oddílu A.2 NEPATŘÍ: A.2 je jen pro dodavatele registrované
+     * v jiném členském státě EU (VetaA2 vyžaduje k_stat + EU DIČ). Ověřeno proti reálné
+     * Knize DPH účetní (3. země: sloupec KH prázdný) i dphkh1.xsd (k_stat = jen EU).
+     */
+    public function testThirdCountryServiceInDphButNotInKh(): void
+    {
+        $usId = $this->countryId('US');
+        if ($usId === 0) {
+            $this->markTestSkipped('US není v číselníku countries.');
+        }
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $usVend = $this->client('Anthropic PBC', $usId, null, vendor: true);
+        // Kód 24 (služba ze 3. země, ř.12), RC, fakturováno bez DPH (vat=0).
+        $this->purchase('P-2099-1401', $usVend, '24', false, 'invoice', $d(10), $d(10), [[10000, 0, 21]]);
+
+        // DPHDP3 — ř.12 samovyměření + ř.43 odpočet (net nula u plátce).
+        $dp = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('10000', (string) $dp->Veta1['p_sl23_z'], 'ř.12 základ (dovoz služby 3. země)');
+        $this->assertSame('2100', (string) $dp->Veta1['dan_psl23_z'], 'ř.12 samovyměřená daň');
+        $this->assertSame('10000', (string) $dp->Veta4['nar_zdp23'], 'ř.43 mirror základ');
+        $this->assertSame('2100', (string) $dp->Veta4['od_zdp23'], 'ř.43 mirror odpočet');
+
+        // KH — 3. země do A.2 NEPATŘÍ (ani do B.1).
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(0, $kh->DPHKH1->VetaA2, 'služba ze 3. země (kód 24) NESMÍ být v KH A.2');
+        $this->assertCount(0, $kh->DPHKH1->VetaB1, 'ani v B.1');
+
+        // Kniha DPH — na ř.012/043, ale sloupec KH prázdný (jako u reálné účetní).
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        foreach ($book['sections'] as $s) {
+            foreach ($s['rows'] as $r) {
+                if (($r['original_doc_number'] ?? '') === 'P-2099-1401') {
+                    $this->assertSame('', (string) ($r['kh_section'] ?? ''), 'Kniha DPH: 3. země má KH sloupec prázdný');
+                }
+            }
+        }
+    }
+
+    /**
      * Regrese (daňový audit 2026-05-28): přijaté plnění bez nároku na odpočet
      * (kód 42, dphdp3_line=NULL) NESMÍ spadnout do KH B.2/B.3, přestože má
      * nenulový základ v sazbě 21 %. DPHDP3 ho rovněž vynechává.
