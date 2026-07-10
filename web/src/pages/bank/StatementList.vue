@@ -25,9 +25,10 @@ const route = useRoute()
 const statements = ref<BankStatement[]>([])
 const loading = ref(false)
 
-// Filtry rok / měsíc / účet — stejný design jako přehled faktur. Rok defaultně aktuální.
+// Filtry rok / měsíc / účet — stejný design jako přehled faktur. Rok defaultně „vše"
+// (výpisy se hromadí přes víc let, poslední rok by řadu z nich skryl).
 const DEFAULT_YEAR = new Date().getFullYear()
-const yearFilter = ref<number | ''>(DEFAULT_YEAR)
+const yearFilter = ref<number | ''>('')
 const monthFilter = ref<number | ''>('')
 const accountFilter = ref<string>('')
 const years = ref<number[]>([])
@@ -147,17 +148,16 @@ function goToPage(p: number) {
 // Filtry ↔ URL query (stejný pattern jako přehledy faktur — reset na menu link click).
 let suppressUrlSync = false
 function loadFiltersFromQuery(q: typeof route.query) {
-  yearFilter.value = typeof q.year === 'string' && q.year !== ''
-    ? (q.year === 'all' ? '' : Number(q.year))
-    : DEFAULT_YEAR
+  yearFilter.value = typeof q.year === 'string' && q.year !== '' && q.year !== 'all'
+    ? Number(q.year)
+    : ''
   monthFilter.value = typeof q.month === 'string' && q.month !== '' ? Number(q.month) : ''
   accountFilter.value = typeof q.account === 'string' ? q.account : ''
 }
 function syncFiltersToUrl() {
   if (suppressUrlSync) return
   const q: Record<string, string> = {}
-  if (yearFilter.value === '') q.year = 'all'
-  else if (yearFilter.value !== DEFAULT_YEAR) q.year = String(yearFilter.value)
+  if (yearFilter.value !== '') q.year = String(yearFilter.value)
   if (monthFilter.value !== '') q.month = String(monthFilter.value)
   if (accountFilter.value) q.account = accountFilter.value
   router.replace({ query: q })
@@ -175,7 +175,7 @@ watch(yearFilter, (y) => { if (y === '') monthFilter.value = '' })
 watch(() => route.query, (newQ) => {
   if (Object.keys(newQ).length === 0) {
     suppressUrlSync = true
-    yearFilter.value = DEFAULT_YEAR
+    yearFilter.value = ''
     monthFilter.value = ''
     accountFilter.value = ''
     page.value = 1
@@ -229,7 +229,7 @@ async function onDelete(s: BankStatement, ev: MouseEvent) {
 
 // Jeden vstup pro GPC/ABO i PDF — rozhoduje se PER SOUBOR podle přípony (uživatel
 // může naráz vybrat mix obojího), backend endpointy zůstávají oddělené (GPC parser
-// vs bank-specifický PDF parser — Creditas jako první, viz BankStatementPdfParserRegistry).
+// vs bank-specifický PDF parser — Creditas/ČSOB/KB, viz BankStatementPdfParserRegistry).
 function uploadFnFor(file: File): (file: File, accountId?: number) => Promise<ImportResult> {
   return file.name.toLowerCase().endsWith('.pdf') ? bankApi.importPdf : bankApi.upload
 }

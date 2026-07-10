@@ -152,6 +152,8 @@ final class Bootstrap
             // BankStatementPdfParserInterface a vlož ji do tohoto pole.
             \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Bank\Pdf\BankStatementPdfParserRegistry([
                 $c->get(\MyInvoice\Service\Bank\Pdf\CreditasStatementPdfParser::class),
+                $c->get(\MyInvoice\Service\Bank\Pdf\CsobStatementPdfParser::class),
+                $c->get(\MyInvoice\Service\Bank\Pdf\KbStatementPdfParser::class),
             ]),
         ]);
 
