@@ -624,6 +624,7 @@
     },
     "new_vendor": "New vendor",
     "vendor_detail": "Vendor detail",
+    "show_invoices_for_vendor": "Show vendor invoices",
     "filters": {
       "all_statuses": "All statuses",
       "all_kinds": "All types",

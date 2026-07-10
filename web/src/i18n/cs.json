@@ -624,6 +624,7 @@
     },
     "new_vendor": "Nový dodavatel",
     "vendor_detail": "Detail dodavatele",
+    "show_invoices_for_vendor": "Zobrazit faktury dodavatele",
     "filters": {
       "all_statuses": "Všechny stavy",
       "all_kinds": "Všechny typy",
