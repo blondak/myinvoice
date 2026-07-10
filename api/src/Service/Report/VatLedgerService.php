@@ -216,11 +216,16 @@ final class VatLedgerService
                -- povinnost přiznat daň příjemcem (§ 108, samovyměření ř.3/5/10/12) je
                -- NEZÁVISLÁ na nároku na odpočet (§ 72/4). Reprezentace/plnění bez nároku
                -- pořízené ze zahraničí (RC) tedy MUSÍ na výstup, jen odpočet (ř.43) se
-               -- odepře (řeší normalize()+mapper přes příznak vat_deduction_none). Necháme
-               -- proto RC řádky projít i s 'none'; tuzemské non-RC 'none' dál vyloučeno.
+               -- odepře (řeší normalize()+mapper přes příznak vat_deduction_none).
+               -- Podmínka pii.total_vat = 0: pustíme jen SKUTEČNÉ samovyměření (dodavatel
+               -- fakturoval BEZ DPH). Doklad s už naúčtovaným DPH + kódem RC (typicky B2C
+               -- spotřebitelský nákup ze zahraničí přes OSS, chybně oklasifikovaný jako RC —
+               -- Google One apod.) do evidence NEPATŘÍ: nejde o reverse charge (jinak by
+               -- se zahraniční DPH omylem přiznalo na výstup). Tuzemské non-RC 'none' venku.
                AND (pi.vat_deduction <> 'none'
-                    OR pi.reverse_charge = 1
-                    OR COALESCE(pii.vat_classification_code, pi.vat_classification_code) IN ('5','23','24','24e','25'))
+                    OR (COALESCE(pii.total_vat, 0) = 0
+                        AND (pi.reverse_charge = 1
+                             OR COALESCE(pii.vat_classification_code, pi.vat_classification_code) IN ('5','23','24','24e','25'))))
                -- Období odpočtu (tuzemská plnění) = pozdější z (DUZP, vystavení). Nárok
                -- na odpočet nelze uplatnit dřív, než plátce drží daňový doklad (§ 73
                -- odst. 1 písm. a ZDPH), takže faktura se zpětným DUZP, ale vystavená

@@ -1395,6 +1395,33 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertEqualsWithDelta(2100, $book['totals']['vat_balance'], 0.01, 'výstup 2100 − odpočet 0');
     }
 
+    /**
+     * Audit KH/DPH 2026-07 (C3 zpřesnění, doklad #230) — přijatý doklad s kódem reverse
+     * charge (24e), ale s UŽ NAÚČTOVANÝM DPH na položce (B2C spotřebitelský nákup ze
+     * zahraničí přes OSS, chybně oklasifikovaný jako RC — Google One) + vat_deduction='none'
+     * NESMÍ do DPH evidence: nejde o skutečné samovyměření (dodavatel DPH naúčtoval),
+     * jinak by se zahraniční DPH omylem přiznalo na výstup ř.5.
+     */
+    public function testForeignVatChargedNoneNotSelfAssessed(): void
+    {
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $euVend = $this->client('Google Commerce (B2C)', $this->deId, 'DE666666666', vendor: true);
+        // Kód 24e (RC), ale položka NESE DPH 954,55 (dodavatel účtoval 21 % přes OSS), none.
+        $this->purchase('P-2099-1102', $euVend, '24e', false, 'invoice', $d(10), $d(10), [[4545.45, 954.55, 21]], vatDeduction: 'none');
+
+        // Kniha DPH — doklad tam vůbec nesmí být (žádná sekce).
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        $this->assertCount(0, $book['sections'], 'B2C s naúčtovaným DPH + none NESMÍ do Knihy DPH');
+
+        // DPHDP3 — žádné výstupní samovyměření z tohoto dokladu.
+        $dp = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('', (string) $dp->Veta1['p_sl23_e'], 'ř.5 prázdný (není samovyměření)');
+
+        // KH — žádný záznam A.2.
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(0, $kh->DPHKH1->VetaA2, 'KH A.2 prázdná');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int
