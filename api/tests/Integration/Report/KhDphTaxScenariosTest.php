@@ -1446,9 +1446,9 @@ final class KhDphTaxScenariosTest extends TestCase
     public function testForeignVatChargedNoneNotSelfAssessed(): void
     {
         $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
-        $euVend = $this->client('Google Commerce (B2C)', $this->deId, 'DE666666666', vendor: true);
-        // Kód 24e (RC), ale položka NESE DPH 954,55 (dodavatel účtoval 21 % přes OSS), none.
-        $this->purchase('P-2099-1102', $euVend, '24e', false, 'invoice', $d(10), $d(10), [[4545.45, 954.55, 21]], vatDeduction: 'none');
+        $euVend = $this->client('Spotřebitelský SaaS (B2C)', $this->deId, 'DE666666666', vendor: true);
+        // Kód 24e (RC), ale položka NESE DPH (dodavatel B2C účtoval 21 % přes OSS), none.
+        $this->purchase('P-2099-1102', $euVend, '24e', false, 'invoice', $d(10), $d(10), [[5000, 1050, 21]], vatDeduction: 'none');
 
         // Kniha DPH — doklad tam vůbec nesmí být (žádná sekce).
         $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
