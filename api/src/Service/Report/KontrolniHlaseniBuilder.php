@@ -323,13 +323,14 @@ final class KontrolniHlaseniBuilder
                     'country_iso2'          => $r['country_iso2'],
                     'total_czk'             => (float) $r['total_with_vat_czk'],
                     'kod_pred_pl'           => null, // KH kód předmětu plnění (RC) z klasifikace
-                    'is_rc' => false, 'has_a2' => false, 'has_b1' => false, 'is_pomer' => false,
+                    'is_rc' => false, 'has_a1' => false, 'has_a2' => false, 'has_b1' => false, 'is_pomer' => false,
                     'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0, 'base_total' => 0.0,
                     'a2_base21' => 0.0, 'a2_vat21' => 0.0, 'a2_base12' => 0.0, 'a2_vat12' => 0.0,
                 ];
             }
             $g = &$inv[$key];
             if ($r['is_reverse_charge']) $g['is_rc'] = true;
+            if ($r['kh_section'] === 'A.1') $g['has_a1'] = true;
             if ($r['kh_section'] === 'A.2') $g['has_a2'] = true;
             if ($r['kh_section'] === 'B.1') $g['has_b1'] = true;
             if (!empty($r['vat_deduction_partial'])) $g['is_pomer'] = true;
@@ -365,12 +366,17 @@ final class KontrolniHlaseniBuilder
             $overLimit = abs($g['total_czk']) > $itemThreshold;
 
             if ($g['source'] === 'sale') {
-                if ($g['is_rc']) {
+                if ($g['has_a1']) { // TUZEMSKÝ režim přenesení (§ 92a–92e, kód 25s) — jen explicitní sekce A.1
                     $a1[] = ['counterparty_dic' => $g['dic'], 'vendor_invoice_number' => $g['varsymbol'],
                              'tax_date' => $g['tax_date'], 'base' => $g['base_total'],
                              'kod_pred_pl' => $g['kod_pred_pl']];
                     continue;
                 }
+                // Vydaný reverse charge BEZ sekce A.1 = přeshraniční plnění do JČS (poskytnutí
+                // služby kód 22 → ř.21, dodání zboží do EU kód 20 → ř.20). Do KH NEPATŘÍ —
+                // vykazuje se jen v přiznání + souhrnném hlášení (issue #199). Symetricky
+                // k B.1 fallbacku níže („zbylé RC bez KH sekce → continue").
+                if ($g['is_rc']) continue;
                 if ($zeroBase($g)) continue; // osvobozené / EU dodání / vývoz → ne A.4/A.5
                 $row = ['varsymbol' => $g['varsymbol'], 'tax_date' => $g['tax_date'], 'counterparty_dic' => $g['dic'],
                         'base21' => $g['base21'], 'vat21' => $g['vat21'], 'base12' => $g['base12'], 'vat12' => $g['vat12']];

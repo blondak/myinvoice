@@ -931,6 +931,52 @@ final class KhDphTaxScenariosTest extends TestCase
     }
 
     /**
+     * Issue #199 — vydaná služba do JČS (Google AdSense pro Google Ireland Limited)
+     * v reverse charge (kód 22, § 9 odst. 1) se NESMÍ zahrnout do KH oddílu A.1.
+     * A.1 je vyhrazen POUZE tuzemskému přenesení §92 (kód 25s, kh_section='A.1').
+     * Přeshraniční B2B služba do EU patří jen na ř.21 přiznání + souhrnné hlášení
+     * kód 3 — do kontrolního hlášení vůbec.
+     *
+     * Reprodukce z issue zapíná na faktuře příznak reverse_charge=1 → is_rc=true.
+     * Dříve sale-větev collectSections() routovala do A.1 čistě podle is_rc (bez
+     * kontroly kh_section) → vznikal chybný VetaA1. Fix gate-uje A.1 na has_a1
+     * (kh_section='A.1'), symetricky k B.1 na přijaté straně.
+     */
+    public function testEuServiceReverseChargeNotInKhA1(): void
+    {
+        $skEu = (int) ($this->db->pdo()->query("SELECT COALESCE(is_eu,0) FROM countries WHERE iso2='SK' LIMIT 1")->fetchColumn() ?: 0);
+        if ($skEu !== 1) {
+            $this->markTestSkipped('SK není v countries označeno jako EU — SHV test přeskočen.');
+        }
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $euCust = $this->client('Google Ireland Limited', $this->skId, 'SK2020202', customer: true);
+
+        // Kód 22 (služba do JČS) ručně zvolen + reverse_charge FLAG zapnutý — přesně jak
+        // to dělá reprodukce z issue #199 (plnění bez české DPH v režimu reverse charge).
+        $this->sale('2099062199', $euCust, '22', true, $d(10), $d(10), [[40000, 0, 21]]);
+
+        // ── KH: doklad NESMÍ být nikde (ani A.1, ani A.4/A.5) ──
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(0, $kh->DPHKH1->VetaA1, 'EU RC služba (kód 22) NESMÍ být v A.1 (issue #199)');
+        $this->assertCount(0, $kh->DPHKH1->VetaA4, 'EU RC služba nepatří do A.4');
+        $this->assertCount(0, $kh->DPHKH1->VetaA5, 'EU RC služba nepatří do A.5 (sumace)');
+        // VetaC: žádné uskutečněné tuzemské přenesení → rez_pren23 = 0.
+        $this->assertSame('0.00', (string) $kh->DPHKH1->VetaC['rez_pren23'], 'VetaC rez_pren23 = 0 (EU služba není A.1)');
+
+        // ── DPHDP3: patří na ř.21 (pln_sluzby), NE ř.25 (tuzemský PDP) ani ř.1 (výstup) ──
+        $dp = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('40000', (string) $dp->Veta2['pln_sluzby'], 'ř.21 služby do JČS = 40000');
+        $this->assertSame('', (string) $dp->Veta2['pln_rez_pren'], 'ř.25 (tuzemský §92 PDP) musí zůstat prázdný');
+        $this->assertSame('', (string) $dp->Veta1['obrat23'], 'ř.1 výstupní daň prázdná (RC služba)');
+
+        // ── SHV: kód plnění 3 (služba §9/1) ──
+        $shv = $this->shv->build($this->supplierId, self::YEAR, self::MONTH);
+        $amountByType = [];
+        foreach ($shv['summary']['rows'] as $r) $amountByType[(string) $r['sh_type']] = (float) $r['amount'];
+        $this->assertEqualsWithDelta(40000, $amountByType['3'] ?? -1, 0.01, 'SHV kód 3 = služba do JČS');
+    }
+
+    /**
      * Režim „ceny s DPH" (prices_include_vat) end-to-end až do výkazů: faktura, kde
      * jsou položky brutto (3× 33 Kč s DPH @21 %), se přes InvoiceMath shora rozpadne
      * na base/vat s rounding distribution. Uložené per-řádkové totály MUSÍ ve výkazech
