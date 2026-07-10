@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.44.3] — 2026-07-10
+
+### Added
+
+- **Import PDF výpisů pro ČSOB a KB (vedle Creditasu).** Banky bez použitelného GPC/ABO exportu jde nahrát rovnou jako **PDF výpis** — systém ho deterministicky rozparsuje na transakce (bez AI). Podporováno: **Banka CREDITAS** (běžný i spořicí účet, CZ/EN), **ČSOB** (běžný CZK i devizový EUR účet) a **KB (Komerční banka)**. Import je od GPC k nerozeznání — stejné tlačítko (jeden soubor GPC/ABO nebo PDF, rozhoduje přípona; naráz i mix obojího), stejné párování, stavy účtů i originál ke stažení. Každý parser provádí self-check: součet transakcí musí na haléř přesně sedět na počáteční a konečný zůstatek z hlavičky, jinak se výpis odmítne (nikdy se neuloží špatně přečtená finanční data). U ČSOB se částka odvozuje z rozdílu po sobě jdoucích běžných zůstatků (pořadové číslo se v PDF slévá s částkou), takže self-check navíc ověří i úplnost řetězu zůstatků. Přidání další banky = jedna nová třída v registru parserů.
+
+### Changed
+
+- **Přehled bankovních výpisů (`Finance → Bankovní účty → Bankovní výpisy`) defaultně zobrazuje všechny roky** místo posledního roku — výpisy se hromadí přes víc let a poslední rok jich řadu skryl. Filtr roku zůstává k dispozici.
+
 ## [4.44.2] — 2026-07-06
 
 ### Fixed
