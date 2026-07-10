@@ -106,7 +106,10 @@ final class CreatePurchaseInvoiceAction
         // Non-blocking varování (např. dobropis s kladným součtem — viz issue #35).
         $warnings = PurchaseInvoiceValidation::warnings($invoice ?? []);
         // Neplátce + přesto uplatněn odpočet → upozorni (uživatel vědomě přepsal).
-        if ($vendorNonPayer && ($invoice['vat_deduction'] ?? 'full') !== 'none') {
+        // VÝJIMKA reverse charge (zahraniční služba/zboží): dodavatel je z pohledu české
+        // DPH neplátce ZE SVÉ PODSTATY (nefakturuje českou DPH), ale příjemce si daň
+        // samovyměří a smí ji odečíst (§ 72/73) — varování by tu bylo false positive.
+        if ($vendorNonPayer && !PurchaseInvoiceValidation::isReverseCharge($invoice) && ($invoice['vat_deduction'] ?? 'full') !== 'none') {
             $warnings[] = 'vendor_non_payer_deduction';
         }
         if (!empty($warnings)) {
