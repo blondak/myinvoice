@@ -229,7 +229,7 @@ async function onDelete(s: BankStatement, ev: MouseEvent) {
 
 // Jeden vstup pro GPC/ABO i PDF — rozhoduje se PER SOUBOR podle přípony (uživatel
 // může naráz vybrat mix obojího), backend endpointy zůstávají oddělené (GPC parser
-// vs bank-specifický PDF parser — Creditas/ČSOB/KB, viz BankStatementPdfParserRegistry).
+// vs bank-specifický PDF parser — Creditas/ČSOB/KB/Raiffeisenbank, viz BankStatementPdfParserRegistry).
 function uploadFnFor(file: File): (file: File, accountId?: number) => Promise<ImportResult> {
   return file.name.toLowerCase().endsWith('.pdf') ? bankApi.importPdf : bankApi.upload
 }

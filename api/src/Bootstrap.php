@@ -154,6 +154,7 @@ final class Bootstrap
                 $c->get(\MyInvoice\Service\Bank\Pdf\CreditasStatementPdfParser::class),
                 $c->get(\MyInvoice\Service\Bank\Pdf\CsobStatementPdfParser::class),
                 $c->get(\MyInvoice\Service\Bank\Pdf\KbStatementPdfParser::class),
+                $c->get(\MyInvoice\Service\Bank\Pdf\RaiffeisenbankStatementPdfParser::class),
             ]),
         ]);
 
