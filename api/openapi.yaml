@@ -3617,12 +3617,26 @@ paths:
       responses:
         '200':
           description: List kódů (globální seed + tenant overrides)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VatClassification' }
     post:
       tags: [Codebooks]
       summary: Vytvoří custom VAT kód (per tenant)
       parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VatClassificationCreate' }
       responses:
-        '201': { description: Created }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VatClassification' }
 
   /api/v1/vat-classifications/{id}:
     put:
@@ -3631,8 +3645,17 @@ paths:
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
         - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VatClassificationInput' }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VatClassification' }
         '403': { description: Globální seed je read-only }
     delete:
       tags: [Codebooks]
@@ -5004,6 +5027,41 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    VatClassificationInput:
+      type: object
+      properties:
+        code: { type: string, maxLength: 8 }
+        label: { type: string, maxLength: 150 }
+        direction: { type: string, enum: [sale, purchase, both] }
+        dphdp3_line: { type: [string, 'null'] }
+        kh_section: { type: [string, 'null'] }
+        vat_rate: { type: [number, 'null'] }
+        is_reverse_charge: { type: boolean }
+        kh_regime_code:
+          type: [string, 'null']
+          enum: ['0', '1', '2', null]
+          description: VetaA4.kod_rezim_pl — běžné plnění, cestovní služba §89 nebo použité zboží §90.
+        kh_bad_debt:
+          type: [string, 'null']
+          enum: [N, P, null]
+          description: VetaA4/VetaB2.zdph_44 — běžné plnění nebo oprava nedobytné pohledávky.
+        display_order: { type: integer }
+        archived: { type: boolean }
+    VatClassificationCreate:
+      allOf:
+        - $ref: '#/components/schemas/VatClassificationInput'
+        - type: object
+          required: [code, label, direction]
+    VatClassification:
+      allOf:
+        - $ref: '#/components/schemas/VatClassificationInput'
+        - type: object
+          required: [id, supplier_id, archived, created_at]
+          properties:
+            id: { type: integer }
+            supplier_id: { type: [integer, 'null'] }
+            archived: { type: boolean }
+            created_at: { type: string, format: date-time }
     RevenueCategory:
       type: object
       properties:

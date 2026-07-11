@@ -341,7 +341,10 @@ restartu spadnou tichá.
 **Faktury se importují, ale chybí DPH klasifikace**
 → V iDoklad/Fakturoid musí mít položky vyplněné členění DPH. Pokud chybí,
 MyInvoice použije auto-default podle sazby (`VatClassificationDefaulter`):
-21 % → `1` (sales) / `40` (purchase), 12 % → `2`/`41`, 0 % → `3`/`42`.
+21 % → `1` (sales) / `40` (purchase), 12 % → `2`/`41`. Vystavený řádek
+s 0 % vyžaduje výslovnou klasifikaci (např. osvobození, vývoz nebo plnění mimo
+předmět daně); systém jej automaticky nezařadí na ř. 50. U přijatého řádku bez
+nároku zůstává výchozí kód `42`.
 
 **Kontakty z iDoklad/Fakturoid nemají emaily**
 → Originální systém je nemá vyplněné. Doplň ručně v `Klienti` po importu —

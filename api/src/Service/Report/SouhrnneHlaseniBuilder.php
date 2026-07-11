@@ -179,7 +179,7 @@ final class SouhrnneHlaseniBuilder
         }
 
         // Termín podání: 25. dne měsíce následujícího po konci období
-        $deadlineMonth = $month + 1;
+        $deadlineMonth = $endMonth + 1;
         $deadlineYear = $year;
         if ($deadlineMonth > 12) { $deadlineMonth -= 12; $deadlineYear++; }
         $deadline = sprintf('%04d-%02d-25', $deadlineYear, $deadlineMonth);
@@ -305,6 +305,6 @@ final class SouhrnneHlaseniBuilder
 
     private function formatAmount(float $amount): string
     {
-        return (string) (int) round($amount);
+        return (string) (int) ceil($amount);
     }
 }
