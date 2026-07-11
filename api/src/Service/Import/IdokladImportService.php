@@ -149,8 +149,8 @@ final class IdokladImportService
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing contacts…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji kontakty z iDoklad' . ($bookmarkSince ? " (>{$bookmarkSince})" : '') . '…');
 
-        // iDoklad podporuje filter `DateLastChange>=YYYY-MM-DD` pro incremental sync
-        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        // Incremental sync: iDoklad v3 filtr ve tvaru `column~operator~value` (#197).
+        $query = self::incrementalFilter($bookmarkSince);
 
         $created = 0; $skipped = 0; $processed = 0;
         foreach ($this->idoklad->getAll($supplierId, 'Contacts', $query) as $contact) {
@@ -232,7 +232,7 @@ final class IdokladImportService
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing issued invoices…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji vydané faktury z iDoklad…');
 
-        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        $query = self::incrementalFilter($bookmarkSince);
 
         $created = 0; $skipped = 0; $failed = 0; $processed = 0;
         foreach ($this->idoklad->getAll($supplierId, 'IssuedInvoices', $query) as $idoklad) {
@@ -305,7 +305,8 @@ final class IdokladImportService
             'currency_id'      => $this->resolveCurrencyId($this->idokladCurrencyCode($i, $supplierId), $supplierId, isActive: true),
             'reverse_charge'   => false,
             'language'         => 'cs',
-            'varsymbol'        => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
+            // varsymbol = číslo dokladu (unikátní per dodavatel), NE platební VariableSymbol (#196).
+            'varsymbol'        => $this->sanitizeVarsymbol(self::idokladDocNumber($i)),
             'payment_method'   => 'bank_transfer',
             'discount_percent' => $docDiscountPercent,
         ];
@@ -397,7 +398,7 @@ final class IdokladImportService
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing received invoices…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji přijaté faktury z iDoklad…');
 
-        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        $query = self::incrementalFilter($bookmarkSince);
 
         $created = 0; $skipped = 0; $failed = 0; $processed = 0;
         foreach ($this->idoklad->getAll($supplierId, 'ReceivedInvoices', $query) as $idoklad) {
@@ -606,7 +607,7 @@ final class IdokladImportService
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing received receipts…', 'processed' => 0]);
         $this->jobs->appendLog($jobId, 'Stahuji přijaté účtenky z iDoklad…');
 
-        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        $query = self::incrementalFilter($bookmarkSince);
 
         $created = 0; $skipped = 0; $failed = 0; $processed = 0;
         foreach ($this->idoklad->getAll($supplierId, 'ReceivedReceipts', $query) as $idoklad) {
@@ -1068,7 +1069,7 @@ final class IdokladImportService
         $this->jobs->updateProgress($jobId, ['current_step' => 'Importing credit notes…']);
         $this->jobs->appendLog($jobId, 'Stahuji dobropisy z iDoklad…');
 
-        $query = $bookmarkSince !== null ? ['filter' => "DateLastChange>={$bookmarkSince}"] : [];
+        $query = self::incrementalFilter($bookmarkSince);
         $created = 0; $skipped = 0; $failed = 0;
 
         foreach ($this->idoklad->getAll($supplierId, 'CreditNotes', $query) as $i) {
@@ -1117,7 +1118,8 @@ final class IdokladImportService
                     'currency_id'       => $this->resolveCurrencyId($this->idokladCurrencyCode($i, $supplierId), $supplierId, isActive: true),
                     'reverse_charge'    => false,
                     'language'          => 'cs',
-                    'varsymbol'         => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
+                    // varsymbol = číslo dokladu (unikátní per dodavatel), NE platební VariableSymbol (#196).
+                    'varsymbol'         => $this->sanitizeVarsymbol(self::idokladDocNumber($i)),
                     'payment_method'    => 'bank_transfer',
                     'discount_percent'  => $docDiscountPercent,
                 ];
@@ -1276,8 +1278,41 @@ final class IdokladImportService
     }
 
     /**
+     * Sestaví query pro incremental sync „od posledního importu".
+     *
+     * iDoklad v3 vyžaduje filtr ve tvaru `column~operator~value` (separátor `~`),
+     * takže „změněno od data" je `DateLastChange~gte~YYYY-MM-DD`. Dřívější tvar
+     * `DateLastChange>=…` API odmítalo s HTTP 400 „Incorrect filter format" a celý
+     * incremental import (počínaje kontakty) spadl (#197).
+     *
+     * @return array<string,string>
+     */
+    public static function incrementalFilter(?string $since): array
+    {
+        return $since !== null ? ['filter' => "DateLastChange~gte~{$since}"] : [];
+    }
+
+    /**
+     * Vybere hodnotu pro `varsymbol` importované vydané faktury / dobropisu.
+     *
+     * V našem modelu je `varsymbol` číslo dokladu s UNIQUE (supplier_id, varsymbol),
+     * takže musí odpovídat unikátnímu číslu dokladu z iDokladu (`DocumentNumber`),
+     * NE platebnímu `VariableSymbol` — ten se u paušálů/trvalých plateb opakuje a
+     * kolidoval na `uq_inv_supplier_varsymbol` (#196). VariableSymbol drží jen jako
+     * fallback pro případ, že by DocumentNumber chybělo.
+     *
+     * @param array<string,mixed> $i iDoklad doklad (v3 GET model)
+     */
+    public static function idokladDocNumber(array $i): string
+    {
+        $doc = trim((string) ($i['DocumentNumber'] ?? ''));
+        if ($doc !== '') return $doc;
+        return trim((string) ($i['VariableSymbol'] ?? ''));
+    }
+
+    /**
      * Bookmark — vrátí ISO date posledního úspěšného importu pro tento tenant.
-     * Použito jako filter DateLastChange>=… pro incremental sync.
+     * Použito jako filter DateLastChange~gte~… pro incremental sync.
      */
     private function loadBookmark(int $supplierId): ?string
     {
