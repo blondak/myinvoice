@@ -80,7 +80,14 @@ final class EpoSupplierBlockBuilder
         if ($corient !== '') $vetaP->setAttribute('c_orient', $corient);
         $vetaP->setAttribute('naz_obce', (string) ($supplier['city'] ?? ''));
         $vetaP->setAttribute('psc', preg_replace('/\s/', '', (string) ($supplier['zip'] ?? '')) ?? '');
-        $vetaP->setAttribute('stat', (string) ($supplier['country_iso2'] ?? 'CZ'));
+        // `stat` = NÁZEV státu z číselníku Země (položka naz_zeme_c25), NE ISO2 kód (#201).
+        // ISO2 kód patří do `k_stat` (u řádků protistran). Atribut je optional — pokud
+        // zemi neumíme namapovat na číselníkový název, raději ho vynecháme než poslat
+        // věcně neplatnou hodnotu.
+        $statName = self::countryName((string) ($supplier['country_iso2'] ?? 'CZ'));
+        if ($statName !== null) {
+            $vetaP->setAttribute('stat', $statName);
+        }
 
         if (!empty($supplier['email'])) $vetaP->setAttribute('email', (string) $supplier['email']);
         if (!empty($supplier['phone'])) $vetaP->setAttribute('c_telef', self::normalizePhone((string) $supplier['phone']));
@@ -145,6 +152,59 @@ final class EpoSupplierBlockBuilder
 
         $jmeno = array_shift($tokens);
         return [$jmeno, implode(' ', $tokens)];
+    }
+
+    /**
+     * Mapuje ISO2 kód země na NÁZEV státu podle číselníku EPO „Země" (položka
+     * `naz_zeme_c25`, max. 25 znaků) pro atribut `VetaP/stat` (#201).
+     *
+     * Názvy jsou převzaty verbatim z autoritativní tabulky v EPO XSD (dokumentace
+     * atributu `k_stat` — „Daňová identifikační čísla členských států EU"). Klíčem
+     * je ISO2 (v DB `country_iso2`), takže Řecko je pod „GR" (číselník DPH kódů
+     * používá „EL", ale to je jen `k_stat`, ne ISO).
+     *
+     * Vrací `null` pro zemi mimo mapu — atribut `stat` je v EPO optional, takže je
+     * lepší ho vynechat než poslat neplatnou (číselníkově neexistující) hodnotu.
+     */
+    public static function countryName(string $iso2): ?string
+    {
+        static $map = [
+            'AT' => 'RAKOUSKO',
+            'BE' => 'BELGIE',
+            'BG' => 'BULHARSKO',
+            'CY' => 'KYPR',
+            'CZ' => 'ČESKÁ REPUBLIKA',
+            'DE' => 'NĚMECKO',
+            'DK' => 'DÁNSKO',
+            'EE' => 'ESTONSKO',
+            'ES' => 'ŠPANĚLSKO',
+            'FI' => 'FINSKO',
+            'FR' => 'FRANCIE',
+            'GB' => 'VELKÁ BRITÁNIE',
+            'GR' => 'ŘECKO',
+            'HR' => 'CHORVATSKO',
+            'HU' => 'MAĎARSKO',
+            'IE' => 'IRSKO',
+            'IT' => 'ITÁLIE',
+            'LT' => 'LITVA',
+            'LU' => 'LUCEMBURSKO',
+            'LV' => 'LOTYŠSKO',
+            'MT' => 'MALTA',
+            'NL' => 'NIZOZEMSKO',
+            'PL' => 'POLSKO',
+            'PT' => 'PORTUGALSKO',
+            'RO' => 'RUMUNSKO',
+            'SE' => 'ŠVÉDSKO',
+            'SI' => 'SLOVINSKO',
+            'SK' => 'SLOVENSKO',
+        ];
+
+        $key = strtoupper(trim($iso2));
+        if ($key === '') {
+            $key = 'CZ';
+        }
+
+        return $map[$key] ?? null;
     }
 
     /**

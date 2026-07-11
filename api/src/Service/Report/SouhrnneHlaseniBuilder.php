@@ -147,7 +147,11 @@ final class SouhrnneHlaseniBuilder
         $vetaP->setAttribute('ulice', (string) ($supplier['street'] ?? ''));
         $vetaP->setAttribute('naz_obce', (string) ($supplier['city'] ?? ''));
         $vetaP->setAttribute('psc', preg_replace('/\s/', '', (string) ($supplier['zip'] ?? '')) ?? '');
-        $vetaP->setAttribute('stat', (string) ($supplier['country_iso2'] ?? 'CZ'));
+        // `stat` = NÁZEV státu z číselníku Země (naz_zeme_c25), NE ISO2 kód (#201).
+        $statName = EpoSupplierBlockBuilder::countryName((string) ($supplier['country_iso2'] ?? 'CZ'));
+        if ($statName !== null) {
+            $vetaP->setAttribute('stat', $statName);
+        }
         $shv->appendChild($vetaP);
 
         // VetaR — jednotlivé řádky souhrnného hlášení (per VAT_ID + typ plnění).

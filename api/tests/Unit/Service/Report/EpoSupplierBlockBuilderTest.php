@@ -70,6 +70,55 @@ final class EpoSupplierBlockBuilderTest extends TestCase
         $this->assertSame('', $v->getAttribute('jmeno'));
     }
 
+    /** #201 — `stat` musí být NÁZEV státu z číselníku (naz_zeme_c25), ne ISO2 kód „CZ". */
+    public function testStatUsesCountryNameNotIsoCode(): void
+    {
+        $v = $this->fillFor(['country_iso2' => 'CZ']);
+        $this->assertSame('ČESKÁ REPUBLIKA', $v->getAttribute('stat'));
+    }
+
+    /** Prázdný country_iso2 → default ČR. */
+    public function testStatDefaultsToCzechRepublic(): void
+    {
+        $v = $this->fillFor(['country_iso2' => '']);
+        $this->assertSame('ČESKÁ REPUBLIKA', $v->getAttribute('stat'));
+    }
+
+    /** Zahraniční daňový subjekt → číselníkový název dané země. */
+    public function testStatForForeignCountry(): void
+    {
+        $v = $this->fillFor(['country_iso2' => 'SK']);
+        $this->assertSame('SLOVENSKO', $v->getAttribute('stat'));
+    }
+
+    /** Země mimo mapu → atribut `stat` se vynechá (je optional), ne neplatná hodnota. */
+    public function testStatOmittedForUnknownCountry(): void
+    {
+        $v = $this->fillFor(['country_iso2' => 'XX']);
+        $this->assertFalse($v->hasAttribute('stat'), 'neznámá země nesmí nastavit stat');
+    }
+
+    /**
+     * @return iterable<string, array{0:string, 1:?string}>
+     */
+    public static function countries(): iterable
+    {
+        yield 'CZ' => ['CZ', 'ČESKÁ REPUBLIKA'];
+        yield 'lowercase cz' => ['cz', 'ČESKÁ REPUBLIKA'];
+        yield 'prázdné → CZ' => ['', 'ČESKÁ REPUBLIKA'];
+        yield 'SK' => ['SK', 'SLOVENSKO'];
+        yield 'DE' => ['DE', 'NĚMECKO'];
+        yield 'GR (ISO, ne EL)' => ['GR', 'ŘECKO'];
+        yield 'GB' => ['GB', 'VELKÁ BRITÁNIE'];
+        yield 'neznámá' => ['XX', null];
+    }
+
+    #[DataProvider('countries')]
+    public function testCountryName(string $iso2, ?string $expected): void
+    {
+        $this->assertSame($expected, EpoSupplierBlockBuilder::countryName($iso2));
+    }
+
     /** @param array<string,mixed> $overrides */
     private function fillFor(array $overrides): \DOMElement
     {
