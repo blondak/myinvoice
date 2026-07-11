@@ -195,6 +195,7 @@
     "model": "Model",
     "fuel_type": "Palivo",
     "odometer_start": "Tachometr (zahájení)",
+    "odometer_start_short": "Start (km)",
     "odometer_start_date": "Datum stavu",
     "is_default": "Výchozí auto",
     "default_short": "výchozí",

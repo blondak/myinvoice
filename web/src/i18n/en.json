@@ -195,6 +195,7 @@
     "model": "Model",
     "fuel_type": "Fuel",
     "odometer_start": "Odometer (start)",
+    "odometer_start_short": "Start (km)",
     "odometer_start_date": "As of date",
     "is_default": "Default vehicle",
     "default_short": "default",
