@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.45.0] — 2026-07-12
+
+### Added
+
+- **Import PDF výpisů Raiffeisenbank (vedle Creditasu, ČSOB a KB).** Výpisy z Raiffeisenbank (běžný i spořicí účet) jde nahrát rovnou jako **PDF** a systém je deterministicky rozparsuje na transakce (bez AI) — stejné tlačítko, párování, stavy účtů i originál ke stažení jako u GPC. RB má vertikální layout (dvojice dat zaúčtování + valuta jako kotva transakce) a odlišný číselný formát (desetinná tečka, mezera jako oddělovač tisíců); parser to řeší vlastní třídou v registru a hlídá se proti záměně typu transakce za název protiúčtu. Jako u ostatních bank platí self-check: součet transakcí musí na haléř přesně sednout na počáteční a konečný zůstatek z hlavičky, jinak se výpis odmítne.
+- **Sloupec „Start (km)" v knize jízd.** Tabulka jízd nově ukazuje počáteční stav tachometru (před sloupcem „Ujeto (km)").
+
+### Fixed
+
+- **Import z iDokladu — incremental sync „od posledního importu" (#197).** Filtr `DateLastChange>=…` iDoklad v3 API odmítal chybou HTTP 400 „Incorrect filter format". API vyžaduje tvar `sloupec~operátor~hodnota` (`DateLastChange~gte~…`); sjednoceno do jednoho helperu napříč kontakty, fakturami i dobropisy, takže inkrementální import projde.
+- **Import z iDokladu — duplicitní variabilní symbol u paušálů (#196).** Import vystavených faktur bral `varsymbol` přednostně z platebního VariableSymbolu; u paušálů/trvalých plateb má víc faktur stejný VS → kolize na UNIQUE indexu a import spadl na „Duplicate entry". V našem modelu je variabilní symbol číslo dokladu, takže se nově bere unikátní DocumentNumber (VariableSymbol jen jako fallback).
+- **Stažení archivovaného zdrojového ISDOC u přijaté faktury vracelo 404.** IIS pravidlo `hiddenSegments` blokovalo segment `source` kdekoli v URL, takže `GET /api/purchase-invoices/{id}/source` skončil chybou 404.8 dřív, než dorazil k PHP. Root-level `/source/` (plánovací dokumenty) zůstává chráněný.
+- **EPO výkazy — atribut `VetaP/stat` je název státu z číselníku, ne ISO2 kód (#201).** EPO XSD u `VetaP/stat` vyžaduje název státu z číselníku Země (např. „ČESKÁ REPUBLIKA"); dosud se posílal dvoupísmenný ISO2 kód („CZ"), který datovým typem projde, ale je věcně mimo číselník. Týká se kontrolního hlášení, přiznání DPH i souhrnného hlášení.
+- **Další vlna oprav věcné správnosti výkazů DPH z červencového auditu** (kontrolní hlášení, souhrnné hlášení). Opravena rekapitulace VetaC a poměrný odpočet u reverse charge, návrat služeb ze třetích zemí do KH oddílu A.2, doplněné validace DIČ a atributů zvláštních režimů KH a zaokrouhlení i kvartální termín souhrnného hlášení. Bez dopadu na běžné UI — mění se jen to, co teče do výkazů; kryto regresními testy.
+
 ## [4.44.4] — 2026-07-11
 
 ### Added
