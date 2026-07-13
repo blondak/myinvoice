@@ -350,7 +350,12 @@ final class InvoicePdfRenderer
         ]);
     }
 
-    private function resolveSupplier(array $invoice): array
+    /**
+     * resolveSupplier/resolveClient/resolveBank jsou public — kromě PDF renderu
+     * je používá i veřejná web faktura (PublicInvoiceGetAction), aby HTML náhled
+     * ukazoval STEJNÁ data jako PDF (snapshot-first s defensive merge).
+     */
+    public function resolveSupplier(array $invoice): array
     {
         $live = $this->getSupplierData((int) ($invoice['supplier_id'] ?? 0));
         if (!empty($invoice['supplier_snapshot'])) {
@@ -365,7 +370,7 @@ final class InvoicePdfRenderer
         return $live;
     }
 
-    private function resolveClient(array $invoice): array
+    public function resolveClient(array $invoice): array
     {
         // Defensive merge: snapshot je primární (historický stav), live data
         // doplní chybějící klíče. Bez merge by legacy/cizí snapshoty (import
@@ -389,7 +394,7 @@ final class InvoicePdfRenderer
         return $live;
     }
 
-    private function resolveBank(array $invoice): ?array
+    public function resolveBank(array $invoice): ?array
     {
         // Live data z currencies (account/bank/IBAN/BIC podle currency_id).
         // Stejný defensive-merge pattern jako u supplier/client — snapshot vyhrává,

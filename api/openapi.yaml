@@ -1164,6 +1164,74 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
 
+  /api/v1/invoices/{id}/public-link:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Web faktura — vrátí (a případně vytvoří) trvalý veřejný odkaz
+      description: |
+        Trvalý veřejný odkaz `/invoice/{token}` — klient si na něm fakturu
+        bez přihlášení prohlédne v HTML a stáhne PDF (obdoba „web faktury"
+        ve Fakturoidu). Token se generuje lazy při prvním volání; opakované
+        volání vrací tentýž odkaz (idempotentní). Odkaz se také automaticky
+        přikládá do e-mailu při odeslání faktury klientovi.
+
+        `public_viewed_at` = poslední zobrazení klientem (anonymní přístup);
+        null dokud klient fakturu neotevřel.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, example: "https://faktury.example.cz/invoice/a1b2…" }
+                  token: { type: string, description: "48 hex znaků" }
+                  public_viewed_at: { type: string, format: date-time, nullable: true }
+        '409':
+          description: Faktura je draft — web faktura je dostupná až po vystavení
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: "Faktura nenalezena" }
+
+  /api/v1/invoices/{id}/public-link/regenerate:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Web faktura — zneplatní stávající odkaz vygenerováním nového
+      description: |
+        Revokace veřejného odkazu (např. při úniku URL) — starý token přestane
+        okamžitě platit, vrací se nová URL. `public_viewed_at` se resetuje.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  token: { type: string }
+                  public_viewed_at: { type: string, nullable: true, example: null }
+        '409':
+          description: Faktura je draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: "Faktura nenalezena" }
+
   /api/v1/invoices/{id}/pdfs:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
@@ -5579,6 +5647,8 @@ components:
           type: string
           nullable: true
           enum: [none, requested, approved, rejected]
+        public_token: { type: string, nullable: true, description: "Token trvalého veřejného odkazu „web faktura\" (/invoice/{token}); null dokud odkaz nevznikl. Viz POST /invoices/{id}/public-link." }
+        public_viewed_at: { type: string, format: date-time, nullable: true, description: "Poslední zobrazení web faktury klientem (anonymní přístup); null = klient ji zatím neotevřel." }
         items:
           type: array
           items: { $ref: '#/components/schemas/InvoiceItem' }
