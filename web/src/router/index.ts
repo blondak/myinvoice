@@ -98,6 +98,9 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/ApprovalPublic.vue'), meta: { public: true } },
   { path: '/work-report/:token([a-f0-9]{32,128})', name: 'work-report-tracking',
     component: () => import('@/pages/WorkReportTrackingPublic.vue'), meta: { public: true } },
+  // Web faktura — veřejný náhled vystavené faktury (singular /invoice/…, interní UI je /invoices/…)
+  { path: '/invoice/:token([a-f0-9]{32,128})', name: 'invoice-public',
+    component: () => import('@/pages/InvoicePublic.vue'), meta: { public: true } },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

@@ -1201,6 +1201,10 @@
       "approval_approved": "Approved by customer",
       "approval_rejected": "Rejected by customer",
       "approval_reset": "Approval status reset",
+      "public_link_created": "Web invoice — link created",
+      "public_link_regenerated": "Web invoice — new link generated",
+      "public_viewed": "Client viewed the web invoice",
+      "public_pdf_downloaded": "Client downloaded the PDF from the web invoice",
       "proforma_final_issued": "Final tax document issued from proforma"
     },
     "approval": {
@@ -1240,6 +1244,26 @@
       "approved_and_sent": "Approved. Invoice sent to: {recipients}",
       "auto_send_failed": "Approval succeeded but auto-sending the invoice failed: {error}",
       "status_update_failed": "Status change failed"
+    },
+    "public_link": {
+      "btn": "Web invoice",
+      "btn_title": "Permanent public link to the invoice for the client",
+      "modal_title": "Web invoice",
+      "modal_hint": "Permanent public link — the client can view the invoice in a browser and download the PDF without signing in.",
+      "copy": "Copy",
+      "copied": "Link copied to clipboard",
+      "copy_failed": "Copy failed — please copy the link manually",
+      "open": "Open",
+      "regenerate": "Generate new link",
+      "regenerate_title": "The current link will stop working",
+      "regenerate_confirm": "Generate a new link? The current link will stop working immediately (useful e.g. when the URL leaked to a wrong recipient).",
+      "regenerated": "New link generated — the previous one no longer works",
+      "regenerate_failed": "Failed to generate a new link",
+      "viewed_at": "Client viewed the invoice: {date}",
+      "not_viewed": "Client has not viewed the invoice yet",
+      "viewed_badge": "Viewed by client",
+      "load_failed": "Failed to load the web invoice",
+      "email_note": "The link is automatically included in the email when the invoice is sent to the client."
     },
     "bulk_reissue_failed": "Bulk clone failed",
     "bulk_send_partial": "Sent: {ok}, errors: {err}",
