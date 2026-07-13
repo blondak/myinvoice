@@ -6,6 +6,7 @@ namespace MyInvoice\Action\Invoice;
 
 use MyInvoice\Http\Json;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Repository\InvoiceAttachmentRepository;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Approval\ApprovalTokenValidator;
@@ -35,6 +36,7 @@ final class PublicInvoiceGetAction
 {
     public function __construct(
         private readonly InvoiceRepository $repo,
+        private readonly InvoiceAttachmentRepository $attachments,
         private readonly InvoicePdfRenderer $renderer,
         private readonly InvoiceEmailVarsBuilder $emailVars,
         private readonly ActivityLogger $logger,
@@ -61,7 +63,7 @@ final class PublicInvoiceGetAction
             if ($firstView) {
                 $this->logger->log('invoice.public_viewed', null, 'invoice', (int) $invoice['id'], [],
                     $this->ipMatcher->clientIpFromRequest($request->getServerParams()),
-                    $request->getHeaderLine('User-Agent'));
+                    $request->getHeaderLine('User-Agent'), (int) $invoice['supplier_id']);
             }
         }
 
@@ -71,6 +73,7 @@ final class PublicInvoiceGetAction
             $this->renderer->resolveClient($invoice),
             $this->renderer->resolveBank($invoice),
             $this->emailVars->paymentQrDataUri($invoice),
+            $this->attachments->listForInvoice((int) $invoice['id']),
         ));
     }
 
@@ -80,10 +83,11 @@ final class PublicInvoiceGetAction
      * vzor ApprovalEmailVarsBuilder::buildSubject). Nikdy sem nepřidávat tokeny,
      * snapshoty, interní ID vazeb ani e-maily klienta.
      *
-     * @param array<string,mixed>      $invoice  Řádek z InvoiceRepository::find()
-     * @param array<string,mixed>      $supplier Z InvoicePdfRenderer::resolveSupplier()
-     * @param array<string,mixed>      $client   Z InvoicePdfRenderer::resolveClient()
-     * @param array<string,mixed>|null $bank     Z InvoicePdfRenderer::resolveBank()
+     * @param array<string,mixed>      $invoice     Řádek z InvoiceRepository::find()
+     * @param array<string,mixed>      $supplier    Z InvoicePdfRenderer::resolveSupplier()
+     * @param array<string,mixed>      $client      Z InvoicePdfRenderer::resolveClient()
+     * @param array<string,mixed>|null $bank        Z InvoicePdfRenderer::resolveBank()
+     * @param list<array<string,mixed>> $attachments Z InvoiceAttachmentRepository::listForInvoice()
      * @return array<string,mixed>
      */
     public static function buildPayload(
@@ -92,6 +96,7 @@ final class PublicInvoiceGetAction
         array $client,
         ?array $bank,
         ?string $qrDataUri,
+        array $attachments = [],
     ): array {
         $pick = static fn (array $src, array $keys): array =>
             array_intersect_key($src, array_flip($keys));
@@ -130,6 +135,15 @@ final class PublicInvoiceGetAction
                 'account_number', 'bank_code', 'bank_name', 'iban', 'bic',
             ]),
             'qr_data_uri' => $qrDataUri,
+            // Přílohy e-mailu ke stažení — id slouží jen jako klíč pro download
+            // URL (gated tokenem faktury); NIKDY filename (název na disku),
+            // sha256 ani uploaded_by.
+            'attachments' => array_map(
+                static fn (array $a): array => $pick($a, [
+                    'id', 'original_name', 'size_bytes',
+                ]),
+                $attachments,
+            ),
         ];
     }
 }

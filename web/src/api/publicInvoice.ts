@@ -100,12 +100,19 @@ export interface PublicInvoiceBank {
   bic: string | null
 }
 
+export interface PublicInvoiceAttachment {
+  id: number
+  original_name: string
+  size_bytes: number
+}
+
 export interface PublicInvoiceData {
   invoice: PublicInvoiceHeader
   supplier: PublicInvoiceParty
   client: PublicInvoiceParty
   bank: PublicInvoiceBank | null
   qr_data_uri: string | null
+  attachments: PublicInvoiceAttachment[]
 }
 
 export const publicInvoiceApi = {
@@ -114,4 +121,7 @@ export const publicInvoiceApi = {
 
   pdfUrl: (token: string, download: boolean = false) =>
     `/api/public/invoice/${token}/pdf${download ? '?download=1' : ''}`,
+
+  attachmentUrl: (token: string, attId: number) =>
+    `/api/public/invoice/${token}/attachment/${attId}`,
 }

@@ -1205,6 +1205,7 @@
       "public_link_regenerated": "Web faktura — vygenerován nový odkaz",
       "public_viewed": "Klient zobrazil web fakturu",
       "public_pdf_downloaded": "Klient stáhl PDF z web faktury",
+      "public_attachment_downloaded": "Klient stáhl přílohu z web faktury",
       "proforma_final_issued": "Vystaven daňový doklad k záloze"
     },
     "approval": {

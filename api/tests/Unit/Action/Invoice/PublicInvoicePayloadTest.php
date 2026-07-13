@@ -116,6 +116,17 @@ final class PublicInvoicePayloadTest extends TestCase
             ],
             ['account_number' => '1000000005', 'bank_code' => '0100', 'bank_name' => 'KB', 'iban' => null, 'bic' => null],
             'data:image/png;base64,QR',
+            [[
+                'id'            => 9,
+                'invoice_id'    => 42,
+                'filename'      => 'att_9_abcdef.pdf',
+                'original_name' => 'Smlouva.pdf',
+                'size_bytes'    => 12345,
+                'sha256'        => str_repeat('c', 64),
+                'mime_type'     => 'application/pdf',
+                'uploaded_by'   => 1,
+                'uploaded_at'   => '2026-07-01 10:00:00',
+            ]],
         );
     }
 
@@ -166,10 +177,24 @@ final class PublicInvoicePayloadTest extends TestCase
         }
     }
 
+    public function testAttachmentsWhitelisted(): void
+    {
+        $atts = $this->payload()['attachments'];
+
+        self::assertCount(1, $atts);
+        self::assertSame('Smlouva.pdf', $atts[0]['original_name']);
+        self::assertSame(9, $atts[0]['id']);
+        self::assertSame(12345, $atts[0]['size_bytes']);
+        foreach (['filename', 'sha256', 'uploaded_by', 'uploaded_at', 'invoice_id', 'mime_type'] as $forbidden) {
+            self::assertArrayNotHasKey($forbidden, $atts[0], "Pole přílohy '$forbidden' nesmí být ve veřejném payloadu");
+        }
+    }
+
     public function testBankNullPassesThrough(): void
     {
         $p = PublicInvoiceGetAction::buildPayload($this->invoiceRow(), [], [], null, null);
         self::assertNull($p['bank']);
         self::assertNull($p['qr_data_uri']);
+        self::assertSame([], $p['attachments']);
     }
 }

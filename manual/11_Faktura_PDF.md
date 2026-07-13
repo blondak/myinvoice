@@ -255,6 +255,7 @@ z Fakturoidu.
 
 Veřejná stránka zobrazuje jen to, co je na PDF faktury: dodavatele, odběratele,
 položky, součty s rozpadem DPH, platební údaje s QR kódem a poznámky z dokladu.
+Klient si stáhne i **přílohy e-mailu** nahrané k faktuře (smlouva, výkaz…).
 Stav úhrady se ukazuje živě (Uhrazeno / Částečně uhrazeno / Po splatnosti).
 Koncepty veřejný odkaz nemají — stránka je dostupná až po vystavení dokladu.
 

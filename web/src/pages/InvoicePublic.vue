@@ -99,6 +99,15 @@ const showPayPanel = computed(() =>
 
 const pdfUrl = computed(() => publicInvoiceApi.pdfUrl(token.value, true))
 
+function attachmentUrl(attId: number): string {
+  return publicInvoiceApi.attachmentUrl(token.value, attId)
+}
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} kB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
 onMounted(async () => {
   try {
     data.value = await publicInvoiceApi.get(token.value)
@@ -354,6 +363,25 @@ onMounted(async () => {
             </div>
 
             <div v-if="inv.note_below_items" class="px-6 pb-4 text-sm text-neutral-600 whitespace-pre-wrap">{{ inv.note_below_items }}</div>
+          </div>
+
+          <!-- Přílohy -->
+          <div v-if="data.attachments.length" class="bg-surface border border-neutral-200 rounded-xl shadow-sm p-6">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">
+              {{ tt('Přílohy', 'Attachments') }}
+            </h2>
+            <ul class="divide-y divide-neutral-100">
+              <li v-for="a in data.attachments" :key="a.id">
+                <a :href="attachmentUrl(a.id)"
+                  class="flex items-center gap-3 py-2 group" download>
+                  <svg class="w-4 h-4 text-neutral-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 1 0 2.828 2.828l6.414-6.586a4 4 0 0 0-5.656-5.656l-6.415 6.585a6 6 0 1 0 8.486 8.486L20.5 13" />
+                  </svg>
+                  <span class="text-sm text-primary-700 group-hover:underline break-all">{{ a.original_name }}</span>
+                  <span class="text-xs text-neutral-500 shrink-0 ml-auto">{{ fmtBytes(a.size_bytes) }}</span>
+                </a>
+              </li>
+            </ul>
           </div>
 
           <!-- Kontakt na dodavatele -->

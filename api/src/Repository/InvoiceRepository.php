@@ -1346,25 +1346,27 @@ final class InvoiceRepository
     }
 
     /**
-     * ID veřejně viditelné faktury podle public_token, nebo null. Pravidlo
-     * viditelnosti (draft se nezobrazuje) je přímo v SQL, aby ho konzument
-     * nemohl zapomenout (vzor findByApprovalToken s expirací).
+     * Lehká reference veřejně viditelné faktury podle public_token, nebo null.
+     * Pravidlo viditelnosti (draft se nezobrazuje) je přímo v SQL, aby ho
+     * konzument nemohl zapomenout (vzor findByApprovalToken s expirací).
+     *
+     * @return array{id:int, supplier_id:int}|null
      */
-    public function publicInvoiceIdByToken(string $token): ?int
+    public function publicInvoiceRefByToken(string $token): ?array
     {
         $stmt = $this->db->pdo()->prepare(
-            "SELECT id FROM invoices WHERE public_token = ? AND status <> 'draft'"
+            "SELECT id, supplier_id FROM invoices WHERE public_token = ? AND status <> 'draft'"
         );
         $stmt->execute([$token]);
-        $id = $stmt->fetchColumn();
-        return $id === false ? null : (int) $id;
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row === false ? null : ['id' => (int) $row['id'], 'supplier_id' => (int) $row['supplier_id']];
     }
 
     /** Najde veřejně viditelnou fakturu podle public_token (web faktura), nebo null. */
     public function findByPublicToken(string $token): ?array
     {
-        $id = $this->publicInvoiceIdByToken($token);
-        return $id === null ? null : $this->find($id);
+        $ref = $this->publicInvoiceRefByToken($token);
+        return $ref === null ? null : $this->find($ref['id']);
     }
 
     /** Zaznamená zobrazení web faktury klientem (poslední anonymní přístup). */
