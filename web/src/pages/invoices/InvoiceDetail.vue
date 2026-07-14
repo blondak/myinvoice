@@ -1234,10 +1234,10 @@ const invoiceActions = computed<ActionItem[]>(() => {
     { key: 'wr', label: t('invoice.wr_btn'), icon: 'chart', tier: 'secondary', variant: 'primary',
       show: isDraft.value && inv.invoice_type !== 'tax_document' && w,
       title: t('invoice.wr_btn') as string, run: () => { wrModalOpen.value = true } },
-    { key: 'public-link', label: t('invoice.public_link.btn'), icon: 'link', tier: 'secondary', variant: 'primary',
+    // ── overflow ──
+    { key: 'public-link', label: t('invoice.public_link.btn'), icon: 'link', tier: 'overflow', variant: 'primary',
       show: !isDraft.value && w, disabled: b,
       title: t('invoice.public_link.btn_title') as string, run: openPublicLink },
-    // ── overflow ──
     { key: 'clone', label: t('invoice.clone'), icon: 'copy', tier: 'overflow', variant: 'primary',
       show: !isDraft.value && !['cancellation', 'credit_note'].includes(inv.invoice_type) && w,
       disabled: b, loading: busy.value === 'clone', run: cloneInvoice },
