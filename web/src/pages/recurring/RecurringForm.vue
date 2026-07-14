@@ -86,6 +86,9 @@ const units = ref<Unit[]>([])
 const revenueCategories = ref<RevenueCategory[]>([])
 const priceListItems = ref<PriceListItem[]>([])
 const catalogResolving = ref<number | null>(null)
+// Ceníkové ovládání v řádcích skryj, dokud dodavatel nemá žádnou použitelnou položku
+// (existující napojené řádky zůstanou editovatelné i tak).
+const hasPriceList = computed(() => priceListItems.value.length > 0)
 
 async function loadPriceListItems() {
   const currency = currencies.value.find(item => item.id === form.value.currency_id)?.code
@@ -1049,7 +1052,7 @@ async function submit() {
           <tbody>
             <tr v-for="(it, idx) in form.items" :key="idx" :class="['border-t border-neutral-200', itemHasBothNegative(it) ? 'bg-danger-50' : '']">
               <td class="py-1.5 pr-2">
-                <div class="mb-1 grid gap-1 xl:grid-cols-3">
+                <div v-if="hasPriceList || it.price_list_item_id" class="mb-1 grid gap-1 xl:grid-cols-3">
                   <select v-model.number="it.price_list_item_id" class="h-8 min-w-0 px-2 border border-neutral-300 rounded bg-surface text-xs" @change="applyCatalogItem(it, idx)">
                     <option :value="null">{{ t('recurring.catalog_manual') }}</option>
                     <option v-for="catalogItem in priceListItems" :key="catalogItem.id" :value="catalogItem.id">{{ catalogItem.code }} · {{ catalogItem.name }}</option>
@@ -1105,7 +1108,7 @@ async function submit() {
               <span class="font-mono">#{{ idx + 1 }}</span>
               <button type="button" @click="removeItem(idx)" class="cursor-pointer w-8 h-8 inline-flex items-center justify-center border border-danger-500/40 text-danger-500 hover:bg-danger-50 rounded text-lg leading-none">×</button>
             </div>
-            <div class="space-y-2">
+            <div v-if="hasPriceList || it.price_list_item_id" class="space-y-2">
               <label class="block text-xs font-medium text-neutral-600">{{ t('recurring.catalog_item') }}</label>
               <select v-model.number="it.price_list_item_id" class="w-full h-10 px-3 border border-neutral-300 rounded bg-surface text-sm" @change="applyCatalogItem(it, idx)">
                 <option :value="null">{{ t('recurring.catalog_manual') }}</option>

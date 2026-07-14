@@ -116,6 +116,8 @@ const units = ref<Unit[]>([])
 const priceListItems = ref<PriceListItem[]>([])
 const selectedPriceListItemId = ref<number | null>(null)
 const resolvingPriceListItem = ref(false)
+// Ceníkové ovládání skryj, pokud dodavatel nemá žádnou použitelnou položku.
+const hasPriceList = computed(() => priceListItems.value.length > 0)
 const priceListOptions = computed(() => priceListItems.value.map(item => {
   const resolved = item.resolved_price
   return {
@@ -1631,17 +1633,19 @@ async function deleteDraft() {
         <div class="px-5 py-3 border-b border-neutral-200 flex flex-wrap items-center justify-between gap-2">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.items') }}</h3>
           <div class="flex flex-wrap items-center justify-end gap-2">
-            <div class="w-80 max-w-full">
-              <SearchableSelect
-                v-model="selectedPriceListItemId"
-                :options="priceListOptions"
-                :placeholder="t('invoice.price_list_select')"
-                :no-results-label="t('price_list.empty')"
-              />
-            </div>
-            <button type="button" class="cursor-pointer inline-flex items-center justify-center h-8 px-3 border border-neutral-300 bg-surface hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium rounded-md" :disabled="!selectedPriceListItemId || resolvingPriceListItem" @click="addPriceListItem">
-              {{ resolvingPriceListItem ? t('common.loading') : t('invoice.price_list_add') }}
-            </button>
+            <template v-if="hasPriceList">
+              <div class="w-80 max-w-full">
+                <SearchableSelect
+                  v-model="selectedPriceListItemId"
+                  :options="priceListOptions"
+                  :placeholder="t('invoice.price_list_select')"
+                  :no-results-label="t('price_list.empty')"
+                />
+              </div>
+              <button type="button" class="cursor-pointer inline-flex items-center justify-center h-8 px-3 border border-neutral-300 bg-surface hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium rounded-md" :disabled="!selectedPriceListItemId || resolvingPriceListItem" @click="addPriceListItem">
+                {{ resolvingPriceListItem ? t('common.loading') : t('invoice.price_list_add') }}
+              </button>
+            </template>
             <button type="button" @click="addItem" class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md">
               {{ t('invoice.add_item') }}
             </button>
