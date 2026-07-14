@@ -23,6 +23,7 @@ import { useSupplierStore } from '@/stores/supplier'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import ClientFormModal from '@/components/modals/ClientFormModal.vue'
 import ProjectFormModal from '@/components/modals/ProjectFormModal.vue'
+import { priceListApi, type PriceListItem } from '@/api/priceList'
 
 const supplierStore = useSupplierStore()
 
@@ -112,6 +113,36 @@ const vatClassifications = ref<VatClassification[]>([])
 const revenueCategories = ref<RevenueCategory[]>([])
 const currencies = ref<Currency[]>([])
 const units = ref<Unit[]>([])
+const priceListItems = ref<PriceListItem[]>([])
+const selectedPriceListItemId = ref<number | null>(null)
+const resolvingPriceListItem = ref(false)
+const priceListOptions = computed(() => priceListItems.value.map(item => {
+  const resolved = item.resolved_price
+  return {
+    value: item.id,
+    label: `${item.code} · ${item.name}`,
+    secondary: resolved
+      ? `${t(`price_list.price_source.${resolved.catalog_price_source}`)} · ${resolved.unit_price_without_vat.toFixed(2)} ${resolved.target_currency_code}${resolved.catalog_exchange_rate_date ? ` · ${resolved.catalog_exchange_rate_date}` : ''}`
+      : undefined,
+  }
+}))
+
+async function loadPriceListItems() {
+  const currency = currencies.value.find(item => item.id === form.value.currency_id)?.code
+  if (!currency) return
+  try {
+    const result = await priceListApi.list({
+      currency,
+      client_id: form.value.client_id ?? undefined,
+      rate_date: form.value.invoice_type === 'proforma' ? form.value.issue_date : form.value.tax_date,
+      prices_include_vat: form.value.prices_include_vat,
+      per_page: 200,
+    })
+    priceListItems.value = result.data
+  } catch {
+    priceListItems.value = []
+  }
+}
 
 // Default jednotka pro běžnou položku — z číselníku (is_default), fallback 'ks'.
 function defaultItemUnit(): string {
@@ -352,6 +383,11 @@ watch(() => route.query.type, () => {
   form.value.invoice_type = queryDocType.value ?? 'invoice'
 })
 
+watch(
+  () => [form.value.client_id, form.value.currency_id, form.value.prices_include_vat, form.value.issue_date, form.value.tax_date] as const,
+  () => { if (loaded.value) void loadPriceListItems() },
+)
+
 // Při přepnutí typu na credit_note převrať množství všech existujících položek na záporná.
 watch(() => form.value.invoice_type, (newType, oldType) => {
   if (newType === 'credit_note' && oldType !== 'credit_note') {
@@ -386,6 +422,7 @@ onMounted(async () => {
       form.value.currency = def.code
     }
   }
+  await loadPriceListItems()
 
   // Klienti se hledají server-side (onClientSearch); cache `clients` se plní výsledky + vybraným.
 
@@ -469,6 +506,7 @@ onMounted(async () => {
     await loadVarsymbolPreview()
   }
 
+  await loadPriceListItems()
   loaded.value = true
 })
 
@@ -616,6 +654,43 @@ async function applyProjectDefaults(projectId: number) {
 function addItem() {
   form.value.items.push(blankItem())
   focusLastRow('[data-row-input="inv-item"]')
+}
+
+async function addPriceListItem() {
+  if (!selectedPriceListItemId.value) return
+  if (!form.value.client_id || !form.value.currency_id) {
+    toast.warning(t('invoice.price_list_requires_context'))
+    return
+  }
+  resolvingPriceListItem.value = true
+  try {
+    const resolved = await priceListApi.resolve(selectedPriceListItemId.value, {
+      client_id: form.value.client_id,
+      currency_id: form.value.currency_id,
+      rate_date: form.value.invoice_type === 'proforma' ? form.value.issue_date : form.value.tax_date,
+      prices_include_vat: form.value.prices_include_vat,
+    })
+    const target = form.value.items.length === 1
+      && !form.value.items[0].description.trim()
+      && Number(form.value.items[0].unit_price_without_vat) === 0
+      ? form.value.items[0]
+      : blankItem()
+    Object.assign(target, {
+      description: resolved.description,
+      quantity: form.value.invoice_type === 'credit_note' ? -1 : 1,
+      unit: resolved.unit,
+      unit_price_without_vat: resolved.unit_price_without_vat,
+      vat_rate_id: resolved.vat_rate_id,
+    })
+    if (!form.value.items.includes(target)) form.value.items.push(target)
+    form.value.items.forEach((item, index) => { item.order_index = index })
+    selectedPriceListItemId.value = null
+    toast.success(t('invoice.price_list_added'))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    resolvingPriceListItem.value = false
+  }
 }
 
 function removeItem(index: number) {
@@ -1553,11 +1628,24 @@ async function deleteDraft() {
 
       <!-- Položky -->
       <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm">
-        <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+        <div class="px-5 py-3 border-b border-neutral-200 flex flex-wrap items-center justify-between gap-2">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.items') }}</h3>
-          <button type="button" @click="addItem" class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md">
-            {{ t('invoice.add_item') }}
-          </button>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <div class="w-80 max-w-full">
+              <SearchableSelect
+                v-model="selectedPriceListItemId"
+                :options="priceListOptions"
+                :placeholder="t('invoice.price_list_select')"
+                :no-results-label="t('price_list.empty')"
+              />
+            </div>
+            <button type="button" class="cursor-pointer inline-flex items-center justify-center h-8 px-3 border border-neutral-300 bg-surface hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium rounded-md" :disabled="!selectedPriceListItemId || resolvingPriceListItem" @click="addPriceListItem">
+              {{ resolvingPriceListItem ? t('common.loading') : t('invoice.price_list_add') }}
+            </button>
+            <button type="button" @click="addItem" class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md">
+              {{ t('invoice.add_item') }}
+            </button>
+          </div>
         </div>
         <div v-if="requiresPositiveAmountToPay" class="px-5 py-3 border-b border-neutral-100 text-xs text-neutral-500">
           {{ t('invoice.negative_item_hint') }}

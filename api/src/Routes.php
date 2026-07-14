@@ -100,6 +100,7 @@ use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceItemsAction;
 use MyInvoice\Action\PurchaseInvoice\TransitionPurchaseInvoiceStatusAction;
 use MyInvoice\Action\PurchaseInvoice\UpdatePurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\UploadPurchaseInvoicePdfAction;
+use MyInvoice\Action\PriceList\PriceListItemAction;
 use MyInvoice\Action\Recurring\RecurringTemplateAction;
 use MyInvoice\Action\Invoice\IssueFinalFromProformaAction;
 use MyInvoice\Action\Invoice\AdvanceCandidatesAction as InvoiceAdvanceCandidatesAction;
@@ -236,6 +237,20 @@ final class Routes
         $app->post  ('/api/revenue-categories',                  [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'create']);
         $app->put   ('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'update']);
         $app->delete('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'delete']);
+
+        // Ceníkové položky (interní session API; správa admin, čtení accountant)
+        $app->get   ('/api/price-list-items', [PriceListItemAction::class, 'list']);
+        $app->post  ('/api/price-list-items', [PriceListItemAction::class, 'create']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'get']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'update']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'delete']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/resolve', [PriceListItemAction::class, 'resolve']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/prices', [PriceListItemAction::class, 'prices']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}/prices/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'upsertPrice']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}/prices/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'deletePrice']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/customer-overrides', [PriceListItemAction::class, 'customerOverrides']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}/customer-overrides/{clientId:[0-9]+}/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'upsertCustomerOverride']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}/customer-overrides/{clientId:[0-9]+}/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'deleteCustomerOverride']);
 
         // Roční daňové konstanty (globální číselník, override defaultů z TaxConstants; migrace 0079)
         $app->get   ('/api/codebooks/tax-constants',                [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'list']);
