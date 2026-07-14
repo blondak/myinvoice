@@ -1,4 +1,4 @@
--- 0133: Web faktura — trvalý veřejný odkaz na vystavenou fakturu.
+-- 0134: Web faktura — trvalý veřejný odkaz na vystavenou fakturu.
 --
 -- Klient dostane odkaz /invoice/{token}, kde si fakturu bez přihlášení prohlédne
 -- v HTML a stáhne PDF (vzor Fakturoid „web faktura"). Token se generuje lazy

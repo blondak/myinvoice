@@ -93,6 +93,24 @@ function partyName(p?: PublicInvoiceParty | null): string {
   return String(p.company_name || [p.first_name, p.last_name].filter(Boolean).join(' '))
 }
 
+/**
+ * Bezpečná web URL dodavatele pro href — připustí jen http(s), jinak null.
+ * Brání javascript:/data: schématu (Vue :href nesanitizuje), které by mohl
+ * škodlivý dodavatel uložit do supplier.web a zaútočit na klienta otevírajícího
+ * veřejnou stránku. Bez schématu doplní https://.
+ */
+const supplierWebHref = computed<string | null>(() => {
+  const raw = String(data.value?.supplier.web || '').trim()
+  if (!raw) return null
+  const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`
+  try {
+    const proto = new URL(url).protocol.toLowerCase()
+    return proto === 'http:' || proto === 'https:' ? url : null
+  } catch {
+    return null
+  }
+})
+
 const showPayPanel = computed(() =>
   !!inv.value && !isCancelled.value
   && (isPaid.value || inv.value.payment_method !== 'bank_transfer' || !!data.value?.bank))
@@ -385,11 +403,11 @@ onMounted(async () => {
           </div>
 
           <!-- Kontakt na dodavatele -->
-          <div v-if="data.supplier.email || data.supplier.web" class="text-center text-xs text-neutral-500">
+          <div v-if="data.supplier.email || supplierWebHref" class="text-center text-xs text-neutral-500">
             {{ tt('Dotazy k faktuře', 'Invoice questions') }}:
             <a v-if="data.supplier.email" :href="`mailto:${data.supplier.email}`" class="text-primary-700 hover:underline">{{ data.supplier.email }}</a>
-            <template v-if="data.supplier.email && data.supplier.web"> · </template>
-            <a v-if="data.supplier.web" :href="data.supplier.web" target="_blank" rel="noopener" class="text-primary-700 hover:underline">{{ data.supplier.web }}</a>
+            <template v-if="data.supplier.email && supplierWebHref"> · </template>
+            <a v-if="supplierWebHref" :href="supplierWebHref" target="_blank" rel="noopener" class="text-primary-700 hover:underline">{{ data.supplier.web }}</a>
           </div>
         </div>
       </div>

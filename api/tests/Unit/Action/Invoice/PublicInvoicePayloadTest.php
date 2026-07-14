@@ -8,7 +8,7 @@ use MyInvoice\Action\Invoice\PublicInvoiceGetAction;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Web faktura (migrace 0133) — whitelist veřejného payloadu.
+ * Web faktura (migrace 0134) — whitelist veřejného payloadu.
  *
  * buildPayload() je jediné místo, které rozhoduje, co veřejný endpoint
  * GET /api/public/invoice/{token} prozradí. Test hlídá, že se do payloadu
