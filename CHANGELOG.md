@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.46.0] — 2026-07-14
+
+### Added
+
+- **Web faktura — trvalý veřejný odkaz na vystavenou fakturu.** Každá vystavená faktura (i proforma či dobropis) může mít trvalý veřejný odkaz `/invoice/{token}`, na kterém si ji klient **bez přihlášení** prohlédne v prohlížeči, stáhne PDF a přílohy e-mailu (obdoba „web faktury" z Fakturoidu). Veřejná stránka je dvojjazyčná podle jazyka dokladu a ukazuje totéž co PDF: dodavatele, odběratele, položky s rozpadem DPH, součty, platební údaje s QR kódem a poznámky; stav úhrady se zobrazuje živě (Uhrazeno / Částečně uhrazeno / Po splatnosti). Odkaz se automaticky vkládá do e-mailu při odeslání faktury klientovi. V detailu faktury je pod „…" akce **Web faktura** s možností zkopírovat/otevřít odkaz, indikací „zobrazeno klientem" a revokací (**Vygenerovat nový odkaz** — starý okamžitě přestane platit). Payload veřejného API je striktní whitelist (neúnikají tokeny, snapshoty, interní ID ani kontaktní údaje klienta), přílohy jsou vázané na fakturu proti cross-invoice přístupu a endpointy mají vlastní rate-limit proti anonymnímu zneužití.
+
 ## [4.45.0] — 2026-07-12
 
 ### Added
