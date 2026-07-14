@@ -30,11 +30,14 @@ final class RaiffeisenbankStatementPdfParser implements BankStatementPdfParserIn
     private const AMOUNT = '-?\d{1,3}(?:[\x{00A0} ]\d{3})*\.\d{2}';
 
     /**
-     * Řádek kurzu u kartové platby v cizí měně („21.83 CZK/USD") — poměr měn, NE částka
-     * transakce. Musí se z detekce částky i z popisu vyřadit, jinak by se 21.83 vzalo jako
-     * (chybná) CZK částka místo skutečné hodnoty ve sloupci Částka (issue #205).
+     * Řádek kurzu u kartové platby v cizí měně („21.83 CZK/USD", „21.716 CZK/USD") — poměr
+     * měn, NE částka transakce. Musí se z detekce částky i z popisu vyřadit, jinak by se
+     * hodnota kurzu vzala jako (chybná) CZK částka místo skutečné hodnoty ve sloupci Částka
+     * (issue #205). Kurz má PROMĚNLIVÝ počet desetinných míst (2 i 3+), proto vlastní číselný
+     * vzor `\.\d+` místo AMOUNT (`\.\d{2}`) — jinak by „21.716" propadlo jako částka „21.71".
      */
-    private const FX_RATE_LINE = '/^' . self::AMOUNT . '\s+[A-Z]{3}\/[A-Z]{3}$/u';
+    private const FX_RATE = '-?\d{1,3}(?:[\x{00A0} ]\d{3})*\.\d+';
+    private const FX_RATE_LINE = '/^' . self::FX_RATE . '\s+[A-Z]{3}\/[A-Z]{3}$/u';
 
     /** Hlavičkové zůstatky/součty: číslo s mezerami tisíců a tečkou (bez povinného znaménka). */
     private const MONEY_H = '([\d\x{00A0} ]+\.\d{2})';
