@@ -108,6 +108,10 @@ use MyInvoice\Action\Invoice\FinalCandidatesAction;
 use MyInvoice\Action\Invoice\LinkAdvanceAction as LinkInvoiceAdvanceAction;
 use MyInvoice\Action\Invoice\UnlinkAdvanceAction as UnlinkInvoiceAdvanceAction;
 use MyInvoice\Action\Invoice\PdfAction;
+use MyInvoice\Action\Invoice\PublicInvoiceAttachmentAction;
+use MyInvoice\Action\Invoice\PublicInvoiceGetAction;
+use MyInvoice\Action\Invoice\PublicInvoicePdfAction;
+use MyInvoice\Action\Invoice\PublicLinkAction;
 use MyInvoice\Action\Invoice\ListPdfsAction;
 use MyInvoice\Action\Invoice\DownloadArchivedPdfAction;
 use MyInvoice\Action\Invoice\DownloadImportedPdfAction;
@@ -408,9 +412,18 @@ final class Routes
         $app->post   ('/api/invoices/{id:[0-9]+}/request-approval-test', RequestApprovalTestAction::class);
         $app->put    ('/api/invoices/{id:[0-9]+}/approval-status',       UpdateApprovalStatusAction::class);
 
+        // Web faktura — správa trvalého veřejného odkazu (authenticated)
+        $app->post   ('/api/invoices/{id:[0-9]+}/public-link',            [PublicLinkAction::class, 'ensure']);
+        $app->post   ('/api/invoices/{id:[0-9]+}/public-link/regenerate', [PublicLinkAction::class, 'regenerate']);
+
         // Public schvalovací endpointy (bez auth, jen token)
         $app->get    ('/api/public/approval/{token:[a-f0-9]{32,128}}',          PublicApprovalGetAction::class);
         $app->post   ('/api/public/approval/{token:[a-f0-9]{32,128}}/decide',   PublicApprovalDecideAction::class);
+
+        // Web faktura — veřejný náhled + PDF + přílohy (bez auth, jen token)
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}',     PublicInvoiceGetAction::class);
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}/pdf', PublicInvoicePdfAction::class);
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}/attachment/{attId:[0-9]+}', PublicInvoiceAttachmentAction::class);
 
         // Public náhled na výkaz práce (bez auth; token + e-mailová autorizace kódem)
         $app->get    ('/api/public/work-report/{token:[a-f0-9]{32,128}}',              PublicWorkReportGetAction::class);

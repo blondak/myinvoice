@@ -1274,6 +1274,11 @@
       "approval_approved": "Schváleno zákazníkem",
       "approval_rejected": "Zamítnuto zákazníkem",
       "approval_reset": "Stav schválení resetován",
+      "public_link_created": "Web faktura — odkaz vytvořen",
+      "public_link_regenerated": "Web faktura — vygenerován nový odkaz",
+      "public_viewed": "Klient zobrazil web fakturu",
+      "public_pdf_downloaded": "Klient stáhl PDF z web faktury",
+      "public_attachment_downloaded": "Klient stáhl přílohu z web faktury",
       "proforma_final_issued": "Vystaven daňový doklad k záloze"
     },
     "approval": {
@@ -1313,6 +1318,26 @@
       "approved_and_sent": "Schváleno. Faktura odeslána na: {recipients}",
       "auto_send_failed": "Schválení proběhlo, ale auto-odeslání faktury selhalo: {error}",
       "status_update_failed": "Změna stavu selhala"
+    },
+    "public_link": {
+      "btn": "Web faktura",
+      "btn_title": "Trvalý veřejný odkaz na fakturu pro klienta",
+      "modal_title": "Web faktura",
+      "modal_hint": "Trvalý veřejný odkaz — klient si na něm fakturu bez přihlášení prohlédne v prohlížeči a stáhne PDF.",
+      "copy": "Kopírovat",
+      "copied": "Odkaz zkopírován do schránky",
+      "copy_failed": "Kopírování se nepodařilo — zkopírujte odkaz ručně",
+      "open": "Otevřít",
+      "regenerate": "Vygenerovat nový odkaz",
+      "regenerate_title": "Stávající odkaz přestane platit",
+      "regenerate_confirm": "Vygenerovat nový odkaz? Stávající odkaz okamžitě přestane platit (hodí se např. při úniku URL nesprávnému příjemci).",
+      "regenerated": "Nový odkaz vygenerován — původní přestal platit",
+      "regenerate_failed": "Nový odkaz se nepodařilo vygenerovat",
+      "viewed_at": "Klient fakturu zobrazil: {date}",
+      "not_viewed": "Klient fakturu zatím nezobrazil",
+      "viewed_badge": "Zobrazeno klientem",
+      "load_failed": "Web fakturu se nepodařilo načíst",
+      "email_note": "Odkaz se automaticky vkládá do e-mailu při odeslání faktury klientovi."
     },
     "bulk_reissue_failed": "Hromadné klonování selhalo",
     "bulk_send_partial": "Odesláno: {ok}, chyby: {err}",
