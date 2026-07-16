@@ -255,7 +255,7 @@ final class BankStatementAction
 
         $sid = SupplierGuard::currentId($request);
         $stmt = $this->db->pdo()->prepare(
-            'SELECT id, code, label, account_number, iban FROM currencies WHERE supplier_id = ?'
+            'SELECT id, code, label, account_number, bank_code, iban FROM currencies WHERE supplier_id = ?'
         );
         $stmt->execute([$sid]);
         $matches = [];
@@ -295,18 +295,26 @@ final class BankStatementAction
             return ['currency_id' => $accId, 'error' => null];
         }
 
-        // Bez volby: víc měnových variant téhož čísla = nejednoznačné → vrať kandidáty.
-        $distinctCodes = array_values(array_unique(array_map(static fn ($m) => (string) $m['code'], $matches)));
-        if (count($distinctCodes) > 1) {
-            $candidates = array_map(static fn ($m) => [
-                'account_id' => (int) $m['id'],
-                'code'       => (string) $m['code'],
-                'label'      => (string) ($m['label'] ?? '') !== '' ? (string) $m['label'] : (string) $m['code'],
+        // Bez explicitní volby: jediný odpovídající účet → auto. Víc účtů se stejným
+        // číslem účtu je nejednoznačných dvěma způsoby a ani GPC/ABO ani PDF hlavička
+        // to neumí rozhodnout:
+        //   • #167 — jedno fyzické číslo vedené ve více měnách (sdílené bank_code),
+        //   • #206 — různé banky se stejným číslem před lomítkem (různý bank_code);
+        //     GPC 074 kód banky vlastního účtu nenese a kód v 075 je banka protistrany.
+        // V obou případech vyžádej ruční výběr místo tichého přiřazení k prvnímu
+        // (typicky výchozímu) účtu — jinak výpis skončí pod špatným účtem.
+        if (count($matches) > 1) {
+            $candidates = array_map(fn ($m) => [
+                'account_id'     => (int) $m['id'],
+                'code'           => (string) $m['code'],
+                'bank_code'      => isset($m['bank_code']) && (string) $m['bank_code'] !== '' ? (string) $m['bank_code'] : null,
+                'account_number' => (string) ($m['account_number'] ?? ''),
+                'label'          => $this->accountCandidateLabel($m),
             ], $matches);
             return ['currency_id' => null, 'error' => fn (Response $response) => Json::error(
                 $response,
                 'ambiguous_account_currency',
-                'Toto číslo účtu má více měnových variant — zvolte cílový měnový účet.',
+                'Tomuto číslu účtu odpovídá více bankovních účtů (různá měna nebo kód banky) — zvolte cílový účet.',
                 409,
                 ['candidates' => array_values($candidates)]
             )];
@@ -314,6 +322,28 @@ final class BankStatementAction
         // Jednoznačný účet: použij konkrétní supplier-scoped řádek (autoritativní
         // měna i kód banky, tenant-safe — na rozdíl od tenant-less lookupu v importeru).
         return ['currency_id' => (int) $matches[0]['id'], 'error' => null];
+    }
+
+    /**
+     * Srozumitelný popis kandidáta účtu do výběrového modalu (#167/#206). Vždy nese
+     * měnu i číslo účtu s kódem banky, aby šly odlišit jak měnové varianty téhož
+     * čísla (#167), tak různé banky se stejným číslem účtu (#206) — dvě CZK varianty
+     * by jinak měly shodný label.
+     *
+     * @param array<string,mixed> $m currencies řádek (code, label, account_number, bank_code)
+     */
+    private function accountCandidateLabel(array $m): string
+    {
+        $code = (string) $m['code'];
+        $bank = isset($m['bank_code']) && (string) $m['bank_code'] !== '' ? (string) $m['bank_code'] : null;
+        $acct = trim((string) ($m['account_number'] ?? ''));
+        $acctDisplay = $acct !== '' ? ($bank !== null ? $acct . '/' . $bank : $acct) : null;
+        $name = trim((string) ($m['label'] ?? ''));
+
+        $bits = [$name !== '' ? $name : $code];
+        if ($name !== '' && stripos($name, $code) === false) { $bits[] = $code; }
+        if ($acctDisplay !== null) { $bits[] = $acctDisplay; }
+        return implode(' — ', $bits);
     }
 
     public function list(Request $request, Response $response): Response

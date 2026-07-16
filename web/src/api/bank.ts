@@ -126,11 +126,18 @@ export interface ImportResult {
   duplicate: boolean
 }
 
-/** Kandidát měnového účtu při nejednoznačném sdíleném čísle účtu (#167). */
+/**
+ * Kandidát bankovního účtu při nejednoznačném sdíleném čísle účtu. Nastane, když
+ * jednomu číslu účtu odpovídá víc účtů dodavatele — buď různými měnami (#167),
+ * nebo různým kódem banky (#206, stejné číslo u dvou bank). `label` už je
+ * server-side složený tak, aby oba případy odlišil (měna + číslo/kód banky).
+ */
 export interface AmbiguousAccount {
   account_id: number
   code: string
   label: string
+  bank_code?: string | null
+  account_number?: string
 }
 
 /** Účet pro filtr v přehledu výpisů (distinct account_number + jeho label z currencies). */

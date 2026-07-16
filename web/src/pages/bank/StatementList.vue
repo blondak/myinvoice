@@ -259,7 +259,7 @@ async function onFileSelected(e: Event) {
     try {
       results.push(await uploadFn(file))
     } catch (e) {
-      // #167: sdílené číslo účtu napříč měnami → nech uživatele zvolit cílový účet a zkus znovu.
+      // #167/#206: sdílené číslo účtu (napříč měnami nebo bankami) → nech uživatele zvolit cílový účet a zkus znovu.
       const candidates = ambiguousCandidates(e)
       if (candidates) {
         const accountId = await askForAccount(file.name, candidates)
@@ -515,7 +515,7 @@ async function onFileSelected(e: Event) {
       </div>
     </nav>
 
-    <!-- #167: volba cílového měnového účtu u sdíleného čísla účtu. Bez click-outside. -->
+    <!-- #167/#206: volba cílového účtu u sdíleného čísla účtu (různá měna nebo kód banky). Bez click-outside. -->
     <div v-if="ambiguityModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div class="bg-surface border border-neutral-200 rounded-lg shadow-xl w-full max-w-md p-5">
         <div class="flex items-start gap-3 mb-3">
