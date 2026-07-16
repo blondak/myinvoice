@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.46.1] — 2026-07-16
+
+### Fixed
+
+- **Import GPC/ABO výpisu k účtu se stejným číslem u více bank (#206).** Když měl dodavatel dva bankovní účty se stejným číslem účtu lišící se jen kódem banky (např. Fio `…/2010` a Raiffeisenbank `…/5500`), mohl se nahraný GPC/ABO (i PDF) výpis tiše přiřadit k výchozímu účtu — GPC hlavička kód banky vlastního účtu nenese a kód v transakčních řádcích patří protistraně. Nově se v takovém případě import zastaví a vyžádá **ruční výběr cílového účtu** (stejný dialog jako u víceměnového účtu se sdíleným číslem); pokud číslu odpovídá jen jeden účet, přiřadí se automaticky. Kandidáti v dialogu se rozlišují měnou i kódem banky. U neinteraktivního adresářového skenu se nejednoznačnost zaloguje do chybového logu.
+- **Import PDF výpisu Raiffeisenbank — kurz kartové platby se 3+ desetinnými místy (#205).** Detekce řádku s kurzem počítala natvrdo se dvěma desetinnými místy, takže kurz jako `21.716 CZK/USD` se nerozpoznal a jeho useknutý prefix se vzal jako částka → self-check součtu výpis zamítl. Nově se rozpozná libovolný počet desetinných míst.
+
 ## [4.46.0] — 2026-07-14
 
 ### Added
