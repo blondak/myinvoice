@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.47.0] — 2026-07-18
+
+### Added
+
+- **Export vystavených faktur do Money S3 (Seyfor).** Vystavené faktury lze exportovat do XML pro účetnictví **Money S3** (`format=money_s3` v exportu faktur), vedle stávajícího Stereo / Pohoda / ISDOC. Oficiální veřejné XSD pro tento formát neexistuje — struktura byla odvozena z reálného exportu Money S3 a ověřena proti uživatelské příručce. (#211) Sazby DPH se přitom neváží natvrdo na aktuální 12/21, ale **odvozují se z položek dokladu**: nižší nenulová sazba jde do sníženého koše, vyšší do základního, jediná sazba se rozřadí prahem 17 %. Díky tomu projdou i doklady ze starších období s historickými sazbami (15/21 pro 2013–2023, 14/20 pro 2012, 5/22 pro 1995–2003), zatímco dřív cokoli mimo 12/21 export tvrdě shodilo. Tři a víc různých nenulových sazeb na jednom dokladu dvoukošíkový model Money S3 neumí → zůstává tvrdá chyba. (#213)
+- **iDoklad — synchronizace bankovních účtů.** Import z iDokladu má novou volbu **Bankovní účty**, která načte číselník účtů z iDokladu a bezpečně jej namapuje na aktivní účty stejné měny v MyInvoice. Účet se propojí jen při jednoznačné shodě čísla účtu / IBANu (u českého účtu se kontroluje i kód banky); neznámý nebo nejednoznačný účet se pouze označí ke kontrole (`unmatched` / `ambiguous`). Synchronizace nikdy nezakládá ani nepřepisuje lokální bankovní účet a je idempotentní. Tvoří bezpečný základ pro budoucí import bankovních pohybů z iDokladu a jejich deduplikaci vůči GPC/IMAP. (#218, migrace 0135)
+- **Daňový optimalizátor — odhad čistého příjmu za minulý měsíc.** Nová rozbalovací karta ukazuje pravděpodobný čistý příjem za poslední uzavřený kalendářní měsíc: reálné zaplacené tržby a náklady, z nichž se odhadnou odvody (anualizací × 12 přes stejnou logiku jako roční přepočet — výdajový paušál se stropem 2 M příjmu, odpočty, dětské slevy, minimální vyměřovací základy pojistného — pak vydělené 12). Čistý příjem = zisk (tržby − skutečné náklady) minus odhadnuté odvody, tj. reálná hotovost, co zbyde. Zobrazuje se vždy nezávisle na roku zvoleném v přepínači. (#217, #219)
+
+### Fixed
+
+- **iDoklad — import vydané faktury přebírá její skutečný bankovní účet.** Při více účtech téže měny import dosud vždy dosadil výchozí účet měny, takže faktura vystavená např. s účtem Fio se po importu mohla zobrazit s výchozím účtem RB. Nově se účet hledá podle historických údajů `MyAddress` konkrétního dokladu (číslo účtu + kód banky, stejná normalizace jako v bankovním modulu, kód banky umí odvodit i z českého IBANu); výchozí účet měny je jen fallback při chybějícím nebo nejednoznačném účtu. (#216)
+- **Import ISDOC 5.x.** Parser měl namespace natvrdo na 6.x (`…/namespace/2013`), takže u staršího ISDOC 5.2 (`…/namespace/invoice`) nenašel `<ID>` a spadl na zavádějící „Chybí ISDOC ID (varsymbol)", přestože doklad oba elementy obsahoval. Namespace se nově bere z kořene dokumentu (struktura čtených elementů je mezi 5.x a 6.x shodná), u skutečně neznámého namespace parser vrací jasnou hlášku. (#208)
+- **Bankovní modul u účtů se stejným číslem lišících se kódem banky (návazně na #206).** Seznam výpisů i přehled stavů na účtech (včetně měsíčních grafů) nově správně rozlišují účty se shodným číslem podle kódu banky — výpisy si drží kód banky, filtrují se i podle něj a stavy/grafy se zobrazí pro všechny účty, ne jen pro výchozí. Kontrola jednoznačnosti při přiřazení „staršího výpisu bez kódu banky" byla sjednocena do jednoho helperu. (#209, #210, #212, #214)
+
 ## [4.46.1] — 2026-07-16
 
 ### Fixed
