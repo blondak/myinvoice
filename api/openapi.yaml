@@ -4794,6 +4794,37 @@ paths:
             application/pdf:
               schema: { type: string, format: binary }
 
+  /api/v1/reports/oss/preview:
+    get:
+      tags: [Reports]
+      summary: Náhled OSS přiznání
+      description: Kvartální podklad One Stop Shop z ručně označených řádků vydaných faktur.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, required: true, schema: { type: integer, minimum: 2020, maximum: 2050 } }
+        - { in: query, name: quarter, required: true, schema: { type: integer, minimum: 1, maximum: 4 } }
+      responses:
+        '200':
+          description: OSS souhrn podle zemí a sazeb
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OssPreview' }
+
+  /api/v1/reports/oss:
+    get:
+      tags: [Reports]
+      summary: OSS XML export
+      description: EPO XML pro OSS EU režim (OSSEI1) z ručně označených řádků vydaných faktur. Běžná plnění generuje jako VetaR a opravy minulých období jako VetaO.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - { in: query, name: year, required: true, schema: { type: integer, minimum: 2020, maximum: 2050 } }
+        - { in: query, name: quarter, required: true, schema: { type: integer, minimum: 1, maximum: 4 } }
+      responses:
+        '200':
+          description: XML download
+          content:
+            application/xml: {}
+
   /api/v1/logbook/cars:
     get:
       tags: [Logbook]
@@ -5100,6 +5131,56 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    OssPreview:
+      type: object
+      required: [period, settings, state, summary, countries, corrections, warnings]
+      properties:
+        period:
+          type: object
+          required: [year, quarter, start, end, label, submission_deadline]
+          properties:
+            year: { type: integer }
+            quarter: { type: integer, minimum: 1, maximum: 4 }
+            start: { type: string, format: date }
+            end: { type: string, format: date }
+            label: { type: string }
+            submission_deadline: { type: string, format: date }
+        settings: { type: object, additionalProperties: true }
+        state: { type: object, additionalProperties: true }
+        summary:
+          type: object
+          properties:
+            return_currency: { type: string, example: EUR }
+            total_base: { type: number }
+            total_vat: { type: number }
+            total_corrections: { type: number }
+            total_payable: { type: number }
+            invoice_count: { type: integer }
+            row_count: { type: integer }
+            correction_row_count: { type: integer }
+            invalid_correction_count: { type: integer }
+        countries:
+          type: array
+          items: { type: object, additionalProperties: true }
+        corrections:
+          type: array
+          items:
+            type: object
+            required: [period, year, quarter, state_consumption, correction, count, rows]
+            properties:
+              period: { type: string, pattern: '^[0-9]{4}Q[1-4]$' }
+              year: { type: integer }
+              quarter: { type: integer, minimum: 1, maximum: 4 }
+              state_consumption: { type: string, minLength: 2, maxLength: 2 }
+              correction: { type: number, description: Rozdíl DPH v EUR, může být záporný. }
+              count: { type: integer }
+              rows:
+                type: array
+                items: { type: object, additionalProperties: true }
+        warnings:
+          type: array
+          items: { type: string }
+
     VatClassificationInput:
       type: object
       properties:
@@ -6665,6 +6746,15 @@ components:
           description: "`discount` = systémově vygenerovaný záporný řádek „Sleva X %\" z `discount_percent` faktury (po sazbách DPH). Needituj ho ručně."
         order_index: { type: integer }
         linked_work_report_id: { type: integer, nullable: true }
+        oss_applicable: { type: boolean }
+        oss_consumer_country: { type: string, nullable: true, minLength: 2, maxLength: 2 }
+        oss_rate_type: { type: string, nullable: true, enum: [standard, reduced, second_reduced, parking, zero] }
+        oss_supply_type: { type: string, nullable: true, enum: [goods, services] }
+        oss_exchange_rate: { type: number, nullable: true }
+        oss_exchange_rate_date: { type: string, format: date, nullable: true }
+        oss_taxable_amount_return: { type: number, nullable: true, description: Základ daně přepočtený do EUR. }
+        oss_vat_amount_return: { type: number, nullable: true, description: DPH přepočtená do EUR. }
+        oss_original_period: { type: string, nullable: true, pattern: '^[0-9]{4}Q[1-4]$', description: Původní období opravy; prázdné znamená běžné plnění VetaR. }
 
     InvoiceItemInput:
       type: object
@@ -6677,6 +6767,15 @@ components:
         vat_rate_id: { type: integer, description: "FK do /codebooks/vat-rates (kontextově k supplierovi)" }
         order_index: { type: integer, description: "Pořadí v rámci faktury. Default = pozice v poli." }
         vat_classification_code: { type: string, nullable: true, description: "Volitelný kód klasifikace plnění (DPH přiznání / KH). Když nevyplněno, server dopočítá default podle sazby + reverse charge + země klienta." }
+        oss_applicable: { type: boolean, default: false }
+        oss_consumer_country: { type: string, nullable: true, minLength: 2, maxLength: 2 }
+        oss_rate_type: { type: string, nullable: true, enum: [standard, reduced, second_reduced, parking, zero] }
+        oss_supply_type: { type: string, nullable: true, enum: [goods, services] }
+        oss_exchange_rate: { type: number, nullable: true }
+        oss_exchange_rate_date: { type: string, format: date, nullable: true }
+        oss_taxable_amount_return: { type: number, nullable: true }
+        oss_vat_amount_return: { type: number, nullable: true }
+        oss_original_period: { type: string, nullable: true, pattern: '^[0-9]{4}Q[1-4]$', description: Původní čtvrtletí pro opravu VetaO; musí být od Q3 2021. }
 
     RecurringTemplate:
       type: object

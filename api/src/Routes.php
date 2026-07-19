@@ -38,6 +38,7 @@ use MyInvoice\Action\Report\DphPriznaniAction;
 use MyInvoice\Action\Report\KontrolniHlaseniAction;
 use MyInvoice\Action\Report\DphBookAction;
 use MyInvoice\Action\Report\MonthlyExportAction;
+use MyInvoice\Action\Report\OssReportAction;
 use MyInvoice\Action\Report\SouhrnneHlaseniAction;
 use MyInvoice\Action\Report\IncomeTaxAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
@@ -502,6 +503,9 @@ final class Routes
         // Kniha DPH (interní VAT žurnál — NE EPO podání, vždy měsíční)
         $app->get    ('/api/reports/dph-book/preview', [DphBookAction::class, 'preview']);
         $app->get    ('/api/reports/dph-book',         [DphBookAction::class, 'download']);
+        // OSS (One Stop Shop) — etapa 1: kvartální dashboard z ručně označených řádků.
+        $app->get    ('/api/reports/oss/preview',      [OssReportAction::class, 'preview']);
+        $app->get    ('/api/reports/oss',              [OssReportAction::class, 'download']);
         // Měsíční export — background job: jeden ZIP s vybranými exporty za měsíc
         // (VF/PF PDF+ISDOC, výpisy PDF+GPC, Kniha DPH). Běží na pozadí (import_jobs).
         $app->get    ('/api/reports/monthly-export/preview',                  [MonthlyExportAction::class, 'preview']);

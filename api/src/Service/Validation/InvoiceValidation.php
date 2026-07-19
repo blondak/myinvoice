@@ -54,6 +54,25 @@ final class InvoiceValidation
                     continue;
                 }
                 $err = array_merge($err, InvoiceAmountPolicy::validateItem($item, $i));
+                if (!empty($item['oss_applicable'])) {
+                    $country = strtoupper(trim((string) ($item['oss_consumer_country'] ?? '')));
+                    if (!preg_match('/^[A-Z]{2}$/', $country)) {
+                        $err["items.{$i}.oss_consumer_country"][] = 'Země spotřeby musí být dvoupísmenný ISO kód';
+                    }
+
+                    $originalPeriod = strtoupper(trim((string) ($item['oss_original_period'] ?? '')));
+                    if ($originalPeriod !== '') {
+                        if (!preg_match('/^[0-9]{4}Q[1-4]$/', $originalPeriod) || $originalPeriod < '2021Q3') {
+                            $err["items.{$i}.oss_original_period"][] = 'Původní OSS období musí být ve formátu RRRRQn a nejdříve Q3 2021';
+                        } else {
+                            $taxDate = (string) ($data['tax_date'] ?? $data['issue_date'] ?? '');
+                            $currentPeriod = self::quarterCode($taxDate);
+                            if ($currentPeriod !== null && $originalPeriod >= $currentPeriod) {
+                                $err["items.{$i}.oss_original_period"][] = 'Původní OSS období musí předcházet období dokladu';
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -93,6 +112,18 @@ final class InvoiceValidation
         }
 
         return $err;
+    }
+
+    private static function quarterCode(string $date): ?string
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})-\d{2}$/', $date, $matches)) {
+            return null;
+        }
+        $month = (int) $matches[2];
+        if ($month < 1 || $month > 12) {
+            return null;
+        }
+        return sprintf('%sQ%d', $matches[1], intdiv($month - 1, 3) + 1);
     }
 
     private static function isValidDate(string $date): bool

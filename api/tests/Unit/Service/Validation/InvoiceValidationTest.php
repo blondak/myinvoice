@@ -149,4 +149,53 @@ final class InvoiceValidationTest extends TestCase
 
         self::assertArrayNotHasKey('amount_to_pay', $err);
     }
+
+    public function testOssItemAcceptsPreviousReturnPeriod(): void
+    {
+        $data = $this->validOssInvoice();
+
+        self::assertSame([], InvoiceValidation::invoice($data));
+    }
+
+    public function testOssItemRejectsCurrentReturnPeriod(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['oss_original_period'] = '2026Q3';
+
+        $err = InvoiceValidation::invoice($data);
+
+        self::assertArrayHasKey('items.0.oss_original_period', $err);
+    }
+
+    public function testOssItemRequiresIsoConsumerCountry(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['oss_consumer_country'] = 'Slovensko';
+
+        $err = InvoiceValidation::invoice($data);
+
+        self::assertArrayHasKey('items.0.oss_consumer_country', $err);
+    }
+
+    /** @return array<string,mixed> */
+    private function validOssInvoice(): array
+    {
+        return [
+            'invoice_type' => 'invoice',
+            'client_id' => 1,
+            'currency_id' => 1,
+            'issue_date' => '2026-07-15',
+            'due_date' => '2026-07-29',
+            'tax_date' => '2026-07-15',
+            'items' => [[
+                'description' => 'Syntetická OSS služba',
+                'quantity' => 1,
+                'unit_price_without_vat' => 100,
+                'vat_rate_id' => 1,
+                'oss_applicable' => true,
+                'oss_consumer_country' => 'SK',
+                'oss_original_period' => '2026Q2',
+            ]],
+        ];
+    }
 }
