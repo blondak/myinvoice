@@ -123,7 +123,7 @@ final class EmailNoticeReconcilerTest extends TestCase
      *
      * @return array{0:int,1:int} [statementId, txId]
      */
-    private function insertStatementWithTx(string $source, float $amount, string $vs, string $tag): array
+    private function insertStatementWithTx(string $source, float $amount, string $vs, string $tag, ?string $bankCode = null): array
     {
         $pdo = $this->db->pdo();
         $d = '2099-06-15';
@@ -135,7 +135,7 @@ final class EmailNoticeReconcilerTest extends TestCase
             $source,
             self::FILE_MARKER . $tag . '.gpc',
             hash('sha256', self::FILE_MARKER . $tag . $amount . $vs),
-            $this->account, $this->bankCode, $d,
+            $this->account, $bankCode ?? $this->bankCode, $d,
         ]);
         $statementId = (int) $pdo->lastInsertId();
 
@@ -214,6 +214,44 @@ final class EmailNoticeReconcilerTest extends TestCase
         // matched_count avízo-výpisu klesl na 0 → smazání výpisu se může nabídnout.
         $mc = (int) $this->db->pdo()->query("SELECT matched_count FROM bank_statements WHERE id = $emailStmt")->fetchColumn();
         self::assertSame(0, $mc);
+    }
+
+    /**
+     * Stejný účet u JINÉ banky není tentýž účet — převzetí se nesmí provést.
+     * Guard nesmí zabírat, když je kód banky na jedné straně neznámý (legacy avíza
+     * bez parsovatelného „účet/kód" mají bank_code NULL) — viz test níže.
+     */
+    public function testNoTakeOverWhenBankCodeDiffers(): void
+    {
+        $invA = $this->insertInvoice(self::VS_A, 1000.00);
+        [, $emailTx] = $this->insertStatementWithTx('email_notice', 1000.00, self::VS_A, 'email-other-bank', '0800');
+        $this->payments->recordPayment($invA, 1000.00, '2099-06-15', [
+            'source' => 'bank', 'bank_transaction_id' => $emailTx, 'created_by' => $this->userId,
+        ]);
+        $this->markTxMatched($emailTx, $invA, 'auto_exact');
+
+        [, $gpcTx] = $this->insertStatementWithTx('gpc', 1000.00, self::VS_A, 'gpc-other-bank');
+
+        self::assertNull($this->reconciler->takeOverFromEmailNotice($gpcTx));
+        self::assertSame(1, $this->paymentCountForTx($emailTx));
+        self::assertSame(0, $this->paymentCountForTx($gpcTx));
+    }
+
+    /** Legacy avízo bez bank_code (NULL) nesmí kvůli guardu přijít o převzetí. */
+    public function testTakeOverWhenCandidateBankCodeUnknown(): void
+    {
+        $invA = $this->insertInvoice(self::VS_A, 1000.00);
+        [, $emailTx] = $this->insertStatementWithTx('email_notice', 1000.00, self::VS_A, 'email-null-bank', '');
+        $this->payments->recordPayment($invA, 1000.00, '2099-06-15', [
+            'source' => 'bank', 'bank_transaction_id' => $emailTx, 'created_by' => $this->userId,
+        ]);
+        $this->markTxMatched($emailTx, $invA, 'auto_exact');
+
+        [, $gpcTx] = $this->insertStatementWithTx('gpc', 1000.00, self::VS_A, 'gpc-null-bank');
+
+        self::assertNotNull($this->reconciler->takeOverFromEmailNotice($gpcTx));
+        self::assertSame(1, $this->paymentCountForTx($gpcTx));
+        self::assertSame(0, $this->paymentCountForTx($emailTx));
     }
 
     public function testGpcTakesOverIdokladPaymentAndMarksSecondaryIgnored(): void

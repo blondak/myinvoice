@@ -99,13 +99,6 @@ final class StartIdokladImportAction
         ], 201);
     }
 
-    private static function dateOrNull(mixed $value): ?string
-    {
-        $value = trim((string) ($value ?? ''));
-        if ($value === '') return null;
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
-    }
-
     /**
      * Detached spawn — Windows přes proc_open DETACHED_PROCESS, Linux přes nohup.
      * Worker pak běží nezávisle na request lifecycle. Per memory:

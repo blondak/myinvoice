@@ -203,11 +203,30 @@ onMounted(() => {
   load()
 })
 
-// E-mailová avíza jsou měsíční agregát (statement_date = 1. den měsíce), proto
-// u nich nedává smysl ukazovat konkrétní datum — zobrazíme název měsíce
-// (sdílený `monthLabel` níže přijímá 'YYYY-MM').
+// E-mailová avíza a iDoklad pohyby jsou měsíční agregát, proto u nich nedává smysl
+// ukazovat konkrétní datum — zobrazíme název měsíce (sdílený `monthLabel` níže
+// přijímá 'YYYY-MM').
 function statementDateLabel(s: BankStatement): string {
-  return s.source === 'email_notice' ? monthLabel((s.statement_date ?? '').slice(0, 7)) : formatDate(s.statement_date)
+  return isVirtualSource(s) ? monthLabel((s.statement_date ?? '').slice(0, 7)) : formatDate(s.statement_date)
+}
+
+// Virtuální (sekundární) zdroje — nejde o nahraný soubor z banky, ale o agregát.
+function isVirtualSource(s: BankStatement): boolean {
+  return s.source === 'email_notice' || s.source === 'idoklad'
+}
+
+// Badge zdroje pro ne-GPC výpisy; GPC (výchozí zdroj) badge nemá.
+function sourceBadge(s: BankStatement): { label: string; hint: string } | null {
+  if (s.source === 'email_notice') return { label: t('bank.email_notice_badge'), hint: t('bank.email_notice_hint') }
+  if (s.source === 'pdf') return { label: t('bank.pdf_source_badge'), hint: t('bank.pdf_source_hint') }
+  if (s.source === 'idoklad') return { label: t('bank.idoklad_source_badge'), hint: t('bank.idoklad_source_hint') }
+  return null
+}
+
+// Položky převzaté oficiálním výpisem zůstávají jako 'ignored' — jsou vyřešené,
+// jen ne „spárované". Bez nich by sekundární výpis nikdy nezezelenal.
+function isFullyResolved(s: BankStatement): boolean {
+  return s.matched_count + (s.ignored_count ?? 0) >= s.transaction_count
 }
 
 // Seskupení výpisů po měsících (YYYY-MM z statement_date), zachová pořadí ze
@@ -410,13 +429,9 @@ async function onFileSelected(e: Event) {
             <td class="px-3 py-2 text-xs">
               <span class="inline-flex items-center gap-1.5">
                 <span>{{ statementDateLabel(s) }}</span>
-                <span v-if="s.source === 'email_notice'" :title="t('bank.email_notice_hint')"
+                <span v-if="sourceBadge(s)" :title="sourceBadge(s)!.hint"
                   class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
-                  {{ t('bank.email_notice_badge') }}
-                </span>
-                <span v-else-if="s.source === 'pdf'" :title="t('bank.pdf_source_hint')"
-                  class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
-                  {{ t('bank.pdf_source_badge') }}
+                  {{ sourceBadge(s)!.label }}
                 </span>
                 <span v-if="s.statement_number" class="text-neutral-400">#{{ s.statement_number }}</span>
               </span>
@@ -434,7 +449,7 @@ async function onFileSelected(e: Event) {
             <td class="px-3 py-2 text-center">{{ s.transaction_count }}</td>
             <td class="px-3 py-2 text-center">
               <span class="text-xs px-2 py-0.5 rounded font-medium"
-                :class="s.matched_count === s.transaction_count ? 'bg-success-50 text-success-600' : 'bg-warning-50 text-warning-600'">
+                :class="isFullyResolved(s) ? 'bg-success-50 text-success-600' : 'bg-warning-50 text-warning-600'">
                 {{ s.matched_count }} / {{ s.transaction_count }}
               </span>
             </td>
@@ -477,13 +492,9 @@ async function onFileSelected(e: Event) {
           <div class="flex items-baseline justify-between gap-2">
             <div class="font-medium text-neutral-900 flex items-center gap-1.5 flex-wrap">
               {{ statementDateLabel(s) }}<span v-if="s.statement_number" class="text-neutral-400 ml-1">#{{ s.statement_number }}</span>
-              <span v-if="s.source === 'email_notice'" :title="t('bank.email_notice_hint')"
+              <span v-if="sourceBadge(s)" :title="sourceBadge(s)!.hint"
                 class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
-                {{ t('bank.email_notice_badge') }}
-              </span>
-              <span v-else-if="s.source === 'pdf'" :title="t('bank.pdf_source_hint')"
-                class="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
-                {{ t('bank.pdf_source_badge') }}
+                {{ sourceBadge(s)!.label }}
               </span>
               <span v-if="s.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ s.currency }}</span>
             </div>
@@ -495,7 +506,7 @@ async function onFileSelected(e: Event) {
           <div class="flex items-baseline justify-between gap-2 mt-2">
             <span class="text-xs text-neutral-500">{{ s.transaction_count }} transakcí</span>
             <span class="text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap"
-              :class="s.matched_count === s.transaction_count ? 'bg-success-50 text-success-600' : 'bg-warning-50 text-warning-600'">
+              :class="isFullyResolved(s) ? 'bg-success-50 text-success-600' : 'bg-warning-50 text-warning-600'">
               {{ s.matched_count }} / {{ s.transaction_count }} {{ t('bank.matched') }}
             </span>
           </div>

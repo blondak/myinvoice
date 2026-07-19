@@ -427,7 +427,13 @@ final class BankStatementAction
                         AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
                           = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
                         AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
-                      LIMIT 1) AS account_label
+                      LIMIT 1) AS account_label,
+                    -- Položky převzaté oficiálním výpisem (EmailNoticeReconciler) zůstávají
+                    -- na sekundárním výpisu jako 'ignored'. Bez nich by avízo/iDoklad výpis
+                    -- nikdy nedosáhl matched_count === transaction_count a visel by navždy
+                    -- na oranžovém badge.
+                    (SELECT COUNT(*) FROM bank_transactions bt2
+                      WHERE bt2.statement_id = bs.id AND bt2.match_status = 'ignored') AS ignored_count
                FROM bank_statements bs
               WHERE $scopeSql$filterSql
               ORDER BY bs.statement_date DESC, bs.id DESC
@@ -439,6 +445,7 @@ final class BankStatementAction
             $r['id'] = (int) $r['id'];
             $r['transaction_count'] = (int) $r['transaction_count'];
             $r['matched_count'] = (int) $r['matched_count'];
+            $r['ignored_count'] = (int) $r['ignored_count'];
             $r['prev_balance'] = (float) $r['prev_balance'];
             $r['curr_balance'] = (float) $r['curr_balance'];
             $r['has_file'] = (bool) $r['has_file'];
@@ -843,14 +850,14 @@ final class BankStatementAction
         }
         $fileName = (string) $ownedRow['file_name'];
 
-        // Avízo-výpis (e-mailová bankovní avíza) smí jít smazat jen když na něm nezbývá
-        // žádná spárovaná položka — typicky poté, co párování převzal oficiální GPC výpis
-        // (EmailNoticeReconciler). Smazání výpisu se spárovanými transakcemi by jinak
-        // osiřelo zaplacené faktury (invoice_payments.bank_transaction_id je ON DELETE
+        // Sekundární výpis (e-mailová avíza, iDoklad) smí jít smazat jen když na něm
+        // nezbývá žádná spárovaná položka — typicky poté, co párování převzal oficiální
+        // GPC výpis (EmailNoticeReconciler). Smazání výpisu se spárovanými transakcemi by
+        // jinak osiřelo zaplacené faktury (invoice_payments.bank_transaction_id je ON DELETE
         // SET NULL → platba zůstane, ztratí ale vazbu; payment_matches CASCADE → vazba
-        // přijaté faktury zmizí úplně). U GPC chování neměníme.
+        // přijaté faktury zmizí úplně). U GPC/PDF chování neměníme.
         // Počítáme ŽIVĚ (ne uložený matched_count) — odolné vůči stale hodnotě.
-        if ((string) $ownedRow['source'] === 'email_notice') {
+        if (in_array((string) $ownedRow['source'], ['email_notice', 'idoklad'], true)) {
             $matchedLive = (int) $pdo->query(
                 "SELECT COUNT(*) FROM bank_transactions
                   WHERE statement_id = " . (int) $id . "
@@ -860,7 +867,7 @@ final class BankStatementAction
                 return Json::error(
                     $response,
                     'has_matches',
-                    'Avízo-výpis má spárované položky. Nejdřív je rozpáruj (nebo nech převzít oficiálním GPC výpisem).',
+                    'Výpis má spárované položky. Nejdřív je rozpáruj (nebo nech převzít oficiálním GPC výpisem).',
                     409
                 );
             }
@@ -968,12 +975,12 @@ final class BankStatementAction
             return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
         }
 
-        // Avízo-výpis (virtuální, složený z e-mailových bankovních avíz) nemá originální
+        // Virtuální výpis (složený z e-mailových avíz nebo z iDoklad pohybů) nemá originální
         // PDF — přikládání PDF u něj nedává smysl. UI tlačítko skrývá, server pro jistotu blokuje.
         $srcStmt = $this->db->pdo()->prepare('SELECT source FROM bank_statements WHERE id = ?');
         $srcStmt->execute([$id]);
-        if ((string) $srcStmt->fetchColumn() === 'email_notice') {
-            return Json::error($response, 'unsupported', 'K avízo-výpisu nelze přikládat PDF.', 400);
+        if (in_array((string) $srcStmt->fetchColumn(), ['email_notice', 'idoklad'], true)) {
+            return Json::error($response, 'unsupported', 'K virtuálnímu výpisu nelze přikládat PDF.', 400);
         }
 
         $file = $request->getUploadedFiles()['file'] ?? null;

@@ -6430,7 +6430,7 @@ components:
       description: "Položka seznamu výpisů (GET /bank-statements). Bankovní spojení dodavatele je per-měna na /settings/currencies, ne tady."
       properties:
         id: { type: integer, format: int64 }
-        source: { type: string, enum: [gpc, email_notice], description: "Původ výpisu: gpc = oficiální GPC/ABO výpis z banky, email_notice = virtuální výpis složený z e-mailových bankovních avíz." }
+        source: { type: string, enum: [gpc, pdf, email_notice, idoklad], description: "Původ výpisu: gpc = oficiální GPC/ABO výpis z banky, pdf = výpis rozparsovaný z PDF (banka bez GPC exportu), email_notice = virtuální výpis složený z e-mailových bankovních avíz, idoklad = virtuální výpis z bankovních pohybů importovaných z iDokladu. gpc a pdf jsou autoritativní; u shodné platby ze sekundárního zdroje se úhrada převede na ně a sekundární pohyb dostane match_status=ignored." }
         file_name: { type: string, example: "vypis_2026_05.gpc" }
         account_number: { type: string, example: "1234567890/0100" }
         bank_code: { type: string, nullable: true, example: "0100", description: "Kód banky účtu — autoritativně z konfigurovaného účtu (currencies.bank_code), fallback z výpisu. GPC výpisy ho samy nenesou." }
@@ -6441,6 +6441,7 @@ components:
         curr_balance: { type: number, format: float }
         transaction_count: { type: integer }
         matched_count: { type: integer }
+        ignored_count: { type: integer, description: "Počet položek s match_status=ignored — typicky pohyby sekundárního zdroje, jejichž úhradu převzal oficiální GPC/PDF výpis." }
         imported_at: { type: string, format: date-time }
         has_file: { type: boolean, description: "True pokud server má uložený originál výpisu — ke stažení přes /bank-statements/{id}/download." }
         has_pdf: { type: boolean, description: "True pokud je nahrán doprovodný PDF výpis." }

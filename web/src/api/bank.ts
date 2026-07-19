@@ -2,8 +2,8 @@ import { api } from './client'
 
 export interface BankStatement {
   id: number
-  /** Zdroj výpisu: 'gpc' = nahraný/importovaný GPC výpis, 'pdf' = rozparsovaný PDF výpis (banka bez GPC exportu), 'email_notice' = měsíční agregát e-mailových avíz. */
-  source?: 'gpc' | 'pdf' | 'email_notice'
+  /** Zdroj výpisu: 'gpc' = nahraný/importovaný GPC výpis, 'pdf' = rozparsovaný PDF výpis (banka bez GPC exportu), 'email_notice' = měsíční agregát e-mailových avíz, 'idoklad' = měsíční agregát pohybů z iDokladu. */
+  source?: 'gpc' | 'pdf' | 'email_notice' | 'idoklad'
   file_name: string
   account_number: string
   /** Kód banky (4místný), pokud je u výpisu evidovaný — pro zobrazení „účet / kód". */
@@ -17,6 +17,8 @@ export interface BankStatement {
   curr_balance: number
   transaction_count: number
   matched_count: number
+  /** Položky převzaté oficiálním výpisem (match_status='ignored') — u sekundárních zdrojů. */
+  ignored_count?: number
   imported_at: string
   has_file: boolean
   /** Je k výpisu přiložené PDF (bank_statements.pdf_content)? */
@@ -29,8 +31,8 @@ export type MatchStatus = 'unmatched' | 'auto_exact' | 'auto_partial' | 'manual'
 
 export interface BankTransaction {
   id: number
-  /** 'statement' = z nahraného výpisu, 'email_notice' = z e-mailového avíza. */
-  source?: 'statement' | 'email_notice'
+  /** 'statement' = z nahraného výpisu, 'email_notice' = z e-mailového avíza, 'idoklad' = z pohybu importovaného z iDokladu. */
+  source?: 'statement' | 'email_notice' | 'idoklad'
   statement_id: number
   posted_at: string
   amount: number
