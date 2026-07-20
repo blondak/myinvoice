@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.49.2] — 2026-07-20
+
+### Fixed
+
+- **Právnická osoba nemohla podat přiznání k DPH, kontrolní ani souhrnné hlášení — EPO podání odmítlo.** Ve `VetaP` se atribut `typ_ds` (typ daňového subjektu: F = fyzická, P = právnická osoba) plnil z databázového sloupce `data_box_type`, což je ale typ *datové schránky* (OVM/PO/FO) — jiná věc se zavádějícím jménem. Ten sloupec navíc nemá nikde v UI editor, jen projde přenosovým payloadem nastavení, takže je v praxi vždy prázdný. Fallback proto padal na „F" úplně vždy a každé s.r.o. dostalo na Daňovém portálu tvrdou chybu „U fyzické osoby musí být kmenová část DIČ tvořena RČ nebo vlastním číslem plátce" — DIČ právnické osoby je odvozené od IČO, ne od rodného čísla, takže podání neprošlo vůbec. `typ_ds` se nově odvozuje z `taxpayer_type` (fo/po), tedy z pole, které uživatel v nastavení skutečně vyplňuje a které se o pár řádků dál už používalo pro volbu mezi obchodní firmou a jménem/příjmením. Týká se DPHDP3, DPHKH1 i DPHSHV. Jde čistě o generátor XML — žádná migrace, stačí nasadit a výkaz znovu vyexportovat.
+
 ## [4.49.1] — 2026-07-20
 
 ### Fixed
