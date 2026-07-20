@@ -215,7 +215,20 @@ final class SettingsAction
 
         $body = (array) ($request->getParsedBody() ?? []);
         if (!$this->supplierHasColumn('oss_enabled')) {
-            foreach (['oss_enabled', 'oss_valid_from', 'oss_valid_to', 'oss_identification_country', 'oss_return_currency'] as $f) {
+            // Bez migrace 0137 sloupce neexistují. Formulář nastavení posílá OSS pole vždy
+            // (byť prázdná), takže tiché zahození je u výchozích hodnot v pořádku — ale pokus
+            // OSS reálně nastavit musí selhat hlasitě. Dřív se vracelo 200 a přepínač se jen
+            // vrátil zpět bez jakékoli hlášky.
+            $ossFields = ['oss_enabled', 'oss_valid_from', 'oss_valid_to', 'oss_identification_country', 'oss_return_currency'];
+            $wantsOss = !empty($body['oss_enabled']);
+            foreach (['oss_valid_from', 'oss_valid_to', 'oss_identification_country'] as $f) {
+                if (trim((string) ($body[$f] ?? '')) !== '') $wantsOss = true;
+            }
+            if ($wantsOss) {
+                return Json::error($response, 'migration_required',
+                    'Nastavení OSS vyžaduje databázovou migraci 0137_oss_foundation.sql. Spusťte php api/bin/migrate.php.', 409);
+            }
+            foreach ($ossFields as $f) {
                 unset($body[$f]);
             }
         }

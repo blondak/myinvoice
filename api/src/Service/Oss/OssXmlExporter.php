@@ -38,9 +38,6 @@ final class OssXmlExporter
         if ($vatNumber === '') {
             $warnings[] = 'Chybí DIČ dodavatele. OSS XML vyžaduje kmenovou část DIČ.';
         }
-        if (empty($preview['settings']['oss_enabled'])) {
-            $warnings[] = 'OSS režim není v nastavení dodavatele aktivní.';
-        }
         if (($preview['summary']['return_currency'] ?? 'EUR') !== 'EUR') {
             $warnings[] = 'EPO OSS očekává částky v EUR. Zkontrolujte měnu podání v nastavení OSS.';
         }

@@ -27,9 +27,8 @@ final class OssLedgerService
             return $this->emptyPreview($year, $quarter, $start, $end, $settings, $warnings);
         }
 
-        if (empty($settings['oss_enabled'])) {
-            $warnings[] = 'OSS není v nastavení dodavatele aktivní. Dashboard zatím zobrazuje jen ručně označené OSS řádky.';
-        }
+        // Vypnutý OSS sem už nedojde — OssReportAction vrací 409 dřív, než se preview zavolá,
+        // a UI stránku bez zapnutého režimu vůbec nezpřístupní. Varování proto odpadlo.
 
         $rows = $this->fetchRows($supplierId, $start, $end);
         $countries = [];
@@ -239,6 +238,15 @@ final class OssLedgerService
         );
         $stmt->execute([$supplierId, $start, $end]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * OSS je opt-in v nastavení firmy. Endpointy se na tohle ptají, aby nezaregistrovanému
+     * dodavateli nevracely OSS podklad — UI ho ze stejného důvodu skrývá z menu i routeru.
+     */
+    public function isEnabledFor(int $supplierId): bool
+    {
+        return (bool) ($this->supplierSettings($supplierId)['oss_enabled'] ?? false);
     }
 
     /** @return array<string,mixed> */

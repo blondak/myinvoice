@@ -39,6 +39,10 @@ final class OssReportAction
         if ($year < 2020 || $year > 2050 || $quarter < 1 || $quarter > 4) {
             return Json::error($response, 'validation_failed', 'Neplatný rok/čtvrtletí.', 400);
         }
+        if (!$this->oss->isEnabledFor($supplierId)) {
+            return Json::error($response, 'oss_disabled',
+                'OSS režim není v nastavení firmy aktivní.', 409);
+        }
 
         try {
             return Json::ok($response, $this->oss->preview($supplierId, $year, $quarter));
@@ -60,6 +64,10 @@ final class OssReportAction
         $quarter = (int) ($q['quarter'] ?? (int) ceil(((int) date('n')) / 3));
         if ($year < 2020 || $year > 2050 || $quarter < 1 || $quarter > 4) {
             return Json::error($response, 'validation_failed', 'Neplatný rok/čtvrtletí.', 400);
+        }
+        if (!$this->oss->isEnabledFor($supplierId)) {
+            return Json::error($response, 'oss_disabled',
+                'OSS režim není v nastavení firmy aktivní.', 409);
         }
 
         try {

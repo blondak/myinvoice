@@ -377,6 +377,9 @@ function blankItem(): InvoiceItem {
     oss_consumer_country: null,
     oss_rate_type: 'standard',
     oss_supply_type: 'goods',
+    // Bez explicitního null by pole zůstalo undefined a select „Oprava období" by se
+    // netrefil do <option :value="null">, takže by se vykreslil prázdný.
+    oss_original_period: null,
   }
 }
 
@@ -1738,29 +1741,33 @@ async function deleteDraft() {
                 <button type="button" @click="moveDown(i)" :disabled="i === form.items.length - 1" class="block w-5 h-4 hover:text-neutral-700 disabled:opacity-30">▼</button>
               </td>
               <td class="px-3 py-2">
-                <textarea v-model="item.description" rows="1" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
-                  class="w-full px-2 py-1.5 border border-neutral-300 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
-                <div v-if="ossAvailable || item.oss_applicable" class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <label class="inline-flex items-center gap-1.5 text-neutral-600">
+                <!-- OSS na jednom řádku nad popisem: nezalamuje se (flex-nowrap), při nedostatku
+                     místa se vodorovně odroluje, aby řádek položky nerostl do výšky. -->
+                <div v-if="ossAvailable || item.oss_applicable"
+                  class="mb-1.5 flex flex-nowrap items-center gap-1.5 overflow-x-auto text-xs">
+                  <label class="inline-flex shrink-0 items-center gap-1 text-neutral-600">
                     <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600"
                       @change="onOssApplicableChange(item)" />
                     <span>{{ t('invoice.oss.enabled') }}</span>
                   </label>
                   <template v-if="item.oss_applicable">
-                    <input v-model="item.oss_consumer_country" type="text" maxlength="2" :placeholder="t('invoice.oss.country')"
-                      class="w-16 h-8 px-2 border border-neutral-300 rounded text-xs font-mono uppercase" />
-                    <select v-model="item.oss_rate_type" class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                    <input v-model="item.oss_consumer_country" type="text" maxlength="2"
+                      :placeholder="t('invoice.oss.country')" :title="t('invoice.oss.country')"
+                      class="w-11 h-7 shrink-0 px-1 border border-neutral-300 rounded text-xs text-center font-mono uppercase" />
+                    <select v-model="item.oss_rate_type" :title="t('invoice.oss.rate_type')"
+                      class="h-7 shrink-0 px-1 border border-neutral-300 rounded text-xs bg-surface">
                       <option value="standard">{{ t('invoice.oss.rate_standard') }}</option>
                       <option value="reduced">{{ t('invoice.oss.rate_reduced') }}</option>
                       <option value="second_reduced">{{ t('invoice.oss.rate_second_reduced') }}</option>
                       <option value="parking">{{ t('invoice.oss.rate_parking') }}</option>
                     </select>
-                    <select v-model="item.oss_supply_type" class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                    <select v-model="item.oss_supply_type" :title="t('invoice.oss.supply_type')"
+                      class="h-7 shrink-0 px-1 border border-neutral-300 rounded text-xs bg-surface">
                       <option value="goods">{{ t('invoice.oss.goods') }}</option>
                       <option value="services">{{ t('invoice.oss.services') }}</option>
                     </select>
                     <select v-model="item.oss_original_period" :title="t('invoice.oss.original_period')"
-                      class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                      class="h-7 shrink-0 px-1 border border-neutral-300 rounded text-xs bg-surface">
                       <option :value="null">{{ t('invoice.oss.current_period') }}</option>
                       <option v-if="item.oss_original_period && !ossOriginalPeriodOptions.some(o => o.value === item.oss_original_period)"
                         :value="item.oss_original_period">{{ item.oss_original_period }}</option>
@@ -1768,6 +1775,8 @@ async function deleteDraft() {
                     </select>
                   </template>
                 </div>
+                <textarea v-model="item.description" rows="1" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
+                  class="w-full px-2 py-1.5 border border-neutral-300 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
               </td>
               <td class="px-3 py-2">
                 <input v-model="item.quantity" v-math type="text" inputmode="decimal"
