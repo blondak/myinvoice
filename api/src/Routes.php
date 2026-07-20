@@ -61,6 +61,7 @@ use MyInvoice\Action\Invoice\CancelInvoiceAction;
 use MyInvoice\Action\Invoice\CreateInvoiceAction;
 use MyInvoice\Action\Invoice\DeleteInvoiceAction;
 use MyInvoice\Action\Invoice\ExportCsvAction;
+use MyInvoice\Action\Invoice\ExportSelectedPdfAction;
 use MyInvoice\Action\Invoice\InvoiceActivityAction;
 use MyInvoice\Action\Invoice\GetInvoiceAction;
 use MyInvoice\Action\Invoice\InvoiceIsdocAction;
@@ -281,6 +282,7 @@ final class Routes
         // Invoices (M3 — draft + editor + sumace; vystavení/odeslání/PDF přijde v M4)
         $app->get    ('/api/invoices',              ListInvoicesAction::class);
         $app->get    ('/api/invoices/export.csv',   ExportCsvAction::class);
+        $app->get    ('/api/invoices/export.pdf',   ExportSelectedPdfAction::class);
         // Veřejný alias admin exportu (bearer allowlist pokrývá /api/invoices/*):
         // ?format=pdf-zip|isdoc|pohoda|stereo & month=YYYY-MM nebo period=quarterly&year&quarter
         $app->get    ('/api/invoices/export',       ExportAction::class);

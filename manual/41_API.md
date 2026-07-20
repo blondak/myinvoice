@@ -186,8 +186,12 @@ curl -X POST https://mojefirma.example/api/v1/settings/supplier/logo \
 - **`GET /api/v1/invoices/export?format=pdf-zip|isdoc|pohoda|stereo&month=YYYY-MM`**
   — hromadný export vystavených dokladů za měsíc (nebo
   `period=quarterly&year=YYYY&quarter=1..4`). PDF ZIP, ISDOC, Pohoda či Stereo
-  XML; `date_by=tax` zařazuje dle DUZP (shodně s výkazy DPH). Stejná logika
-  jako interní `Daně → Hromadný export`, dostupná integračně.
+  XML; `date_by=tax` zařazuje dle DUZP (shodně s výkazy DPH). Pro PDF lze
+  `merge_pdf=true` vrátit jeden soubor místo ZIPu a současně `sign_pdf=true`
+  podepsat výsledný celek.
+- **`GET /api/v1/invoices/export.pdf?ids=125,124,119`** — spojí nejvýše 100
+  konkrétních faktur do jednoho PDF v uvedeném pořadí. Výstup neobsahuje přílohy,
+  ISDOC ani výkazy práce. Volitelné `sign_pdf=true` podepíše výsledný soubor.
 - **`GET /api/v1/invoices/{id}/isdoc`** — ISDOC XML jedné vystavené faktury
   (koncept nelze, 400). PDF varianta existovala už dřív
   (`GET /api/v1/invoices/{id}/pdf`).

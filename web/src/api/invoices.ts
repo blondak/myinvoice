@@ -385,6 +385,15 @@ export const invoicesApi = {
     return api.get<Blob>('/invoices/export.csv', { params, responseType: 'blob' })
   },
 
+  exportSelectedPdf: (ids: number[], signPdf = false) =>
+    api.get<Blob>('/invoices/export.pdf', {
+      params: {
+        ids: ids.join(','),
+        ...(signPdf ? { sign_pdf: 1 } : {}),
+      },
+      responseType: 'blob',
+    }),
+
   get:    (id: number) => api.get<Invoice>(`/invoices/${id}`).then(r => r.data),
   /**
    * Vrátí náhled, jaké číslo faktura dostane při Vystavení (BEZ inkrementu counteru).
