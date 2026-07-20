@@ -317,6 +317,11 @@ const selectableVatRates = computed(() => vatRates.value.filter(r => !r.is_rever
 // objevilo na snížené sazbě DPHDP3 s 19% daní. Řádky bez OSS proto vidí jen CZ sazby.
 const domesticVatRates = computed(() => selectableVatRates.value.filter(r => r.country === 'CZ'))
 
+// OSS je opt-in v nastavení firmy (default vypnuto) — bez registrace se v editoru vůbec
+// nenabízí. Řádek, který OSS příznak už nese, ovládací prvky ukáže i po vypnutí režimu,
+// aby zpětně upravitelný doklad nešlo editovat naslepo.
+const ossAvailable = computed(() => supplierStore.currentSupplier?.oss_enabled === true)
+
 function vatRatesForItem(item: InvoiceItem): VatRate[] {
   return item.oss_applicable ? selectableVatRates.value : domesticVatRates.value
 }
@@ -1735,7 +1740,7 @@ async function deleteDraft() {
               <td class="px-3 py-2">
                 <textarea v-model="item.description" rows="1" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
                   class="w-full px-2 py-1.5 border border-neutral-300 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
-                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <div v-if="ossAvailable || item.oss_applicable" class="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <label class="inline-flex items-center gap-1.5 text-neutral-600">
                     <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600"
                       @change="onOssApplicableChange(item)" />
@@ -1820,7 +1825,7 @@ async function deleteDraft() {
               <textarea v-model="item.description" rows="2" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
                 class="w-full px-3 py-2 border border-neutral-300 rounded text-sm resize-y min-h-[44px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
             </div>
-            <div class="border border-neutral-200 rounded-md p-2">
+            <div v-if="ossAvailable || item.oss_applicable" class="border border-neutral-200 rounded-md p-2">
               <label class="inline-flex items-center gap-2 text-sm">
                 <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600"
                   @change="onOssApplicableChange(item)" />

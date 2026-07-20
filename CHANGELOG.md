@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.48.0] — 2026-07-20
+
+### Added
+
+- **OSS (One Stop Shop) — ruční evidence a EPO export.** Nový režim pro přeshraniční B2C prodej do EU: dodavatel se zaregistruje v **Nastavení → firma** (režim, datum platnosti, stát identifikace, měna přiznání) a na řádcích faktury pak označuje plnění spadající do OSS — stát spotřeby, typ plnění a sazby, kurz a případné původní období u oprav se ukládají jako **snímek na řádku**, takže pozdější změna číselníků výkaz nerozhodí. Kvartální přehled **Daně → OSS přiznání** sumuje podle státu, sazby a typu plnění a exportuje řádné přiznání i opravy minulých období do XML **OSSEI1** pro portál EPO, včetně validace proti přiloženému oficiálnímu XSD. OSS údaje si nese i dobropis a hromadné opětovné vystavení. Zařazení řádku, volba zahraniční sazby a kurzový snímek jsou záměrně ruční — automatické posouzení B2B/B2C, hlídání limitu 10 000 EUR ani režim IOSS tato etapa neřeší. (#223, migrace 0137)
+- **Hromadný PDF export vystavených faktur.** Vybrané faktury lze sloučit do jednoho PDF, volitelně s elektronickým podpisem výsledku, a v seznamu přibylo zaškrtnutí všech faktur v měsíčním bloku. Sloučený export za období má strop 200 faktur — na rozdíl od ZIPu, který skládá už nacachovaná PDF, se každý doklad renderuje znovu, takže kvartál o stovkách faktur uměl přetáhnout timeout requestu; nad strop export vrátí `too_many` s doporučením ZIPu. Do sloučeného PDF vstupují jen vystavené doklady, aby se omylem nepodepsal koncept s placeholderem `DRAFT-{id}`. (#224)
+- **Vazba faktury na bankovní operaci v detailu dokladu.** U uhrazené faktury je nově vidět, která bankovní operace ji zaplatila, včetně zdroje výpisu. Dotaz je kotvený na tenanta přes `JOIN invoices ON supplier_id`, takže cizí dodavatel vazbu nevidí ani se znalostí ID faktury. (#222)
+- **iDoklad — import bankovních pohybů bez duplicit.** Import z iDokladu umí přírůstkově načíst bankovní pohyby jako virtuální výpis (`source = idoklad`), omezit je obdobím a bezpečně je spárovat s fakturami. Pohyby převzaté později oficiálním GPC/PDF výpisem zůstávají jako `ignored`, takže sekundární výpis už nevisí navždy na oranžovém badge. (#220)
+
+### Fixed
+
+- **OSS se nabízel i bez registrace do režimu.** Přepínač OSS v nastavení firmy sice existoval (a je ve výchozím stavu vypnutý), ale řádky faktury nabízely OSS zaškrtávátko každému. Nově se OSS ovládání v editoru zobrazí až po zapnutí režimu; řádek, který příznak už nese, si prvky ponechá i po vypnutí, aby zpětná editace dokladu nebyla naslepo. Zároveň byla **doplněna chybějící routa a položka menu** `Daně → OSS přiznání` — stránka kvartálního přehledu byla v aplikaci přítomná, ale nebyla odnikud dosažitelná (manuál ji přitom už popisoval). Menu i routa respektují přepínač, takže bez registrace se OSS nenabízí vůbec.
+- **Zahraniční sazba DPH šla vybrat i na řádku mimo OSS.** U dodavatele s OSS se sazby načítají pro všechny státy, ale výběr na řádku je nefiltroval podle země. Cizí sazba na běžném řádku zůstala v tuzemské evidenci a podle prahu roku spadla do české klasifikace — DE 19 % se vykázalo na snížené sazbě DPHDP3 s 19% částkou daně, bez jakéhokoli varování. Nabídka je nově omezená na české sazby, dokud není řádek označený jako OSS, odškrtnutí OSS vrátí sazbu na výchozí a totéž pravidlo hlídá i serverová validace (zahraniční sazbu mimo OSS odmítne). Souhrnné řádky výkazu práce a materiálu jsou vždy tuzemské. (#223)
+- **Nulová OSS sazba rozbíjela uložení faktury.** Editor ji nabízel, ale backend ji odmítal, takže doklad s ní nešel uložit. Formulář OSSEI1 zná v `vat_rate_type_code` jen „Z" (základní) a „S" (sníženou), nulová sazba tam nemá kód — volba proto z nabídky zmizela. (#223)
+- **§ 42 varování v přiznání u čistě OSS dobropisu.** Kontrola data zařazení opravného dokladu se spouštěla i pro dobropis, jehož záporná DPH je celá zahraniční, a tím zbytečně zpochybňovala tuzemské přiznání. Nově se vyžaduje aspoň jeden ne-OSS řádek. (#223)
+
 ## [4.47.0] — 2026-07-18
 
 ### Added

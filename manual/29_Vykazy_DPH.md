@@ -9,6 +9,8 @@ Související výkazy a exporty mají v manuálu vlastní kapitoly: [Kniha DPH](
 [Hromadný export](34_Hromadny_export.md) (ZIP balíček pro účetní). Všechny najdeš v menu **Daně**.
 OSS najdeš samostatně jako **Daně → OSS přiznání**; jde o kvartální podklad
 z ručně označených řádků a XML export pro EPO formulář **OSSEI1** (EU režim).
+Režim je ve výchozím stavu vypnutý — dokud ho v **Nastavení → firma** nezapneš,
+nenabízí se ani v menu, ani na řádcích faktury.
 Export obsahuje běžná plnění (`VetaR`) i opravy minulých období (`VetaO`).
 Opravy se v editoru položky označují původním čtvrtletím a ve výkazu se
 zobrazují odděleně včetně celkového dopadu na DPH.

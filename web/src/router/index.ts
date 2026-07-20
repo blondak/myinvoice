@@ -71,6 +71,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'reports/income-tax',     name: 'reports-income-tax', component: () => import('@/pages/reports/IncomeTaxReport.vue') },
       { path: 'reports/submissions',    name: 'reports-submissions', component: () => import('@/pages/reports/TaxSubmissions.vue') },
       { path: 'reports/monthly-export', name: 'reports-monthly-export', component: () => import('@/pages/reports/MonthlyExportReport.vue') },
+      { path: 'reports/oss',            name: 'reports-oss',        component: () => import('@/pages/reports/OssReport.vue'), meta: { requiresOss: true } },
       { path: 'tax',                    name: 'tax-optimizer',      component: () => import('@/pages/tax/TaxOptimizer.vue') },
       { path: 'admin/email-templates',  name: 'admin-email-templates', component: () => import('@/pages/admin/EmailTemplates.vue'), meta: { adminOnly: true } },
       // Sekce E-maily — záložky: Odeslané / Šablony / Elektronické podpisy (vzor Codebooks)
@@ -175,6 +176,13 @@ router.beforeEach(async (to) => {
   // ho pošleme na dashboard, kde se zobrazí výzva k vytvoření prvního dodavatele.
   const requiresSupplier = to.matched.some((r) => r.meta.requiresSupplier)
   if (requiresSupplier && auth.isAuthenticated && !useSupplierStore().hasSupplier) {
+    return { name: 'home' }
+  }
+
+  // OSS gate: režim je opt-in v nastavení firmy (default vypnuto). Bez registrace nemá
+  // kvartální přehled co ukázat, takže na něj nepustíme ani přes přímou URL.
+  const requiresOss = to.matched.some((r) => r.meta.requiresOss)
+  if (requiresOss && auth.isAuthenticated && useSupplierStore().currentSupplier?.oss_enabled !== true) {
     return { name: 'home' }
   }
 
