@@ -110,6 +110,9 @@ final class VatLedgerService
     private function fetchSales(int $supplierId, string $start, string $end, bool $includeDrafts): array
     {
         $statusFilter = $includeDrafts ? "i.status != 'cancelled'" : "i.status NOT IN ('draft', 'cancelled')";
+        $ossFilter = $this->db->hasColumn('invoice_items', 'oss_applicable')
+            ? 'AND COALESCE(ii.oss_applicable, 0) = 0'
+            : '';
         // Práh základní/snížená sazba pro fallback klasifikaci — per rok období
         // (číselník daňových konstant, ne natvrdo 20.5).
         $bucket = $this->taxConstants->vatBucketThreshold((int) substr($start, 0, 4));
@@ -153,6 +156,7 @@ final class VatLedgerService
              WHERE i.supplier_id = ?
                AND {$statusFilter}
                AND i.invoice_type != 'proforma'
+               {$ossFilter}
                AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
           ORDER BY COALESCE(i.tax_date, i.issue_date), i.id, ii.id
         ");

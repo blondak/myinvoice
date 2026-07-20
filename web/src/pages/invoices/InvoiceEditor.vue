@@ -290,23 +290,49 @@ function supplierDueDate(issueDate: string): string {
 function defaultVatRateId(): number {
   // Neplátce DPH → vždy 0% Osvobozeno (rate_percent=0, !is_reverse_charge).
   if (!supplierIsVatPayer.value) {
-    const zero = vatRates.value.find(v => Number(v.rate_percent) === 0 && !v.is_reverse_charge)
+    const zero = vatRates.value.find(v => v.country === 'CZ' && Number(v.rate_percent) === 0 && !v.is_reverse_charge)
+      || vatRates.value.find(v => Number(v.rate_percent) === 0 && !v.is_reverse_charge)
     if (zero) return zero.id
   }
-  const def = vatRates.value.find(v => v.is_default)
+  const def = vatRates.value.find(v => v.country === 'CZ' && v.is_default)
+    || vatRates.value.find(v => v.is_default)
   return def?.id ?? vatRates.value[0]?.id ?? 0
 }
 
 function vatRateLabel(r: VatRate): string {
-  if (Number(r.rate_percent) > 0) return `${r.rate_percent} %`
-  if (r.is_reverse_charge) return t('invoice.vat_rate_label.reverse_charge')
-  return t('invoice.vat_rate_label.exempt')
+  const prefix = r.country !== 'CZ' ? `${r.country} ` : ''
+  if (Number(r.rate_percent) > 0) return `${prefix}${r.rate_percent} %`
+  if (r.is_reverse_charge) return `${prefix}${t('invoice.vat_rate_label.reverse_charge')}`
+  return `${prefix}${t('invoice.vat_rate_label.exempt')}`
 }
 
 // Řádkový výběr už nenabízí „Reverse charge" (0% CZ-RC) — RC se řeší hlavičkovým checkboxem,
 // který nechá nominální sazbu (21 %) a vynuluje daň. Volba RC na řádku by jinak dala 0 %
 // bez automatické poznámky „Daň odvede zákazník".
 const selectableVatRates = computed(() => vatRates.value.filter(r => !r.is_reverse_charge))
+
+const ossOriginalPeriodOptions = computed(() => {
+  const date = form.value.tax_date || form.value.issue_date
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(date || '')
+  if (!match) return [] as Array<{ value: string; label: string }>
+
+  const currentYear = Number(match[1])
+  const currentQuarter = Math.ceil(Number(match[2]) / 3)
+  const currentIndex = currentYear * 4 + currentQuarter - 1
+  const firstOssIndex = 2021 * 4 + 2 // Q3 2021
+  const options: Array<{ value: string; label: string }> = []
+  for (let index = currentIndex - 1; index >= firstOssIndex; index--) {
+    const year = Math.floor(index / 4)
+    const quarter = (index % 4) + 1
+    options.push({ value: `${year}Q${quarter}`, label: `Q${quarter} ${year}` })
+  }
+  return options
+})
+
+async function loadInvoiceVatRates(): Promise<VatRate[]> {
+  const country = supplierStore.currentSupplier?.oss_enabled ? 'ALL' : 'CZ'
+  return codebooksApi.vatRates(country, form.value.issue_date).catch(() => [])
+}
 
 function blankItem(): InvoiceItem {
   // Dobropis = záporné množství (sleva/refundace), default -1
@@ -324,6 +350,10 @@ function blankItem(): InvoiceItem {
     unit_price_without_vat: rate,
     vat_rate_id: defaultVatRateId(),
     order_index: form.value.items.length,
+    oss_applicable: false,
+    oss_consumer_country: null,
+    oss_rate_type: 'standard',
+    oss_supply_type: 'goods',
   }
 }
 
@@ -406,7 +436,7 @@ watch(() => form.value.invoice_type, (newType, oldType) => {
 
 onMounted(async () => {
   const [vr, cur, un, vc, rcat] = await Promise.all([
-    codebooksApi.vatRates('CZ'),
+    loadInvoiceVatRates(),
     codebooksApi.currencies(),
     codebooksApi.units(),
     vatClassificationsApi.list('sale'),
@@ -1284,6 +1314,15 @@ async function submit() {
         unit_price_without_vat: it.unit_price_without_vat,
         vat_rate_id: it.vat_rate_id,
         order_index: i,
+        oss_applicable: it.oss_applicable ?? false,
+        oss_consumer_country: it.oss_applicable ? (it.oss_consumer_country || null) : null,
+        oss_rate_type: it.oss_applicable ? (it.oss_rate_type || 'standard') : null,
+        oss_supply_type: it.oss_applicable ? (it.oss_supply_type || 'goods') : null,
+        oss_exchange_rate: it.oss_applicable ? (it.oss_exchange_rate ?? null) : null,
+        oss_exchange_rate_date: it.oss_applicable ? (it.oss_exchange_rate_date ?? null) : null,
+        oss_taxable_amount_return: it.oss_applicable ? (it.oss_taxable_amount_return ?? null) : null,
+        oss_vat_amount_return: it.oss_applicable ? (it.oss_vat_amount_return ?? null) : null,
+        oss_original_period: it.oss_applicable ? (it.oss_original_period ?? null) : null,
       })),
     }
 
@@ -1678,6 +1717,34 @@ async function deleteDraft() {
               <td class="px-3 py-2">
                 <textarea v-model="item.description" rows="1" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
                   class="w-full px-2 py-1.5 border border-neutral-300 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <label class="inline-flex items-center gap-1.5 text-neutral-600">
+                    <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                    <span>{{ t('invoice.oss.enabled') }}</span>
+                  </label>
+                  <template v-if="item.oss_applicable">
+                    <input v-model="item.oss_consumer_country" type="text" maxlength="2" :placeholder="t('invoice.oss.country')"
+                      class="w-16 h-8 px-2 border border-neutral-300 rounded text-xs font-mono uppercase" />
+                    <select v-model="item.oss_rate_type" class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                      <option value="standard">{{ t('invoice.oss.rate_standard') }}</option>
+                      <option value="reduced">{{ t('invoice.oss.rate_reduced') }}</option>
+                      <option value="second_reduced">{{ t('invoice.oss.rate_second_reduced') }}</option>
+                      <option value="parking">{{ t('invoice.oss.rate_parking') }}</option>
+                      <option value="zero">{{ t('invoice.oss.rate_zero') }}</option>
+                    </select>
+                    <select v-model="item.oss_supply_type" class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                      <option value="goods">{{ t('invoice.oss.goods') }}</option>
+                      <option value="services">{{ t('invoice.oss.services') }}</option>
+                    </select>
+                    <select v-model="item.oss_original_period" :title="t('invoice.oss.original_period')"
+                      class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
+                      <option :value="null">{{ t('invoice.oss.current_period') }}</option>
+                      <option v-if="item.oss_original_period && !ossOriginalPeriodOptions.some(o => o.value === item.oss_original_period)"
+                        :value="item.oss_original_period">{{ item.oss_original_period }}</option>
+                      <option v-for="period in ossOriginalPeriodOptions" :key="period.value" :value="period.value">{{ period.label }}</option>
+                    </select>
+                  </template>
+                </div>
               </td>
               <td class="px-3 py-2">
                 <input v-model="item.quantity" v-math type="text" inputmode="decimal"
@@ -1734,6 +1801,45 @@ async function deleteDraft() {
               <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.items_table.description') }}</label>
               <textarea v-model="item.description" rows="2" data-row-input="inv-item" :placeholder="t('invoice.items_table.description')"
                 class="w-full px-3 py-2 border border-neutral-300 rounded text-sm resize-y min-h-[44px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
+            </div>
+            <div class="border border-neutral-200 rounded-md p-2">
+              <label class="inline-flex items-center gap-2 text-sm">
+                <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <span>{{ t('invoice.oss.enabled') }}</span>
+              </label>
+              <div v-if="item.oss_applicable" class="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.oss.country') }}</label>
+                  <input v-model="item.oss_consumer_country" type="text" maxlength="2"
+                    class="w-full h-10 px-3 border border-neutral-300 rounded text-sm font-mono uppercase" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.oss.supply_type') }}</label>
+                  <select v-model="item.oss_supply_type" class="w-full h-10 px-2 border border-neutral-300 rounded text-sm bg-surface">
+                    <option value="goods">{{ t('invoice.oss.goods') }}</option>
+                    <option value="services">{{ t('invoice.oss.services') }}</option>
+                  </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.oss.rate_type') }}</label>
+                  <select v-model="item.oss_rate_type" class="w-full h-10 px-2 border border-neutral-300 rounded text-sm bg-surface">
+                    <option value="standard">{{ t('invoice.oss.rate_standard') }}</option>
+                    <option value="reduced">{{ t('invoice.oss.rate_reduced') }}</option>
+                    <option value="second_reduced">{{ t('invoice.oss.rate_second_reduced') }}</option>
+                    <option value="parking">{{ t('invoice.oss.rate_parking') }}</option>
+                    <option value="zero">{{ t('invoice.oss.rate_zero') }}</option>
+                  </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.oss.original_period') }}</label>
+                  <select v-model="item.oss_original_period" class="w-full h-10 px-2 border border-neutral-300 rounded text-sm bg-surface">
+                    <option :value="null">{{ t('invoice.oss.current_period') }}</option>
+                    <option v-if="item.oss_original_period && !ossOriginalPeriodOptions.some(o => o.value === item.oss_original_period)"
+                      :value="item.oss_original_period">{{ item.oss_original_period }}</option>
+                    <option v-for="period in ossOriginalPeriodOptions" :key="period.value" :value="period.value">{{ period.label }}</option>
+                  </select>
+                </div>
+              </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>

@@ -85,6 +85,15 @@ export interface InvoiceItem {
   vat_code?: string
   vat_label_cs?: string
   vat_label_en?: string
+  oss_applicable?: boolean
+  oss_consumer_country?: string | null
+  oss_rate_type?: 'standard' | 'reduced' | 'second_reduced' | 'parking' | 'zero' | string | null
+  oss_supply_type?: 'goods' | 'services' | null
+  oss_exchange_rate?: number | null
+  oss_exchange_rate_date?: string | null
+  oss_taxable_amount_return?: number | null
+  oss_vat_amount_return?: number | null
+  oss_original_period?: string | null
 }
 
 export interface VatBreakdownRow {
@@ -318,6 +327,15 @@ export interface InvoicePayload {
     unit_price_without_vat: number
     vat_rate_id: number
     order_index: number
+    oss_applicable?: boolean
+    oss_consumer_country?: string | null
+    oss_rate_type?: string | null
+    oss_supply_type?: 'goods' | 'services' | null
+    oss_exchange_rate?: number | null
+    oss_exchange_rate_date?: string | null
+    oss_taxable_amount_return?: number | null
+    oss_vat_amount_return?: number | null
+    oss_original_period?: string | null
   }>
 }
 
