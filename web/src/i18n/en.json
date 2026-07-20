@@ -1630,8 +1630,7 @@
       "rate_standard": "Standard",
       "rate_reduced": "Reduced",
       "rate_second_reduced": "Second reduced",
-      "rate_parking": "Parking",
-      "rate_zero": "Zero"
+      "rate_parking": "Parking"
     },
     "add_item": "+ Add item",
     "no_items": "No items.",

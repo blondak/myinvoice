@@ -311,6 +311,24 @@ function vatRateLabel(r: VatRate): string {
 // bez automatické poznámky „Daň odvede zákazník".
 const selectableVatRates = computed(() => vatRates.value.filter(r => !r.is_reverse_charge))
 
+// U OSS dodavatele načítáme sazby všech států (loadInvoiceVatRates → country 'ALL'), ale zahraniční
+// sazba smí být jen na řádku označeném jako OSS. Na běžném řádku by se totiž vykázala v tuzemské
+// evidenci (VatLedgerService) a podle prahu roku spadla do české klasifikace — DE 19 % by se
+// objevilo na snížené sazbě DPHDP3 s 19% daní. Řádky bez OSS proto vidí jen CZ sazby.
+const domesticVatRates = computed(() => selectableVatRates.value.filter(r => r.country === 'CZ'))
+
+function vatRatesForItem(item: InvoiceItem): VatRate[] {
+  return item.oss_applicable ? selectableVatRates.value : domesticVatRates.value
+}
+
+// Odškrtnutí OSS musí shodit i zahraniční sazbu, jinak by na řádku zůstala hodnota,
+// kterou už nabídka neobsahuje (select by zobrazil prázdno a uložila by se stará sazba).
+function onOssApplicableChange(item: InvoiceItem): void {
+  if (item.oss_applicable) return
+  const current = vatRates.value.find(r => r.id === item.vat_rate_id)
+  if (current && current.country !== 'CZ') item.vat_rate_id = defaultVatRateId()
+}
+
 const ossOriginalPeriodOptions = computed(() => {
   const date = form.value.tax_date || form.value.issue_date
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(date || '')
@@ -1719,7 +1737,8 @@ async function deleteDraft() {
                   class="w-full px-2 py-1.5 border border-neutral-300 rounded text-sm resize-y min-h-[36px] focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"></textarea>
                 <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <label class="inline-flex items-center gap-1.5 text-neutral-600">
-                    <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                    <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600"
+                      @change="onOssApplicableChange(item)" />
                     <span>{{ t('invoice.oss.enabled') }}</span>
                   </label>
                   <template v-if="item.oss_applicable">
@@ -1730,7 +1749,6 @@ async function deleteDraft() {
                       <option value="reduced">{{ t('invoice.oss.rate_reduced') }}</option>
                       <option value="second_reduced">{{ t('invoice.oss.rate_second_reduced') }}</option>
                       <option value="parking">{{ t('invoice.oss.rate_parking') }}</option>
-                      <option value="zero">{{ t('invoice.oss.rate_zero') }}</option>
                     </select>
                     <select v-model="item.oss_supply_type" class="h-8 px-2 border border-neutral-300 rounded text-xs bg-surface">
                       <option value="goods">{{ t('invoice.oss.goods') }}</option>
@@ -1762,7 +1780,7 @@ async function deleteDraft() {
               </td>
               <td v-if="supplierIsVatPayer" class="px-3 py-2">
                 <select v-model.number="item.vat_rate_id" class="w-full h-9 px-1 border border-neutral-300 rounded text-sm bg-surface">
-                  <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+                  <option v-for="r in vatRatesForItem(item)" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
                 </select>
               </td>
               <td class="px-3 py-2">
@@ -1804,7 +1822,8 @@ async function deleteDraft() {
             </div>
             <div class="border border-neutral-200 rounded-md p-2">
               <label class="inline-flex items-center gap-2 text-sm">
-                <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <input v-model="item.oss_applicable" type="checkbox" class="rounded border-neutral-300 text-primary-600"
+                  @change="onOssApplicableChange(item)" />
                 <span>{{ t('invoice.oss.enabled') }}</span>
               </label>
               <div v-if="item.oss_applicable" class="grid grid-cols-2 gap-2 mt-2">
@@ -1827,7 +1846,6 @@ async function deleteDraft() {
                     <option value="reduced">{{ t('invoice.oss.rate_reduced') }}</option>
                     <option value="second_reduced">{{ t('invoice.oss.rate_second_reduced') }}</option>
                     <option value="parking">{{ t('invoice.oss.rate_parking') }}</option>
-                    <option value="zero">{{ t('invoice.oss.rate_zero') }}</option>
                   </select>
                 </div>
                 <div class="col-span-2">
@@ -1864,7 +1882,7 @@ async function deleteDraft() {
               <div v-if="supplierIsVatPayer">
                 <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.totals.vat') }}</label>
                 <select v-model.number="item.vat_rate_id" class="w-full h-10 px-2 border border-neutral-300 rounded text-sm bg-surface">
-                  <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+                  <option v-for="r in vatRatesForItem(item)" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
                 </select>
               </div>
             </div>
@@ -2005,7 +2023,7 @@ async function deleteDraft() {
             <select v-if="supplierIsVatPayer" v-model.number="wrVatRateId"
               :title="t('invoice.wr_vat_rate')"
               class="h-10 px-3 border border-neutral-300 rounded-md text-sm bg-surface sm:w-48">
-              <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+              <option v-for="r in domesticVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
             </select>
           </div>
           <!-- Desktop: tabulka -->
@@ -2168,7 +2186,7 @@ async function deleteDraft() {
             <select v-if="supplierIsVatPayer" v-model.number="matVatRateId"
               :title="t('invoice.wr_vat_rate')"
               class="h-10 px-3 border border-neutral-300 rounded-md text-sm bg-surface sm:w-48">
-              <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+              <option v-for="r in domesticVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
             </select>
           </div>
           <p class="text-xs text-neutral-500">

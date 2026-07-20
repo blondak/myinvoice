@@ -350,6 +350,13 @@ final class DphPriznaniBuilder
         $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $endMonth)))
             ->modify('last day of this month')->format('Y-m-d');
 
+        // Čistě OSS dobropis nesnižuje tuzemskou daň na výstupu (jeho záporná DPH je zahraniční),
+        // takže by § 42 varování jen mátlo. Vyžadujeme aspoň jeden ne-OSS řádek.
+        $creditNoteOssFilter = $this->db->hasColumn('invoice_items', 'oss_applicable')
+            ? "AND EXISTS (SELECT 1 FROM invoice_items cii
+                            WHERE cii.invoice_id = invoices.id
+                              AND COALESCE(cii.oss_applicable, 0) = 0)"
+            : '';
         $creditNotes = $this->db->pdo()->prepare(
             "SELECT varsymbol
                FROM invoices
@@ -358,6 +365,7 @@ final class DphPriznaniBuilder
                 AND invoice_type = 'credit_note'
                 AND (total_without_vat < 0 OR total_vat < 0)
                 AND COALESCE(tax_date, issue_date) BETWEEN ? AND ?
+                {$creditNoteOssFilter}
            ORDER BY COALESCE(tax_date, issue_date), id"
         );
         $creditNotes->execute([$supplierId, $start, $end]);

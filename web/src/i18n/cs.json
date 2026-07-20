@@ -1630,8 +1630,7 @@
       "rate_standard": "Základní",
       "rate_reduced": "Snížená",
       "rate_second_reduced": "Druhá snížená",
-      "rate_parking": "Parking",
-      "rate_zero": "Nulová"
+      "rate_parking": "Parking"
     },
     "add_item": "+ Přidat položku",
     "no_items": "Žádné položky.",

@@ -177,6 +177,47 @@ final class InvoiceValidationTest extends TestCase
         self::assertArrayHasKey('items.0.oss_consumer_country', $err);
     }
 
+    public function testForeignVatRateRejectedOnNonOssItem(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['oss_applicable'] = false;
+        $data['items'][0]['vat_rate_id'] = 7;
+
+        $err = InvoiceValidation::invoice($data, null, [7 => 'DE']);
+
+        self::assertArrayHasKey('items.0.vat_rate_id', $err);
+    }
+
+    public function testForeignVatRateAllowedOnOssItem(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['vat_rate_id'] = 7;
+
+        $err = InvoiceValidation::invoice($data, null, [7 => 'DE']);
+
+        self::assertArrayNotHasKey('items.0.vat_rate_id', $err);
+    }
+
+    public function testDomesticVatRateUnaffectedByCountryCheck(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['oss_applicable'] = false;
+
+        $err = InvoiceValidation::invoice($data, null, [1 => 'CZ']);
+
+        self::assertArrayNotHasKey('items.0.vat_rate_id', $err);
+    }
+
+    public function testOssRateTypeAllowlistMatchesExportableCodes(): void
+    {
+        $data = $this->validOssInvoice();
+        $data['items'][0]['oss_rate_type'] = 'zero';
+
+        $err = InvoiceValidation::invoice($data);
+
+        self::assertArrayHasKey('items.0.oss_rate_type', $err);
+    }
+
     /** @return array<string,mixed> */
     private function validOssInvoice(): array
     {

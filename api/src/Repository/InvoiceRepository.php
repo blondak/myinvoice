@@ -51,7 +51,7 @@ final class InvoiceRepository
         return $this->hasAutoSendReminders;
     }
 
-    /** Cache existence OSS sloupců na invoice_items (migrace 0135). */
+    /** Cache existence OSS sloupců na invoice_items (migrace 0137). */
     private ?bool $hasOssItemColumns = null;
 
     private function supportsOssItemColumns(): bool
@@ -1213,6 +1213,20 @@ final class InvoiceRepository
     public function vatRateMap(): array
     {
         return $this->loadVatRates();
+    }
+
+    /**
+     * Sazba → stát. Validace potřebuje zemi, aby zahraniční sazba neprošla na řádku bez OSS
+     * (jinak by ji tuzemská evidence vykázala jako českou — viz InvoiceValidation).
+     *
+     * @return array<int, string>
+     */
+    public function vatRateCountryMap(): array
+    {
+        $rows = $this->db->pdo()->query('SELECT id, country FROM vat_rates')->fetchAll(PDO::FETCH_ASSOC);
+        $out = [];
+        foreach ($rows as $r) $out[(int) $r['id']] = strtoupper((string) ($r['country'] ?? 'CZ'));
+        return $out;
     }
 
     /**

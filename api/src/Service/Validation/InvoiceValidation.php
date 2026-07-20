@@ -10,9 +10,10 @@ final class InvoiceValidation
 {
     /**
      * @param array<int, float>|null $vatRates
+     * @param array<int, string>|null $vatRateCountries sazba → stát, pro kontrolu zahraničních sazeb mimo OSS
      * @return array<string, string[]>
      */
-    public static function invoice(array $data, ?array $vatRates = null): array
+    public static function invoice(array $data, ?array $vatRates = null, ?array $vatRateCountries = null): array
     {
         $err = [];
 
@@ -56,6 +57,17 @@ final class InvoiceValidation
                     continue;
                 }
                 $err = array_merge($err, InvoiceAmountPolicy::validateItem($item, $i));
+
+                // Zahraniční sazba smí být jen na OSS řádku. Bez téhle kontroly by řádek s cizí
+                // sazbou zůstal v tuzemské evidenci (VatLedgerService) a podle prahu roku by se
+                // zařadil do české klasifikace — DE 19 % by se vykázalo na snížené sazbě DPHDP3.
+                if ($vatRateCountries !== null && empty($item['oss_applicable']) && !empty($item['vat_rate_id'])) {
+                    $rateCountry = $vatRateCountries[(int) $item['vat_rate_id']] ?? null;
+                    if ($rateCountry !== null && $rateCountry !== 'CZ') {
+                        $err["items.{$i}.vat_rate_id"][] = 'Zahraniční sazbu DPH lze použít jen na řádku v režimu OSS';
+                    }
+                }
+
                 if (!empty($item['oss_applicable'])) {
                     $country = strtoupper(trim((string) ($item['oss_consumer_country'] ?? '')));
                     if (!preg_match('/^[A-Z]{2}$/', $country)) {
