@@ -13,6 +13,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Export\ExportPeriod;
 use MyInvoice\Service\Export\ExportPeriodResolver;
 use MyInvoice\Service\Export\IsdocExporter;
+use MyInvoice\Service\Export\MergedInvoicePdfExporter;
 use MyInvoice\Service\Export\MoneyS3XmlExporter;
 use MyInvoice\Service\Export\PohodaXmlExporter;
 use MyInvoice\Service\Export\StereoXmlExporter;
@@ -32,7 +33,7 @@ use ZipArchive;
  * Sdílený filter: period + type + date_by + supplier_id (z X-Supplier-Id middleware).
  * Per-format: výstup MIME a filename.
  *
- * Přístup: admin nebo accountant.
+ * Přístup: admin, accountant nebo readonly (export je čtení).
  */
 final class ExportAction
 {
@@ -43,6 +44,7 @@ final class ExportAction
         private readonly IsdocExporter $isdoc,
         private readonly PohodaXmlExporter $pohoda,
         private readonly StereoXmlExporter $stereo,
+        private readonly MergedInvoicePdfExporter $mergedPdf,
         private readonly MoneyS3XmlExporter $moneyS3,
         private readonly ExportPeriodResolver $periodResolver,
         private readonly ActivityLogger $logger,
@@ -67,6 +69,25 @@ final class ExportAction
         $dateBy = (string) ($q['date_by'] ?? 'issue');
         $type   = (string) ($q['type'] ?? '');
         $sid    = SupplierGuard::currentId($request);
+        $mergePdf = filter_var($q['merge_pdf'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $signPdf = filter_var($q['sign_pdf'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (($mergePdf || $signPdf) && $format !== 'pdf-zip') {
+            return Json::error(
+                $response,
+                'validation_failed',
+                'Volby merge_pdf a sign_pdf lze použít jen pro PDF export.',
+                400,
+            );
+        }
+        if ($signPdf && !$mergePdf) {
+            return Json::error(
+                $response,
+                'validation_failed',
+                'Podepsat lze pouze sloučený PDF export.',
+                400,
+            );
+        }
 
         // Najdi faktury za období + supplier scope.
         try {
@@ -81,7 +102,9 @@ final class ExportAction
         try {
             $userId = isset($user['id']) ? (int) $user['id'] : null;
             [$filename, $content, $mime] = match ($format) {
-                'pdf-zip' => $this->buildPdfZip($ids, $period, $type, $userId),
+                'pdf-zip' => $mergePdf
+                    ? $this->buildMergedPdf($ids, $sid, $period, $type, $userId, $signPdf)
+                    : $this->buildPdfZip($ids, $period, $type, $userId),
                 'isdoc'   => $this->buildIsdoc($ids, $period),
                 'pohoda'  => $this->buildPohoda($ids, $sid, $period),
                 'stereo'  => $this->buildStereo($ids, $period),
@@ -90,6 +113,8 @@ final class ExportAction
             };
         } catch (\InvalidArgumentException $e) {
             return Json::error($response, 'validation_failed', $e->getMessage(), 400);
+        } catch (\DomainException $e) {
+            return Json::error($response, 'signature_unavailable', $e->getMessage(), 422);
         } catch (\Throwable $e) {
             return Json::error($response, 'export_failed', $e->getMessage(), 500);
         }
@@ -105,6 +130,8 @@ final class ExportAction
             'date_to_exclusive' => $period->dateToExclusive,
             'type' => $type ?: null,
             'count' => count($ids),
+            'merge_pdf' => $mergePdf,
+            'signed_pdf' => $signPdf,
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         // Stream content out
@@ -175,6 +202,39 @@ final class ExportAction
         @unlink($tmpZip);
         $base = "myinvoice-{$period->label}" . ($type ? "-$type" : '');
         return ["$base.zip", $content, 'application/zip'];
+    }
+
+    /**
+     * @param int[] $ids
+     * @return array{0:string,1:string,2:string}
+     */
+    private function buildMergedPdf(
+        array $ids,
+        int $supplierId,
+        ExportPeriod $period,
+        string $type,
+        ?int $userId,
+        bool $sign,
+    ): array {
+        $stmt = $this->db->pdo()->prepare('SELECT * FROM supplier WHERE id = ?');
+        $stmt->execute([$supplierId]);
+        $supplier = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($supplier === false) {
+            throw new \RuntimeException('Dodavatel nebyl nalezen.');
+        }
+
+        $result = $this->mergedPdf->export($ids, $supplier, $userId, $sign);
+        try {
+            $content = file_get_contents($result['path']);
+            if ($content === false) {
+                throw new \RuntimeException('Sloučené PDF nelze načíst.');
+            }
+        } finally {
+            @unlink($result['path']);
+        }
+
+        $base = "myinvoice-{$period->label}" . ($type ? "-$type" : '');
+        return ["$base.pdf", $content, 'application/pdf'];
     }
 
     /**

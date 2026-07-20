@@ -448,6 +448,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /api/v1/invoices/export.pdf:
+    get:
+      tags: [Invoices]
+      summary: Sloučené PDF vybraných faktur
+      description: |
+        Spojí až 100 faktur zvolených parametrem `ids` do jednoho PDF v uvedeném
+        pořadí. Výstup obsahuje pouze vlastní strany faktur, bez příloh, vloženého
+        ISDOC a výkazů práce. Všechny faktury musí patřit dodavateli z
+        `X-Supplier-Id`. S `sign_pdf=true` se elektronicky podepíše až výsledný
+        celek profilem nastaveným pro PDF faktur.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: ids
+          required: true
+          description: ID faktur oddělená čárkou; duplicity se odstraní při zachování pořadí.
+          schema: { type: string, pattern: '^[1-9][0-9]*(,[1-9][0-9]*)*$' }
+          example: 125,124,119
+        - { in: query, name: sign_pdf, schema: { type: boolean, default: false }, description: "Elektronicky podepíše výsledné sloučené PDF." }
+      responses:
+        '200':
+          description: Sloučený PDF soubor (Content-Disposition attachment)
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          description: Některá vybraná faktura neexistuje nebo patří jinému dodavateli
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Překročen limit 100 faktur nebo výsledné PDF nelze podepsat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /api/v1/invoices/export:
     get:
       tags: [Invoices]
@@ -457,7 +495,8 @@ paths:
         issued/sent/reminded/paid), supplier scope dle `X-Supplier-Id`:
 
         - `pdf-zip` — ZIP s jedním PDF na doklad (`Faktura-{vs}.pdf`, dobropisy
-          `Dobropis-{vs}.pdf` atd.)
+          `Dobropis-{vs}.pdf` atd.); s `merge_pdf=true` místo ZIPu vrátí jeden
+          sloučený PDF soubor obsahující pouze faktury bez příloh a výkazů práce
         - `isdoc` — ISDOC XML; jeden doklad = samostatný `.isdoc`, víc dokladů = ZIP
         - `pohoda` — Pohoda XML dataPack
         - `stereo` — Stereo (Ježek) XML
@@ -479,11 +518,15 @@ paths:
         - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 } }
         - { in: query, name: date_by, schema: { type: string, enum: [issue, tax], default: issue } }
         - { in: query, name: type, schema: { type: string, enum: [invoice, proforma, credit_note, cancellation], description: "Jen jeden typ dokladu (default všechny)" } }
+        - { in: query, name: merge_pdf, schema: { type: boolean, default: false }, description: "Jen pro format=pdf-zip. Vrátí jeden sloučený PDF soubor místo ZIP archivu." }
+        - { in: query, name: sign_pdf, schema: { type: boolean, default: false }, description: "Jen se současným merge_pdf=true. Elektronicky podepíše výsledný soubor profilem nastaveným pro PDF faktur." }
       responses:
         '200':
-          description: ZIP / XML stream (Content-Disposition attachment)
+          description: ZIP / PDF / XML stream (Content-Disposition attachment)
           content:
             application/zip:
+              schema: { type: string, format: binary }
+            application/pdf:
               schema: { type: string, format: binary }
             application/xml:
               schema: { type: string, format: binary }
@@ -491,6 +534,11 @@ paths:
           $ref: '#/components/responses/ValidationFailed'
         '404':
           description: Za období nejsou žádné vystavené faktury
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Výsledné PDF nebylo možné elektronicky podepsat
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
