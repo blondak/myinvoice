@@ -150,8 +150,8 @@ final class BulkReissueAction
         // Per-faktura přepínač upomínek (migrace 0088) musí klon zdědit — jinak by se
         // vědomě opt-outovaná faktura po klonu tiše vrátila na DB default 1 (upomínky
         // zapnuté). Guard na existenci sloupce kvůli instalacím pozadu s migrací.
-        $hasReminders = $pdo->query("SHOW COLUMNS FROM invoices LIKE 'auto_send_reminders'")->fetch() !== false;
-        $supportsOss = $pdo->query("SHOW COLUMNS FROM invoice_items LIKE 'oss_applicable'")->fetch() !== false;
+        $hasReminders = $this->db->hasColumn('invoices', 'auto_send_reminders');
+        $supportsOss = $this->db->hasColumn('invoice_items', 'oss_applicable');
 
         $pdo->beginTransaction();
         try {

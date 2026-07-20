@@ -11,6 +11,7 @@ use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Invoice\InvoiceCalculator;
+use MyInvoice\Service\Oss\OssPeriod;
 use MyInvoice\Service\IpMatcher;
 use MyInvoice\Service\Stats\StatsRecomputer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -132,9 +133,9 @@ final class CancelInvoiceAction
         $pdo = $this->db->pdo();
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $userId = (int) ($user['id'] ?? 0);
-        $supportsOss = $pdo->query("SHOW COLUMNS FROM invoice_items LIKE 'oss_applicable'")->fetch() !== false;
-        $sourcePeriod = self::quarterCode((string) ($invoice['tax_date'] ?? $invoice['issue_date'] ?? ''));
-        $creditPeriod = self::quarterCode(date('Y-m-d'));
+        $supportsOss = $this->db->hasColumn('invoice_items', 'oss_applicable');
+        $sourcePeriod = OssPeriod::quarterCode((string) ($invoice['tax_date'] ?? $invoice['issue_date'] ?? ''));
+        $creditPeriod = OssPeriod::quarterCode(date('Y-m-d'));
         $defaultOriginalPeriod = $sourcePeriod !== null && $creditPeriod !== null && $sourcePeriod < $creditPeriod
             ? $sourcePeriod
             : null;
@@ -206,6 +207,9 @@ final class CancelInvoiceAction
                 if ($supportsOss) {
                     $ossApplicable = !empty($item['oss_applicable']);
                     $originalPeriod = trim((string) ($item['oss_original_period'] ?? '')) ?: $defaultOriginalPeriod;
+                    if ($originalPeriod !== null && $creditPeriod !== null && $originalPeriod >= $creditPeriod) {
+                        $originalPeriod = $defaultOriginalPeriod;
+                    }
                     array_push(
                         $params,
                         $ossApplicable ? 1 : 0,
@@ -214,10 +218,10 @@ final class CancelInvoiceAction
                         $ossApplicable ? ($item['oss_supply_type'] ?? null) : null,
                         $ossApplicable ? ($item['oss_exchange_rate'] ?? null) : null,
                         $ossApplicable ? ($item['oss_exchange_rate_date'] ?? null) : null,
-                        $ossApplicable && $item['oss_taxable_amount_return'] !== null
+                        $ossApplicable && ($item['oss_taxable_amount_return'] ?? null) !== null
                             ? -1 * (float) $item['oss_taxable_amount_return']
                             : null,
-                        $ossApplicable && $item['oss_vat_amount_return'] !== null
+                        $ossApplicable && ($item['oss_vat_amount_return'] ?? null) !== null
                             ? -1 * (float) $item['oss_vat_amount_return']
                             : null,
                         $ossApplicable ? $originalPeriod : null,
@@ -248,15 +252,4 @@ final class CancelInvoiceAction
         ], 201);
     }
 
-    private static function quarterCode(string $date): ?string
-    {
-        if (!preg_match('/^(\d{4})-(\d{2})-\d{2}$/', $date, $matches)) {
-            return null;
-        }
-        $month = (int) $matches[2];
-        if ($month < 1 || $month > 12) {
-            return null;
-        }
-        return sprintf('%sQ%d', $matches[1], intdiv($month - 1, 3) + 1);
-    }
 }

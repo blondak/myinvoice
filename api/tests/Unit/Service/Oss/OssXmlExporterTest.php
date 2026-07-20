@@ -37,6 +37,37 @@ final class OssXmlExporterTest extends TestCase
         $this->exporter($preview)->build(1, 2026, 3);
     }
 
+    public function testMissingSupplyTypeBlocksExport(): void
+    {
+        $preview = $this->preview();
+        $preview['countries'][0]['rows'][0]['supply_type'] = null;
+
+        $this->expectException(\RuntimeException::class);
+        $this->exporter($preview)->build(1, 2026, 3);
+    }
+
+    public function testMissingCurrencyConversionBlocksExport(): void
+    {
+        $preview = $this->preview();
+        $preview['summary']['conversion_missing_count'] = 1;
+
+        $this->expectException(\RuntimeException::class);
+        $this->exporter($preview)->build(1, 2026, 3);
+    }
+
+    public function testArchivedSummaryUsesExportedAmounts(): void
+    {
+        $preview = $this->preview();
+        $preview['summary']['total_base'] = 999.0;
+        $preview['summary']['total_vat'] = 999.0;
+
+        $result = $this->exporter($preview)->build(1, 2026, 3);
+
+        self::assertSame(160.0, $result['summary']['total_base']);
+        self::assertSame(36.8, $result['summary']['total_vat']);
+        self::assertSame(24.46, $result['summary']['total_payable']);
+    }
+
     /** @param array<string,mixed> $preview */
     private function exporter(array $preview): OssXmlExporter
     {

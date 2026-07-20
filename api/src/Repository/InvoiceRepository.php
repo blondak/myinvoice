@@ -30,8 +30,7 @@ final class InvoiceRepository
     private function supportsIncomeTaxExempt(): bool
     {
         if ($this->hasIncomeTaxExempt === null) {
-            $col = $this->db->pdo()->query("SHOW COLUMNS FROM invoices LIKE 'income_tax_exempt'")->fetch();
-            $this->hasIncomeTaxExempt = $col !== false;
+            $this->hasIncomeTaxExempt = $this->db->hasColumn('invoices', 'income_tax_exempt');
         }
         return $this->hasIncomeTaxExempt;
     }
@@ -47,8 +46,7 @@ final class InvoiceRepository
     private function supportsAutoSendReminders(): bool
     {
         if ($this->hasAutoSendReminders === null) {
-            $col = $this->db->pdo()->query("SHOW COLUMNS FROM invoices LIKE 'auto_send_reminders'")->fetch();
-            $this->hasAutoSendReminders = $col !== false;
+            $this->hasAutoSendReminders = $this->db->hasColumn('invoices', 'auto_send_reminders');
         }
         return $this->hasAutoSendReminders;
     }
@@ -59,8 +57,7 @@ final class InvoiceRepository
     private function supportsOssItemColumns(): bool
     {
         if ($this->hasOssItemColumns === null) {
-            $col = $this->db->pdo()->query("SHOW COLUMNS FROM invoice_items LIKE 'oss_applicable'")->fetch();
-            $this->hasOssItemColumns = $col !== false;
+            $this->hasOssItemColumns = $this->db->hasColumn('invoice_items', 'oss_applicable');
         }
         return $this->hasOssItemColumns;
     }
@@ -987,7 +984,10 @@ final class InvoiceRepository
                 $oss = $supportsOss ? self::ossItemParams($item) : [];
                 $key = $vatRateId . '|' . ($code ?? '');
                 if ($supportsOss) {
-                    $key .= '|' . implode('|', array_map(static fn ($v) => $v === null ? '' : (string) $v, $oss));
+                    $ossKey = $oss;
+                    $ossKey[6] = null;
+                    $ossKey[7] = null;
+                    $key .= '|' . implode('|', array_map(static fn ($v) => $v === null ? '' : (string) $v, $ossKey));
                 }
                 if (!isset($discountGroups[$key])) {
                     $discountGroups[$key] = [
@@ -999,13 +999,28 @@ final class InvoiceRepository
                     if ($supportsOss) {
                         $discountGroups[$key]['oss'] = $oss;
                     }
+                } elseif ($supportsOss) {
+                    foreach ([6, 7] as $amountIndex) {
+                        if ($oss[$amountIndex] !== null) {
+                            $discountGroups[$key]['oss'][$amountIndex] =
+                                (float) ($discountGroups[$key]['oss'][$amountIndex] ?? 0.0) + (float) $oss[$amountIndex];
+                        }
+                    }
                 }
                 $discountGroups[$key]['base'] += $base;
             }
         }
 
         if ($discountPercent > 0 && $discountGroups !== []) {
-            $this->materializeDiscountLines($stmt, $invoiceId, $discountPercent, $discountGroups, $maxOrder + 1, $language);
+            $this->materializeDiscountLines(
+                $stmt,
+                $invoiceId,
+                $discountPercent,
+                $discountGroups,
+                $maxOrder + 1,
+                $language,
+                $supportsOss,
+            );
         }
     }
 
@@ -1024,6 +1039,7 @@ final class InvoiceRepository
         array $groups,
         int $startOrder,
         string $language,
+        bool $supportsOss,
     ): void {
         $label = self::discountLabel($discountPercent, $language);
         $order = $startOrder;
@@ -1045,7 +1061,13 @@ final class InvoiceRepository
                 $g['code'] !== null ? (string) $g['code'] : null,
             ];
             if ($supportsOss && isset($g['oss']) && is_array($g['oss'])) {
-                $params = array_merge($params, $g['oss']);
+                $oss = $g['oss'];
+                foreach ([6, 7] as $amountIndex) {
+                    if ($oss[$amountIndex] !== null) {
+                        $oss[$amountIndex] = -round((float) $oss[$amountIndex] * $discountPercent / 100.0, 2);
+                    }
+                }
+                $params = array_merge($params, $oss);
             }
             $stmt->execute($params);
         }
@@ -1063,7 +1085,9 @@ final class InvoiceRepository
         $country = preg_match('/^[A-Z]{2}$/', $country) ? $country : null;
 
         $rateType = trim((string) ($item['oss_rate_type'] ?? ''));
-        $rateType = $rateType !== '' ? substr($rateType, 0, 32) : null;
+        $rateType = in_array($rateType, ['standard', 'reduced', 'second_reduced', 'parking'], true)
+            ? $rateType
+            : null;
 
         $supplyType = (string) ($item['oss_supply_type'] ?? '');
         $supplyType = in_array($supplyType, ['goods', 'services'], true) ? $supplyType : null;
@@ -1080,7 +1104,7 @@ final class InvoiceRepository
             : null;
         $period = trim((string) ($item['oss_original_period'] ?? ''));
         if ($period !== '' && (!preg_match('/^[0-9]{4}Q[1-4]$/', $period) || $period < '2021Q3')) {
-            throw new \InvalidArgumentException('Původní OSS období musí mít formát RRRRQn a nesmí být před Q3 2021.');
+            $period = '';
         }
         $period = $period !== '' ? $period : null;
 

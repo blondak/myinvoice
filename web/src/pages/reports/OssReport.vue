@@ -109,7 +109,6 @@ onMounted(loadPreview)
         <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-4">
           <div class="text-xs uppercase tracking-wide text-neutral-500 font-medium">{{ t('reports.oss.deadline') }}</div>
           <div class="text-lg font-semibold font-mono mt-1">{{ fmtDate(preview.period.submission_deadline) }}</div>
-          <div class="text-xs text-neutral-500 mt-1">{{ t(`reports.oss.status_${preview.state.status}`) }}</div>
         </div>
       </div>
 

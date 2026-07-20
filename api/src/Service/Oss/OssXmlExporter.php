@@ -27,6 +27,9 @@ final class OssXmlExporter
         if ((int) ($preview['summary']['invalid_correction_count'] ?? 0) > 0) {
             throw new \RuntimeException('OSS XML nelze vytvořit: opravte neplatná původní období uvedená v náhledu.');
         }
+        if ((int) ($preview['summary']['conversion_missing_count'] ?? 0) > 0) {
+            throw new \RuntimeException('OSS XML nelze vytvořit: pro některé řádky chybí přepočet do měny podání.');
+        }
         $supplier = $this->loadSupplier($supplierId);
         $bank = $this->loadReturnBankAccount($supplierId, (string) ($preview['summary']['return_currency'] ?? 'EUR'));
         $warnings = $preview['warnings'] ?? [];
@@ -126,14 +129,14 @@ final class OssXmlExporter
             'return_currency' => $preview['summary']['return_currency'] ?? 'EUR',
             'rows_count' => count($rows),
             'corrections_count' => count($corrections),
-            'total_base' => $preview['summary']['total_base'] ?? 0.0,
-            'total_vat' => $preview['summary']['total_vat'] ?? 0.0,
-            'total_corrections' => $preview['summary']['total_corrections'] ?? 0.0,
-            'total_payable' => $preview['summary']['total_payable'] ?? 0.0,
+            'total_base' => round(array_sum(array_column($rows, 'taxable_amount')), 2),
+            'total_vat' => round(array_sum(array_column($rows, 'vat_amount')), 2),
+            'total_corrections' => round(array_sum(array_column($corrections, 'correction')), 2),
             'invoice_count' => $preview['summary']['invoice_count'] ?? 0,
             'submission_deadline' => $period['submission_deadline'] ?? null,
             'warnings' => array_values(array_unique($warnings)),
         ];
+        $summary['total_payable'] = round($summary['total_vat'] + $summary['total_corrections'], 2);
 
         return [
             'xml' => $xml,
@@ -156,20 +159,17 @@ final class OssXmlExporter
             foreach (($country['rows'] ?? []) as $row) {
                 $state = strtoupper((string) ($row['oss_consumer_country'] ?? $row['country'] ?? $country['country'] ?? ''));
                 if ($state === '' || $state === '??') {
-                    $warnings[] = 'OSS XML vynechal řádek bez země spotřeby.';
-                    continue;
+                    throw new \RuntimeException('OSS XML nelze vytvořit: některý řádek nemá zemi spotřeby.');
                 }
 
                 $supplyType = $this->supplyTypeCode($row['supply_type'] ?? null);
                 if ($supplyType === null) {
-                    $warnings[] = 'OSS XML vynechal řádek bez typu plnění (zboží/služby).';
-                    continue;
+                    throw new \RuntimeException('OSS XML nelze vytvořit: některý řádek nemá platný typ plnění.');
                 }
 
                 $rateType = $this->rateTypeCode($row['rate_type'] ?? null);
                 if ($rateType === null) {
-                    $warnings[] = 'OSS XML vynechal řádek bez typu sazby.';
-                    continue;
+                    throw new \RuntimeException('OSS XML nelze vytvořit: některý řádek nemá platný typ sazby.');
                 }
 
                 $rate = (float) ($row['vat_rate'] ?? 0.0);

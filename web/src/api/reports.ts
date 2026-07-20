@@ -122,11 +122,6 @@ export interface OssPreview {
     oss_identification_country: string | null
     oss_return_currency: string
   }
-  state: {
-    status: 'open' | 'prepared' | 'submitted'
-    submitted_at: string | null
-    notes: string | null
-  }
   summary: {
     return_currency: string
     total_base: number
@@ -137,6 +132,7 @@ export interface OssPreview {
     row_count: number
     correction_row_count: number
     invalid_correction_count: number
+    conversion_missing_count: number
   }
   countries: Array<{
     country: string

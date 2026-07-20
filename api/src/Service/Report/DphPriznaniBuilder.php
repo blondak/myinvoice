@@ -365,6 +365,9 @@ final class DphPriznaniBuilder
             $warnings[] = "Dobropis {$number} snižuje daň na výstupu. Ověřte, že datum zařazení odpovídá doručení opravného daňového dokladu nebo vynaložení rozumného úsilí o jeho doručení (§ 42 ZDPH).";
         }
 
+        $ossFilter = $this->db->hasColumn('invoice_items', 'oss_applicable')
+            ? 'AND COALESCE(ii.oss_applicable, 0) = 0'
+            : '';
         $unclassifiedZero = $this->db->pdo()->prepare(
             "SELECT DISTINCT i.varsymbol
                FROM invoices i
@@ -375,6 +378,7 @@ final class DphPriznaniBuilder
                 AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
                 AND COALESCE(i.reverse_charge, 0) = 0
                 AND ii.vat_rate_snapshot = 0
+                {$ossFilter}
                 AND ii.vat_classification_code IS NULL
                 AND i.vat_classification_code IS NULL
            ORDER BY i.varsymbol"

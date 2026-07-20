@@ -21,22 +21,3 @@ ALTER TABLE invoice_items
 
 CREATE INDEX IF NOT EXISTS idx_invoice_items_oss
   ON invoice_items (oss_applicable, oss_consumer_country);
-
-CREATE TABLE IF NOT EXISTS oss_periods (
-  id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  supplier_id          INT UNSIGNED NOT NULL,
-  year                SMALLINT UNSIGNED NOT NULL,
-  quarter             TINYINT UNSIGNED NOT NULL,
-  status              ENUM('open','prepared','submitted') NOT NULL DEFAULT 'open',
-  submitted_at         DATE NULL,
-  submitted_by         BIGINT UNSIGNED NULL,
-  totals_snapshot      JSON NULL,
-  notes               TEXT NULL,
-  created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_oss_period (supplier_id, year, quarter),
-  KEY idx_oss_period_status (supplier_id, status),
-  CONSTRAINT fk_oss_period_supplier FOREIGN KEY (supplier_id) REFERENCES supplier(id) ON DELETE CASCADE,
-  CONSTRAINT fk_oss_period_user FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
-  CONSTRAINT chk_oss_period_quarter CHECK (quarter BETWEEN 1 AND 4)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

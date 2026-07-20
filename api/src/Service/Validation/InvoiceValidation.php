@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Validation;
 
+use MyInvoice\Service\Oss\OssPeriod;
+
 final class InvoiceValidation
 {
     /**
@@ -60,13 +62,49 @@ final class InvoiceValidation
                         $err["items.{$i}.oss_consumer_country"][] = 'Země spotřeby musí být dvoupísmenný ISO kód';
                     }
 
+                    $rateType = (string) ($item['oss_rate_type'] ?? '');
+                    if (!in_array($rateType, ['standard', 'reduced', 'second_reduced', 'parking'], true)) {
+                        $err["items.{$i}.oss_rate_type"][] = 'Neplatný typ OSS sazby';
+                    }
+                    $supplyType = (string) ($item['oss_supply_type'] ?? '');
+                    if (!in_array($supplyType, ['goods', 'services'], true)) {
+                        $err["items.{$i}.oss_supply_type"][] = 'Typ OSS plnění musí být zboží nebo služba';
+                    }
+
+                    $rateValue = $item['oss_exchange_rate'] ?? null;
+                    if ($rateValue !== null && $rateValue !== '') {
+                        if (!is_numeric($rateValue) || !is_finite((float) $rateValue)
+                            || (float) $rateValue <= 0 || (float) $rateValue > 1000000
+                        ) {
+                            $err["items.{$i}.oss_exchange_rate"][] = 'OSS kurz musí být kladné číslo v podporovaném rozsahu';
+                        }
+                    }
+                    $rateDate = (string) ($item['oss_exchange_rate_date'] ?? '');
+                    if ($rateDate !== '' && !self::isValidDate($rateDate)) {
+                        $err["items.{$i}.oss_exchange_rate_date"][] = 'Neplatné datum OSS kurzu';
+                    }
+
+                    $manualAmounts = [];
+                    foreach (['oss_taxable_amount_return', 'oss_vat_amount_return'] as $field) {
+                        $value = $item[$field] ?? null;
+                        $manualAmounts[$field] = $value !== null && $value !== '';
+                        if ($manualAmounts[$field]
+                            && (!is_numeric($value) || !is_finite((float) $value) || abs((float) $value) > 999999999999.99)
+                        ) {
+                            $err["items.{$i}.{$field}"][] = 'OSS částka je mimo podporovaný rozsah';
+                        }
+                    }
+                    if ($manualAmounts['oss_taxable_amount_return'] !== $manualAmounts['oss_vat_amount_return']) {
+                        $err["items.{$i}.oss_taxable_amount_return"][] = 'Ruční OSS základ a DPH musí být vyplněny společně';
+                    }
+
                     $originalPeriod = strtoupper(trim((string) ($item['oss_original_period'] ?? '')));
                     if ($originalPeriod !== '') {
                         if (!preg_match('/^[0-9]{4}Q[1-4]$/', $originalPeriod) || $originalPeriod < '2021Q3') {
                             $err["items.{$i}.oss_original_period"][] = 'Původní OSS období musí být ve formátu RRRRQn a nejdříve Q3 2021';
                         } else {
                             $taxDate = (string) ($data['tax_date'] ?? $data['issue_date'] ?? '');
-                            $currentPeriod = self::quarterCode($taxDate);
+                            $currentPeriod = OssPeriod::quarterCode($taxDate);
                             if ($currentPeriod !== null && $originalPeriod >= $currentPeriod) {
                                 $err["items.{$i}.oss_original_period"][] = 'Původní OSS období musí předcházet období dokladu';
                             }
@@ -112,18 +150,6 @@ final class InvoiceValidation
         }
 
         return $err;
-    }
-
-    private static function quarterCode(string $date): ?string
-    {
-        if (!preg_match('/^(\d{4})-(\d{2})-\d{2}$/', $date, $matches)) {
-            return null;
-        }
-        $month = (int) $matches[2];
-        if ($month < 1 || $month > 12) {
-            return null;
-        }
-        return sprintf('%sQ%d', $matches[1], intdiv($month - 1, 3) + 1);
     }
 
     private static function isValidDate(string $date): bool

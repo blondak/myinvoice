@@ -5,23 +5,26 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Oss;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Currency\CurrencyConversionService;
 
 final class OssLedgerService
 {
-    public function __construct(private readonly Connection $db) {}
+    public function __construct(
+        private readonly Connection $db,
+        private readonly CurrencyConversionService $currencyConverter,
+    ) {}
 
     /** @return array<string,mixed> */
     public function preview(int $supplierId, int $year, int $quarter): array
     {
         $quarter = max(1, min(4, $quarter));
-        [$start, $end] = self::quarterRange($year, $quarter);
+        [$start, $end] = OssPeriod::range($year, $quarter);
         $settings = $this->supplierSettings($supplierId);
-        $period = $this->periodState($supplierId, $year, $quarter);
         $warnings = [];
 
         if (!$this->hasOssColumns()) {
             $warnings[] = 'Chybí databázová migrace OSS (0137_oss_foundation.sql). Spusťte php api/bin/migrate.php.';
-            return $this->emptyPreview($year, $quarter, $start, $end, $settings, $period, $warnings);
+            return $this->emptyPreview($year, $quarter, $start, $end, $settings, $warnings);
         }
 
         if (empty($settings['oss_enabled'])) {
@@ -37,6 +40,7 @@ final class OssLedgerService
         $totalCorrections = 0.0;
         $correctionRowCount = 0;
         $invalidCorrectionCount = 0;
+        $conversionMissingCount = 0;
         $returnCurrency = (string) ($settings['oss_return_currency'] ?? 'EUR');
         $currentPeriod = sprintf('%04dQ%d', $year, $quarter);
 
@@ -56,9 +60,12 @@ final class OssLedgerService
             $conversionMissing = $baseReturn === null || $vatReturn === null;
 
             if ($conversionMissing) {
+                $conversionMissingCount++;
                 $warnings[] = 'Doklad ' . self::docLabel($r) . ' má OSS řádek bez přepočtu do měny podání.';
                 $baseReturn = 0.0;
                 $vatReturn = 0.0;
+            } elseif (abs($vatReturn - ($baseReturn * $rate / 100.0)) > 0.02) {
+                $warnings[] = 'Doklad ' . self::docLabel($r) . ' má OSS základ a DPH, které neodpovídají zadané sazbě.';
             }
 
             $originalPeriod = strtoupper(trim((string) ($r['oss_original_period'] ?? '')));
@@ -188,7 +195,6 @@ final class OssLedgerService
                 'submission_deadline' => self::deadline($year, $quarter),
             ],
             'settings' => $settings,
-            'state' => $period,
             'summary' => [
                 'return_currency' => $returnCurrency,
                 'total_base' => round($totalBase, 2),
@@ -199,6 +205,7 @@ final class OssLedgerService
                 'row_count' => count($rows),
                 'correction_row_count' => $correctionRowCount,
                 'invalid_correction_count' => $invalidCorrectionCount,
+                'conversion_missing_count' => $conversionMissingCount,
             ],
             'countries' => $countryRows,
             'corrections' => $correctionRows,
@@ -262,27 +269,6 @@ final class OssLedgerService
         ];
     }
 
-    /** @return array<string,mixed> */
-    private function periodState(int $supplierId, int $year, int $quarter): array
-    {
-        if (!$this->hasOssPeriodsTable()) {
-            return ['status' => 'open', 'submitted_at' => null, 'notes' => null];
-        }
-        $stmt = $this->db->pdo()->prepare(
-            'SELECT status, submitted_at, notes FROM oss_periods WHERE supplier_id = ? AND year = ? AND quarter = ?'
-        );
-        $stmt->execute([$supplierId, $year, $quarter]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        if (!$row) {
-            return ['status' => 'open', 'submitted_at' => null, 'notes' => null];
-        }
-        return [
-            'status' => (string) $row['status'],
-            'submitted_at' => $row['submitted_at'] ?? null,
-            'notes' => $row['notes'] ?? null,
-        ];
-    }
-
     private function returnAmount(array $row, string $field, string $sourceField, string $returnCurrency): ?float
     {
         if ($row[$field] !== null) {
@@ -294,26 +280,32 @@ final class OssLedgerService
         if ($row['oss_exchange_rate'] !== null) {
             return round((float) $row[$sourceField] * (float) $row['oss_exchange_rate'], 2);
         }
-        return null;
-    }
-
-    /** @return array{0:string,1:string} */
-    private static function quarterRange(int $year, int $quarter): array
-    {
-        $startMonth = ($quarter - 1) * 3 + 1;
-        $start = sprintf('%04d-%02d-01', $year, $startMonth);
-        $end = (new \DateTimeImmutable($start))->modify('+3 months -1 day')->format('Y-m-d');
-        return [$start, $end];
+        $date = (string) ($row['tax_date'] ?? $row['issue_date'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return null;
+        }
+        try {
+            $dateValue = new \DateTimeImmutable($date);
+        } catch (\Throwable) {
+            return null;
+        }
+        $converted = $this->currencyConverter->convert(
+            (float) $row[$sourceField],
+            (string) $row['currency'],
+            $returnCurrency,
+            $dateValue,
+        );
+        return $converted['amount'] ?? null;
     }
 
     private static function deadline(int $year, int $quarter): string
     {
-        [$start] = self::quarterRange($year, $quarter);
+        [$start] = OssPeriod::range($year, $quarter);
         return (new \DateTimeImmutable($start))->modify('+4 months -1 day')->format('Y-m-d');
     }
 
     /** @return array<string,mixed> */
-    private function emptyPreview(int $year, int $quarter, string $start, string $end, array $settings, array $period, array $warnings): array
+    private function emptyPreview(int $year, int $quarter, string $start, string $end, array $settings, array $warnings): array
     {
         return [
             'period' => [
@@ -325,7 +317,6 @@ final class OssLedgerService
                 'submission_deadline' => self::deadline($year, $quarter),
             ],
             'settings' => $settings,
-            'state' => $period,
             'summary' => [
                 'return_currency' => $settings['oss_return_currency'] ?? 'EUR',
                 'total_base' => 0.0,
@@ -336,6 +327,7 @@ final class OssLedgerService
                 'row_count' => 0,
                 'correction_row_count' => 0,
                 'invalid_correction_count' => 0,
+                'conversion_missing_count' => 0,
             ],
             'countries' => [],
             'corrections' => [],
@@ -345,17 +337,12 @@ final class OssLedgerService
 
     private function hasOssColumns(): bool
     {
-        return $this->db->pdo()->query("SHOW COLUMNS FROM invoice_items LIKE 'oss_applicable'")->fetch() !== false;
+        return $this->db->hasColumn('invoice_items', 'oss_applicable');
     }
 
     private function hasSupplierOssColumns(): bool
     {
-        return $this->db->pdo()->query("SHOW COLUMNS FROM supplier LIKE 'oss_enabled'")->fetch() !== false;
-    }
-
-    private function hasOssPeriodsTable(): bool
-    {
-        return $this->db->pdo()->query("SHOW TABLES LIKE 'oss_periods'")->fetch() !== false;
+        return $this->db->hasColumn('supplier', 'oss_enabled');
     }
 
     /** @param array<string,mixed> $row */

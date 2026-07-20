@@ -20,6 +20,7 @@ function syncSupplierStore(s: Supplier) {
     ic: s.ic,
     is_vat_payer: s.is_vat_payer,
     is_identified: s.is_identified ?? false,
+    oss_enabled: s.oss_enabled ?? false,
     taxpayer_type: s.taxpayer_type ?? null,
     default_payment_due_days: s.default_payment_due_days,
     default_payment_due_unit: s.default_payment_due_unit,

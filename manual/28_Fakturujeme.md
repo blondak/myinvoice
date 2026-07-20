@@ -166,8 +166,14 @@ neplátci nad OSS prahem, faktura má mít:
    identifikace (typicky `CZ`) a měnu podání (`EUR`).
 5. OSS přehled najdeš v **Daně → OSS přiznání**. Zobrazuje kvartální souhrn
    ručně označených OSS řádků podle země spotřeby, sazby a měny podání.
+   Řádky označené jako OSS se nezahrnují do českého přiznání k DPH,
+   kontrolního hlášení ani Knihy DPH.
 6. Kliknutím na **Stáhnout XML** vygeneruješ EPO XML **OSSEI1** pro OSS EU
    režim a záznam se uloží do **Archivu podání**.
+
+Částky v jiné měně než je měna OSS podání se automaticky přepočítají k DUZP
+pomocí kurzovního lístku ČNB. Pokud kurz nelze získat, XML se nevytvoří a přehled
+upozorní, který doklad je potřeba opravit.
 
 Opravu přiznání po uplynutí termínu vykážeš v aktuálním čtvrtletí rozdílem:
 

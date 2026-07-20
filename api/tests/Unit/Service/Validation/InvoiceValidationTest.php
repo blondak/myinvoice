@@ -194,6 +194,8 @@ final class InvoiceValidationTest extends TestCase
                 'vat_rate_id' => 1,
                 'oss_applicable' => true,
                 'oss_consumer_country' => 'SK',
+                'oss_rate_type' => 'standard',
+                'oss_supply_type' => 'services',
                 'oss_original_period' => '2026Q2',
             ]],
         ];

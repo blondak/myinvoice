@@ -288,6 +288,15 @@ final class SettingsAction
                 return Json::error($response, 'validation_failed', 'oss_return_currency musí být ISO kód měny (např. EUR).', 400);
             }
         }
+        foreach (['oss_valid_from', 'oss_valid_to'] as $field) {
+            if (!array_key_exists($field, $body)) continue;
+            $value = trim((string) ($body[$field] ?? ''));
+            if ($value === '') continue;
+            $date = \DateTimeImmutable::createFromFormat('Y-m-d', $value);
+            if ($date === false || $date->format('Y-m-d') !== $value) {
+                return Json::error($response, 'validation_failed', "{$field} musí být platné datum ve formátu RRRR-MM-DD.", 400);
+            }
+        }
         // Paušální daň pásmo — enum + podmínka §7a ZDP: paušalista nesmí být plátce DPH.
         if (array_key_exists('flat_tax_band', $body)) {
             $band = trim((string) ($body['flat_tax_band'] ?? ''));
@@ -579,15 +588,7 @@ final class SettingsAction
 
     private function supplierHasColumn(string $column): bool
     {
-        $stmt = $this->db->pdo()->prepare(
-            "SELECT COUNT(*)
-               FROM information_schema.COLUMNS
-              WHERE TABLE_SCHEMA = DATABASE()
-                AND TABLE_NAME = 'supplier'
-                AND COLUMN_NAME = ?"
-        );
-        $stmt->execute([$column]);
-        return (int) $stmt->fetchColumn() > 0;
+        return $this->db->hasColumn('supplier', $column);
     }
 
     public function listCurrencies(Request $request, Response $response): Response

@@ -5456,6 +5456,7 @@ components:
         id: { type: integer }
         company_name: { type: string }
         display_name: { type: string, nullable: true }
+        oss_enabled: { type: boolean }
 
     Country:
       type: object

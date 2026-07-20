@@ -14,7 +14,6 @@ useHotkey('ctrl+s', (e) => { e.preventDefault(); submit() })
 import { clientsApi, type Client, type ViesLookupResult } from '@/api/clients'
 import { projectsApi, type Project } from '@/api/projects'
 import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
-import { settingsApi } from '@/api/settings'
 import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
 import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
 import { formatMoney, formatPercent } from '@/composables/useFormat'
@@ -312,12 +311,6 @@ function vatRateLabel(r: VatRate): string {
 // bez automatické poznámky „Daň odvede zákazník".
 const selectableVatRates = computed(() => vatRates.value.filter(r => !r.is_reverse_charge))
 
-function activeVatRates(rows: VatRate[], activeOn: string): VatRate[] {
-  return rows
-    .filter(r => !r.valid_from || r.valid_from <= activeOn)
-    .filter(r => !r.valid_to || r.valid_to >= activeOn)
-}
-
 const ossOriginalPeriodOptions = computed(() => {
   const date = form.value.tax_date || form.value.issue_date
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(date || '')
@@ -337,24 +330,8 @@ const ossOriginalPeriodOptions = computed(() => {
 })
 
 async function loadInvoiceVatRates(): Promise<VatRate[]> {
-  const fromCodebook = await codebooksApi.vatRates().catch(() => [])
-  const activeCodebook = activeVatRates(fromCodebook, form.value.issue_date)
-  if (activeCodebook.some(r => r.country !== 'CZ')) return activeCodebook
-
-  const fromSettings = await settingsApi.listVatRates().catch(() => [])
-  return activeVatRates(fromSettings.map((r: any) => ({
-    id: Number(r.id),
-    code: String(r.code),
-    rate_percent: Number(r.rate_percent),
-    country: String(r.country || 'CZ').toUpperCase(),
-    label_cs: String(r.label_cs || r.code),
-    label_en: String(r.label_en || r.code),
-    is_default: Boolean(r.is_default),
-    is_reverse_charge: Boolean(r.is_reverse_charge),
-    valid_from: String(r.valid_from || '1970-01-01'),
-    valid_to: r.valid_to ?? null,
-    display_order: Number(r.display_order ?? 0),
-  })), form.value.issue_date)
+  const country = supplierStore.currentSupplier?.oss_enabled ? 'ALL' : 'CZ'
+  return codebooksApi.vatRates(country, form.value.issue_date).catch(() => [])
 }
 
 function blankItem(): InvoiceItem {
