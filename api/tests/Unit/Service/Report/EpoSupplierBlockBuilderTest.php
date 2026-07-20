@@ -119,6 +119,28 @@ final class EpoSupplierBlockBuilderTest extends TestCase
         $this->assertSame($expected, EpoSupplierBlockBuilder::countryName($iso2));
     }
 
+    /**
+     * typ_ds musí vycházet z `taxpayer_type` (typ daňového subjektu), ne z
+     * `data_box_type` (typ datové schránky). U s.r.o. s nevyplněnou datovkou
+     * dřív padalo "F" → EPO odmítlo podání kvůli kmenové části DIČ.
+     */
+    public function testTypDsPodleTypuDanovehoSubjektu(): void
+    {
+        $po = $this->fillFor(['taxpayer_type' => 'po', 'company_name' => 'Firma s.r.o.', 'data_box_type' => null]);
+        $this->assertSame('P', $po->getAttribute('typ_ds'));
+        $this->assertSame('Firma s.r.o.', $po->getAttribute('zkrobchjm'));
+
+        // data_box_type se do typ_ds nesmí promítnout ani když je vyplněný
+        $poSDatovkou = $this->fillFor(['taxpayer_type' => 'po', 'company_name' => 'Firma s.r.o.', 'data_box_type' => 'OVM']);
+        $this->assertSame('P', $poSDatovkou->getAttribute('typ_ds'));
+
+        $fo = $this->fillFor(['taxpayer_type' => 'fo', 'company_name' => 'Josef Novák', 'data_box_type' => 'PO']);
+        $this->assertSame('F', $fo->getAttribute('typ_ds'));
+
+        $neznamy = $this->fillFor(['taxpayer_type' => null, 'company_name' => 'Josef Novák']);
+        $this->assertSame('F', $neznamy->getAttribute('typ_ds'));
+    }
+
     /** @param array<string,mixed> $overrides */
     private function fillFor(array $overrides): \DOMElement
     {
