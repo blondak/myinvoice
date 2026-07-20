@@ -83,7 +83,6 @@ export interface Supplier {
   financial_office_code?: string | null
   workplace_code?: string | null
   cz_nace_code?: string | null
-  data_box_type?: string | null
   data_box_id?: string | null
   sest_jmeno?: string | null
   sest_prijmeni?: string | null

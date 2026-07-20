@@ -449,7 +449,7 @@ final class DphPriznaniBuilder
                     COALESCE(c.iso2, 'CZ') AS country_iso2,
                     s.ic, s.dic, s.is_vat_payer, s.is_identified,
                     s.taxpayer_type, s.vat_period, s.financial_office_code,
-                    s.workplace_code, s.cz_nace_code, s.data_box_type, s.data_box_id,
+                    s.workplace_code, s.cz_nace_code, s.data_box_id,
                     s.email, s.phone,
                     s.street_number_pop, s.street_number_orient,
                     s.opr_jmeno, s.opr_prijmeni, s.opr_postaveni,

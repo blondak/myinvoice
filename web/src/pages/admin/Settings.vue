@@ -272,7 +272,6 @@ async function saveSupplier() {
       financial_office_code: (supplier.value as any).financial_office_code ?? null,
       workplace_code: (supplier.value as any).workplace_code ?? null,
       cz_nace_code: (supplier.value as any).cz_nace_code ?? null,
-      data_box_type: (supplier.value as any).data_box_type ?? null,
       data_box_id: (supplier.value as any).data_box_id ?? null,
       sest_jmeno: (supplier.value as any).sest_jmeno ?? null,
       sest_prijmeni: (supplier.value as any).sest_prijmeni ?? null,

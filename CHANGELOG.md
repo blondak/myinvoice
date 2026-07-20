@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Zahozen matoucí sloupec `supplier.data_box_type`.** Přidala ho migrace 0038 jako „typ datové schránky (OVM/PO/FO)", ale UI pro něj nikdy nemělo editační pole, takže byl na všech instalacích prázdný. Jediné místo, které ho četlo, byl generátor EPO `VetaP` — a používal ho chybně jako typ daňového subjektu, což rozbilo podání DPH/KH/SHV všem právnickým osobám (opraveno v 4.49.2). Typ subjektu drží `taxpayer_type` (fyzická/právnická osoba) a nic jiného s ním souviset nemá; sloupec se zavádějícím jménem k té záměně jen zval, tak jde pryč i s průchodem přes API a frontend. Datové schránky zatím implementované nejsou — až budou, dostanou vlastní, jednoznačně pojmenovaná pole. `data_box_id` zůstává beze změny. Žádná data se neztrácejí, sloupec byl všude NULL. (migrace 0140)
+
 ## [4.49.2] — 2026-07-20
 
 ### Fixed

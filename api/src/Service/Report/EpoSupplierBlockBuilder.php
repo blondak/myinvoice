@@ -33,10 +33,9 @@ final class EpoSupplierBlockBuilder
         $dic = (string) ($supplier['dic'] ?? '');
         $vetaP->setAttribute('dic', preg_replace('/^CZ/i', '', $dic) ?? $dic);
         // typ_ds = TYP DAŇOVÉHO SUBJEKTU (F = fyzická, P = právnická osoba), NIKOLI typ
-        // datové schránky. Dřív se sem plnil sloupec `data_box_type` (OVM/PO/FO) — u s.r.o.
-        // s prázdnou datovkou vypadl fallback "F" a EPO podání spadlo na kontrole
-        // „U fyzické osoby musí být kmenová část DIČ tvořena RČ nebo vlastním číslem plátce".
-        // Jediný autoritativní zdroj je `taxpayer_type` (fo/po).
+        // datové schránky — ten se sem plnil dřív a shodil podání každé právnické
+        // osobě („U fyzické osoby musí být kmenová část DIČ tvořena RČ nebo vlastním
+        // číslem plátce"). Jediný autoritativní zdroj je `taxpayer_type` (fo/po).
         $isPravnickaOsoba = ($supplier['taxpayer_type'] ?? null) === 'po';
         $vetaP->setAttribute('typ_ds', $isPravnickaOsoba ? 'P' : 'F');
 

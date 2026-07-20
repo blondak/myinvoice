@@ -287,7 +287,7 @@ final class SouhrnneHlaseniBuilder
                     COALESCE(c.iso2, 'CZ') AS country_iso2,
                     s.ic, s.dic, s.is_vat_payer,
                     s.taxpayer_type, s.financial_office_code,
-                    s.workplace_code, s.data_box_type, s.data_box_id
+                    s.workplace_code, s.data_box_id
                FROM supplier s
           LEFT JOIN countries c ON c.id = s.country_id
               WHERE s.id = ?"
