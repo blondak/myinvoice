@@ -306,7 +306,7 @@ final class IdokladImportService
             'city'         => (string) ($c['City'] ?? '—'),
             'zip'          => (string) ($c['PostalCode'] ?? '00000'),
             'country_iso2' => $countryIso2,
-            'main_email'   => (string) ($c['Email'] ?? '') ?: 'unknown@import.local',
+            'main_email'   => (string) ($c['Email'] ?? '') ?: null,
             'phone'        => (string) ($c['Phone'] ?? '') ?: null,
             'language'     => 'cs',
             'is_customer'  => true,
