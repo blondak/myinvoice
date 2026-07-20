@@ -287,16 +287,19 @@ final class EmailNoticeReconcilerTest extends TestCase
         [, $idokladTx] = $this->insertStatementWithTx('idoklad', 1000.00, self::VS_A, 'idoklad-trace');
         $this->markTxMatched($idokladTx, $invoiceId, 'auto_exact');
 
-        $before = $this->payments->listRelatedBankTransactions($invoiceId);
+        $before = $this->payments->listRelatedBankTransactions($invoiceId, $this->supplierId);
         self::assertCount(1, $before);
         self::assertSame('idoklad', $before[0]['statement_source']);
         self::assertSame($idokladTx, $before[0]['id']);
         self::assertSame(0, $this->paymentCountForTx($idokladTx));
 
+        // Tenant kotva: cizí supplier vazbu nevidí, i když zná ID faktury.
+        self::assertSame([], $this->payments->listRelatedBankTransactions($invoiceId, $this->supplierId + 1000));
+
         [, $gpcTx] = $this->insertStatementWithTx('gpc', 1000.00, self::VS_A, 'gpc-trace');
         self::assertNotNull($this->reconciler->takeOverFromEmailNotice($gpcTx));
 
-        $after = $this->payments->listRelatedBankTransactions($invoiceId);
+        $after = $this->payments->listRelatedBankTransactions($invoiceId, $this->supplierId);
         self::assertCount(1, $after);
         self::assertSame('gpc', $after[0]['statement_source']);
         self::assertSame($gpcTx, $after[0]['id']);

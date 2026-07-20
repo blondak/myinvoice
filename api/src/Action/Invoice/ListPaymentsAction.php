@@ -32,7 +32,7 @@ final class ListPaymentsAction
 
         return Json::ok($response, [
             'payments'          => $this->payments->listFor($id),
-            'bank_transactions' => $this->payments->listRelatedBankTransactions($id),
+            'bank_transactions' => $this->payments->listRelatedBankTransactions($id, SupplierGuard::currentId($request)),
             'paid_total'        => (float) ($invoice['paid_total'] ?? 0),
             'amount_to_pay'     => (float) ($invoice['amount_to_pay'] ?? 0),
             'remaining'         => round((float) ($invoice['amount_to_pay'] ?? 0) - (float) ($invoice['paid_total'] ?? 0), 2),

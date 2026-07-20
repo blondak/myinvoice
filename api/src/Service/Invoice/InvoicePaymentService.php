@@ -88,9 +88,13 @@ final class InvoicePaymentService
      * invoice_payments. Typicky jde o historické faktury importované jako uhrazené
      * z iDokladu: bankovní matcher zná přesnou vazbu, ale zpětně nevytváří platbu.
      *
+     * bank_transactions/bank_statements nemají supplier_id (tenancy se odvozuje z účtu
+     * výpisu), takže kotvíme přes fakturu: JOIN na invoices.supplier_id drží dotaz
+     * v tenantu i kdyby budoucí writer matched_invoice_id zapomněl scope ohlídat.
+     *
      * @return list<array<string,mixed>>
      */
-    public function listRelatedBankTransactions(int $invoiceId): array
+    public function listRelatedBankTransactions(int $invoiceId, int $supplierId): array
     {
         $stmt = $this->db->pdo()->prepare(
             'SELECT bt.id, bt.statement_id, bs.source AS statement_source,
@@ -100,10 +104,11 @@ final class InvoicePaymentService
                     bt.description, bt.bank_ref, bt.match_status
                FROM bank_transactions bt
                JOIN bank_statements bs ON bs.id = bt.statement_id
+               JOIN invoices i ON i.id = bt.matched_invoice_id AND i.supplier_id = ?
               WHERE bt.matched_invoice_id = ?
               ORDER BY bt.posted_at, bt.id'
         );
-        $stmt->execute([$invoiceId]);
+        $stmt->execute([$supplierId, $invoiceId]);
 
         return array_map(static function (array $row): array {
             $row['id'] = (int) $row['id'];

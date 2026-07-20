@@ -21,7 +21,7 @@ import { useToast } from '@/composables/useToast'
 import WorkReportModal from '@/components/modals/WorkReportModal.vue'
 import ActionBar, { type ActionItem } from '@/components/ui/ActionBar.vue'
 
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 const toast = useToast()
 
 const auth = useAuthStore()
@@ -181,6 +181,9 @@ async function load() {
 // ───── Evidence plateb / částečné úhrady (#89) ─────────────────────────
 const payments = ref<InvoicePayment[]>([])
 const bankTransactions = ref<RelatedBankTransaction[]>([])
+// Rozlišuje „ještě nenačteno / načtení selhalo" od „opravdu nemá platby" — jinak by
+// informační hláška o chybějících detailech probliknutí i při chybě endpointu.
+const paymentsLoaded = ref(false)
 
 function paymentsRelevant(): boolean {
   const inv = invoice.value
@@ -190,13 +193,21 @@ function paymentsRelevant(): boolean {
 }
 
 function loadPayments() {
+  paymentsLoaded.value = false
   if (!invoice.value || !paymentsRelevant()) { payments.value = []; bankTransactions.value = []; return }
   invoicesApi.listPayments(invoice.value.id)
     .then(r => {
       payments.value = r.payments
       bankTransactions.value = r.bank_transactions ?? []
+      paymentsLoaded.value = true
     })
     .catch(() => { payments.value = []; bankTransactions.value = [] })
+}
+
+/** Popisek zdroje výpisu; neznámou hodnotu ENUMu radši ukáže syrově než jako holý i18n klíč. */
+function bankSourceLabel(source: RelatedBankTransaction['statement_source']): string {
+  const key = `invoice.payments.bank_sources.${source}`
+  return te(key) ? t(key) : source
 }
 
 const unrecordedBankTransactions = computed(() => {
@@ -1959,7 +1970,7 @@ const invoiceActions = computed<ActionItem[]>(() => {
               <td class="px-4 py-2.5 text-right font-mono font-medium">{{ formatMoney(tx.amount, tx.currency ?? invoice.currency) }}</td>
               <td class="px-4 py-2.5">
                 <span class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
-                  {{ t('invoice.payments.bank_sources.' + tx.statement_source) }}
+                  {{ bankSourceLabel(tx.statement_source) }}
                 </span>
               </td>
               <td class="px-4 py-2.5 text-xs">
@@ -1994,7 +2005,7 @@ const invoiceActions = computed<ActionItem[]>(() => {
           </div>
           <div class="flex items-center justify-between gap-3">
             <span class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
-              {{ t('invoice.payments.bank_sources.' + tx.statement_source) }}
+              {{ bankSourceLabel(tx.statement_source) }}
             </span>
             <RouterLink :to="`/bank/${tx.statement_id}`" class="text-xs text-primary-700 hover:underline">
               {{ t('invoice.payments.statement_link') }}
@@ -2017,7 +2028,7 @@ const invoiceActions = computed<ActionItem[]>(() => {
       </div>
     </div>
 
-    <div v-else-if="paymentsRelevant() && invoice.status === 'paid' && payments.length === 0"
+    <div v-else-if="paymentsLoaded && paymentsRelevant() && invoice.status === 'paid' && payments.length === 0"
       class="bg-neutral-50 border border-neutral-200 rounded-lg px-5 py-4 text-sm text-neutral-600">
       {{ t('invoice.payments.imported_without_details', { date: invoice.paid_at ? formatDate(invoice.paid_at) : '—' }) }}
     </div>
