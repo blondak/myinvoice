@@ -456,8 +456,9 @@ paths:
         Spojí až 100 faktur zvolených parametrem `ids` do jednoho PDF v uvedeném
         pořadí. Výstup obsahuje pouze vlastní strany faktur, bez příloh, vloženého
         ISDOC a výkazů práce. Všechny faktury musí patřit dodavateli z
-        `X-Supplier-Id`. S `sign_pdf=true` se elektronicky podepíše až výsledný
-        celek profilem nastaveným pro PDF faktur.
+        `X-Supplier-Id` a být vystavené (`issued`, `sent`, `reminded`, `paid`) —
+        koncepty a stornované doklady se odmítnou. S `sign_pdf=true` se
+        elektronicky podepíše až výsledný celek profilem nastaveným pro PDF faktur.
       parameters:
         - $ref: '#/components/parameters/SupplierIdHeader'
         - in: query
@@ -481,7 +482,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '422':
-          description: Překročen limit 100 faktur nebo výsledné PDF nelze podepsat
+          description: |
+            Překročen limit 100 faktur (`too_many`), výběr obsahuje koncept nebo
+            stornovaný doklad (`not_exportable`), nebo výsledné PDF nelze
+            podepsat (`signature_unavailable`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -518,7 +522,7 @@ paths:
         - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 } }
         - { in: query, name: date_by, schema: { type: string, enum: [issue, tax], default: issue } }
         - { in: query, name: type, schema: { type: string, enum: [invoice, proforma, credit_note, cancellation], description: "Jen jeden typ dokladu (default všechny)" } }
-        - { in: query, name: merge_pdf, schema: { type: boolean, default: false }, description: "Jen pro format=pdf-zip. Vrátí jeden sloučený PDF soubor místo ZIP archivu." }
+        - { in: query, name: merge_pdf, schema: { type: boolean, default: false }, description: "Jen pro format=pdf-zip. Vrátí jeden sloučený PDF soubor místo ZIP archivu; nejvýše 200 faktur za období." }
         - { in: query, name: sign_pdf, schema: { type: boolean, default: false }, description: "Jen se současným merge_pdf=true. Elektronicky podepíše výsledný soubor profilem nastaveným pro PDF faktur." }
       responses:
         '200':
@@ -538,7 +542,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '422':
-          description: Výsledné PDF nebylo možné elektronicky podepsat
+          description: |
+            Výsledné PDF nebylo možné elektronicky podepsat (`signature_unavailable`),
+            nebo období obsahuje víc než 200 faktur, což je strop pro sloučené PDF
+            (`too_many`) — ZIP export strop nemá.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

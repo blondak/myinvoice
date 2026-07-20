@@ -37,6 +37,14 @@ use ZipArchive;
  */
 final class ExportAction
 {
+    /**
+     * Strop pro sloučené PDF. Na rozdíl od ZIPu, který skládá už nacachovaná
+     * PDF, renderuje merge každý doklad znovu (bez ISDOC a výkazu práce), takže
+     * kvartál o stovkách faktur umí přetáhnout request timeout. ZIP export
+     * zůstává bez stropu — ten je levný.
+     */
+    private const MAX_MERGED_INVOICES = 200;
+
     public function __construct(
         private readonly Connection $db,
         private readonly InvoiceRepository $repo,
@@ -113,6 +121,8 @@ final class ExportAction
             };
         } catch (\InvalidArgumentException $e) {
             return Json::error($response, 'validation_failed', $e->getMessage(), 400);
+        } catch (\LengthException $e) {
+            return Json::error($response, 'too_many', $e->getMessage(), 422);
         } catch (\DomainException $e) {
             return Json::error($response, 'signature_unavailable', $e->getMessage(), 422);
         } catch (\Throwable $e) {
@@ -216,6 +226,15 @@ final class ExportAction
         ?int $userId,
         bool $sign,
     ): array {
+        if (count($ids) > self::MAX_MERGED_INVOICES) {
+            throw new \LengthException(sprintf(
+                'Do jednoho PDF lze sloučit nejvýše %d faktur, období jich obsahuje %d. '
+                . 'Zvol kratší období nebo použij ZIP export.',
+                self::MAX_MERGED_INVOICES,
+                count($ids),
+            ));
+        }
+
         $stmt = $this->db->pdo()->prepare('SELECT * FROM supplier WHERE id = ?');
         $stmt->execute([$supplierId]);
         $supplier = $stmt->fetch(\PDO::FETCH_ASSOC);

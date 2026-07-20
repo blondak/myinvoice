@@ -27,7 +27,7 @@ final class ExportSelectedPdfActionTest extends TestCase
 
         $invoices = $this->createStub(InvoiceRepository::class);
         $invoices->method('find')->willReturnCallback(
-            static fn (int $id): array => ['id' => $id, 'supplier_id' => 7],
+            static fn (int $id): array => ['id' => $id, 'supplier_id' => 7, 'status' => 'issued'],
         );
         $exporter = $this->createMock(MergedInvoicePdfExporter::class);
         $exporter->expects(self::once())
@@ -98,7 +98,7 @@ final class ExportSelectedPdfActionTest extends TestCase
     public function testReportsUnavailableSignature(): void
     {
         $invoices = $this->createStub(InvoiceRepository::class);
-        $invoices->method('find')->willReturn(['id' => 12, 'supplier_id' => 7]);
+        $invoices->method('find')->willReturn(['id' => 12, 'supplier_id' => 7, 'status' => 'issued']);
         $exporter = $this->createMock(MergedInvoicePdfExporter::class);
         $exporter->method('export')->willThrowException(new \DomainException('Podpis není dostupný.'));
 
@@ -109,6 +109,56 @@ final class ExportSelectedPdfActionTest extends TestCase
 
         self::assertSame(422, $response->getStatusCode());
         self::assertStringContainsString('signature_unavailable', (string) $response->getBody());
+    }
+
+    public function testRejectsDraftAndCancelledInvoicesNamingThem(): void
+    {
+        $invoices = $this->createStub(InvoiceRepository::class);
+        $invoices->method('find')->willReturnCallback(
+            static fn (int $id): array => match ($id) {
+                11 => ['id' => 11, 'supplier_id' => 7, 'status' => 'issued', 'varsymbol' => '2607001'],
+                12 => ['id' => 12, 'supplier_id' => 7, 'status' => 'draft', 'varsymbol' => null],
+                default => ['id' => $id, 'supplier_id' => 7, 'status' => 'cancelled', 'varsymbol' => '2607009'],
+            },
+        );
+        $exporter = $this->createMock(MergedInvoicePdfExporter::class);
+        $exporter->expects(self::never())->method('export');
+
+        $response = ($this->action($invoices, $exporter))(
+            $this->request(['ids' => '11,12,13']),
+            (new ResponseFactory())->createResponse(),
+        );
+        $body = (string) $response->getBody();
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertStringContainsString('not_exportable', $body);
+        // Koncept bez varsymbolu se pojmenuje přes #id, stornovaný přes varsymbol.
+        self::assertStringContainsString('#12', $body);
+        self::assertStringContainsString('2607009', $body);
+        self::assertStringNotContainsString('2607001', $body);
+    }
+
+    public function testRemovesTemporaryFileAfterReadingIt(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'selected-pdf-cleanup-');
+        self::assertNotFalse($path);
+        file_put_contents($path, '%PDF-cleanup');
+
+        $invoices = $this->createStub(InvoiceRepository::class);
+        $invoices->method('find')->willReturn(['id' => 12, 'supplier_id' => 7, 'status' => 'paid']);
+        $exporter = $this->createMock(MergedInvoicePdfExporter::class);
+        $exporter->method('export')->willReturn(['path' => $path, 'signed' => false]);
+
+        $response = ($this->action($invoices, $exporter))(
+            $this->request(['ids' => '12']),
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('%PDF-cleanup', (string) $response->getBody());
+        // Úklid nesmí viset na register_shutdown_function — na Windows by otevřený
+        // stream handle unlink() zablokoval a temp soubory by se hromadily.
+        self::assertFileDoesNotExist($path);
     }
 
     private function action(
