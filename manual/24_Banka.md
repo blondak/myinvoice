@@ -38,7 +38,7 @@ tlačítko **Nahrát GPC/ABO nebo PDF**.
 ![Upload výpisu](img/11_banka_upload.webp)
 
 > 💡 **PDF výpis místo GPC.** Některé banky GPC/ABO export nenabízejí (Banka
-> CREDITAS), případně ho konkrétní účet nemá zapnutý. Pro **Creditas, ČSOB a KB**
+> CREDITAS), případně ho konkrétní účet nemá zapnutý. Pro **Creditas, ČSOB, KB a Raiffeisenbank**
 > proto stačí nahrát rovnou **PDF výpis** — systém ho deterministicky rozparsuje
 > na transakce (bez AI) a ověří, že součet sedí na počáteční a konečný zůstatek
 > z hlavičky (na haléř přesně). Dál to funguje úplně stejně jako GPC — párování,

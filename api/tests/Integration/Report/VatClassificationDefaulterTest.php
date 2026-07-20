@@ -22,6 +22,10 @@ use PHPUnit\Framework\TestCase;
 #[Group('integration')]
 final class VatClassificationDefaulterTest extends TestCase
 {
+    public function testZeroRateDomesticSaleNeedsExplicitClassification(): void
+    {
+        $this->assertNull($this->defaulter->defaultForSale(0.0));
+    }
     private VatClassificationDefaulter $defaulter;
     private ?Connection $conn = null;
 

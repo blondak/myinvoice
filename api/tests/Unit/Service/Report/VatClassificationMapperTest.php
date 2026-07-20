@@ -201,6 +201,8 @@ final class VatClassificationMapperTest extends TestCase
             vat_rate REAL NULL,
             is_reverse_charge INTEGER NOT NULL DEFAULT 0,
             kod_pred_pl TEXT NULL,
+            kh_regime_code TEXT NULL,
+            kh_bad_debt TEXT NULL,
             display_order INTEGER NOT NULL DEFAULT 0,
             archived INTEGER NOT NULL DEFAULT 0
         )");

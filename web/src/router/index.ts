@@ -76,6 +76,9 @@ const routes: RouteRecordRaw[] = [
       // Sekce E-maily — záložky: Odeslané / Šablony / Elektronické podpisy (vzor Codebooks)
       { path: 'admin/emails',           name: 'admin-emails',    component: () => import('@/pages/admin/Emails.vue'), meta: { adminOnly: true } },
       { path: 'admin/approvals',        name: 'admin-approvals', component: () => import('@/pages/admin/Approvals.vue'), meta: { adminOnly: true } },
+      { path: 'admin/price-list',       name: 'admin-price-list', component: () => import('@/pages/admin/PriceList.vue'), meta: { adminOnly: true, requiresSupplier: true } },
+      { path: 'admin/price-list/new',   name: 'admin-price-list-new', component: () => import('@/pages/admin/PriceListForm.vue'), meta: { adminOnly: true, requiresSupplier: true } },
+      { path: 'admin/price-list/:id(\\d+)/edit', name: 'admin-price-list-edit', component: () => import('@/pages/admin/PriceListForm.vue'), meta: { adminOnly: true, requiresSupplier: true } },
       { path: 'recurring',              name: 'recurring',        component: () => import('@/pages/recurring/RecurringList.vue') },
       { path: 'recurring/new',          name: 'recurring-new',    component: () => import('@/pages/recurring/RecurringForm.vue'), meta: { requiresWrite: true, requiresSupplier: true } },
       { path: 'recurring/:id(\\d+)',    name: 'recurring-detail', component: () => import('@/pages/recurring/RecurringDetail.vue') },
@@ -98,6 +101,9 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/ApprovalPublic.vue'), meta: { public: true } },
   { path: '/work-report/:token([a-f0-9]{32,128})', name: 'work-report-tracking',
     component: () => import('@/pages/WorkReportTrackingPublic.vue'), meta: { public: true } },
+  // Web faktura — veřejný náhled vystavené faktury (singular /invoice/…, interní UI je /invoices/…)
+  { path: '/invoice/:token([a-f0-9]{32,128})', name: 'invoice-public',
+    component: () => import('@/pages/InvoicePublic.vue'), meta: { public: true } },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

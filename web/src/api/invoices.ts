@@ -142,6 +142,10 @@ export interface Invoice {
   approval_reminder_at: string | null
   approval_reminder_count: number
   project_requires_approval?: boolean
+  /** Token trvalého veřejného odkazu „web faktura" (/invoice/{token}); null dokud odkaz nevznikl. */
+  public_token: string | null
+  /** Poslední zobrazení web faktury klientem (anonymní přístup); null = zatím nezobrazeno. */
+  public_viewed_at: string | null
   sent_at: string | null
   last_reminder_at: string | null
   reminder_count: number
@@ -577,6 +581,19 @@ export const invoicesApi = {
   requestApprovalTest: (id: number) =>
     api.post<{ sent_to: string[]; sent_at: string; is_test: true }>(
       `/invoices/${id}/request-approval-test`,
+      {},
+    ).then(r => r.data),
+
+  // Web faktura — trvalý veřejný odkaz (ensure = idempotentní vytvoření + URL)
+  publicLink: (id: number) =>
+    api.post<{ url: string; token: string; public_viewed_at: string | null }>(
+      `/invoices/${id}/public-link`,
+      {},
+    ).then(r => r.data),
+
+  regeneratePublicLink: (id: number) =>
+    api.post<{ url: string; token: string; public_viewed_at: null }>(
+      `/invoices/${id}/public-link/regenerate`,
       {},
     ).then(r => r.data),
 

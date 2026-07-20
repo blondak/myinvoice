@@ -101,6 +101,7 @@ use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceItemsAction;
 use MyInvoice\Action\PurchaseInvoice\TransitionPurchaseInvoiceStatusAction;
 use MyInvoice\Action\PurchaseInvoice\UpdatePurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\UploadPurchaseInvoicePdfAction;
+use MyInvoice\Action\PriceList\PriceListItemAction;
 use MyInvoice\Action\Recurring\RecurringTemplateAction;
 use MyInvoice\Action\Invoice\IssueFinalFromProformaAction;
 use MyInvoice\Action\Invoice\AdvanceCandidatesAction as InvoiceAdvanceCandidatesAction;
@@ -108,6 +109,10 @@ use MyInvoice\Action\Invoice\FinalCandidatesAction;
 use MyInvoice\Action\Invoice\LinkAdvanceAction as LinkInvoiceAdvanceAction;
 use MyInvoice\Action\Invoice\UnlinkAdvanceAction as UnlinkInvoiceAdvanceAction;
 use MyInvoice\Action\Invoice\PdfAction;
+use MyInvoice\Action\Invoice\PublicInvoiceAttachmentAction;
+use MyInvoice\Action\Invoice\PublicInvoiceGetAction;
+use MyInvoice\Action\Invoice\PublicInvoicePdfAction;
+use MyInvoice\Action\Invoice\PublicLinkAction;
 use MyInvoice\Action\Invoice\ListPdfsAction;
 use MyInvoice\Action\Invoice\DownloadArchivedPdfAction;
 use MyInvoice\Action\Invoice\DownloadImportedPdfAction;
@@ -237,6 +242,20 @@ final class Routes
         $app->post  ('/api/revenue-categories',                  [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'create']);
         $app->put   ('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'update']);
         $app->delete('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'delete']);
+
+        // Ceníkové položky (interní session API; správa admin, čtení accountant)
+        $app->get   ('/api/price-list-items', [PriceListItemAction::class, 'list']);
+        $app->post  ('/api/price-list-items', [PriceListItemAction::class, 'create']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'get']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'update']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}', [PriceListItemAction::class, 'delete']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/resolve', [PriceListItemAction::class, 'resolve']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/prices', [PriceListItemAction::class, 'prices']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}/prices/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'upsertPrice']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}/prices/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'deletePrice']);
+        $app->get   ('/api/price-list-items/{id:[0-9]+}/customer-overrides', [PriceListItemAction::class, 'customerOverrides']);
+        $app->put   ('/api/price-list-items/{id:[0-9]+}/customer-overrides/{clientId:[0-9]+}/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'upsertCustomerOverride']);
+        $app->delete('/api/price-list-items/{id:[0-9]+}/customer-overrides/{clientId:[0-9]+}/{currencyCode:[A-Za-z][A-Za-z][A-Za-z]}', [PriceListItemAction::class, 'deleteCustomerOverride']);
 
         // Roční daňové konstanty (globální číselník, override defaultů z TaxConstants; migrace 0079)
         $app->get   ('/api/codebooks/tax-constants',                [\MyInvoice\Action\Codebook\TaxConstantsAction::class, 'list']);
@@ -395,9 +414,18 @@ final class Routes
         $app->post   ('/api/invoices/{id:[0-9]+}/request-approval-test', RequestApprovalTestAction::class);
         $app->put    ('/api/invoices/{id:[0-9]+}/approval-status',       UpdateApprovalStatusAction::class);
 
+        // Web faktura — správa trvalého veřejného odkazu (authenticated)
+        $app->post   ('/api/invoices/{id:[0-9]+}/public-link',            [PublicLinkAction::class, 'ensure']);
+        $app->post   ('/api/invoices/{id:[0-9]+}/public-link/regenerate', [PublicLinkAction::class, 'regenerate']);
+
         // Public schvalovací endpointy (bez auth, jen token)
         $app->get    ('/api/public/approval/{token:[a-f0-9]{32,128}}',          PublicApprovalGetAction::class);
         $app->post   ('/api/public/approval/{token:[a-f0-9]{32,128}}/decide',   PublicApprovalDecideAction::class);
+
+        // Web faktura — veřejný náhled + PDF + přílohy (bez auth, jen token)
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}',     PublicInvoiceGetAction::class);
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}/pdf', PublicInvoicePdfAction::class);
+        $app->get    ('/api/public/invoice/{token:[a-f0-9]{32,128}}/attachment/{attId:[0-9]+}', PublicInvoiceAttachmentAction::class);
 
         // Public náhled na výkaz práce (bez auth; token + e-mailová autorizace kódem)
         $app->get    ('/api/public/work-report/{token:[a-f0-9]{32,128}}',              PublicWorkReportGetAction::class);

@@ -71,6 +71,7 @@ final class DphPriznaniBuilder
         }
 
         $lines = $this->mapper->aggregateForDphPriznani($supplierId, $year, $month, $period);
+        $this->appendSalesDataWarnings($supplierId, $year, $month, $period, $warnings);
         if ($isIdentified) {
             $lines = $this->filterLinesForIdentified($lines, $warnings);
         }
@@ -331,6 +332,57 @@ final class DphPriznaniBuilder
             'summary'  => $summary,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * @param list<string> $warnings
+     */
+    private function appendSalesDataWarnings(int $supplierId, int $year, int $month, string $period, array &$warnings): void
+    {
+        if ($period === 'quarterly') {
+            $quarter = (int) ceil($month / 3);
+            $startMonth = ($quarter - 1) * 3 + 1;
+            $endMonth = $quarter * 3;
+        } else {
+            $startMonth = $endMonth = $month;
+        }
+        $start = sprintf('%04d-%02d-01', $year, $startMonth);
+        $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $endMonth)))
+            ->modify('last day of this month')->format('Y-m-d');
+
+        $creditNotes = $this->db->pdo()->prepare(
+            "SELECT varsymbol
+               FROM invoices
+              WHERE supplier_id = ?
+                AND status NOT IN ('draft', 'cancelled')
+                AND invoice_type = 'credit_note'
+                AND (total_without_vat < 0 OR total_vat < 0)
+                AND COALESCE(tax_date, issue_date) BETWEEN ? AND ?
+           ORDER BY COALESCE(tax_date, issue_date), id"
+        );
+        $creditNotes->execute([$supplierId, $start, $end]);
+        foreach ($creditNotes->fetchAll(\PDO::FETCH_COLUMN) as $number) {
+            $warnings[] = "Dobropis {$number} snižuje daň na výstupu. Ověřte, že datum zařazení odpovídá doručení opravného daňového dokladu nebo vynaložení rozumného úsilí o jeho doručení (§ 42 ZDPH).";
+        }
+
+        $unclassifiedZero = $this->db->pdo()->prepare(
+            "SELECT DISTINCT i.varsymbol
+               FROM invoices i
+               JOIN invoice_items ii ON ii.invoice_id = i.id
+              WHERE i.supplier_id = ?
+                AND i.status NOT IN ('draft', 'cancelled')
+                AND i.invoice_type <> 'proforma'
+                AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
+                AND COALESCE(i.reverse_charge, 0) = 0
+                AND ii.vat_rate_snapshot = 0
+                AND ii.vat_classification_code IS NULL
+                AND i.vat_classification_code IS NULL
+           ORDER BY i.varsymbol"
+        );
+        $unclassifiedZero->execute([$supplierId, $start, $end]);
+        foreach ($unclassifiedZero->fetchAll(\PDO::FETCH_COLUMN) as $number) {
+            $warnings[] = "Doklad {$number} obsahuje neklasifikovaný řádek se sazbou 0 %. Řádek nebyl zahrnut na ř. 50; zvolte výslovnou klasifikaci DPH.";
+        }
     }
 
     /**

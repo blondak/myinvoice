@@ -14,7 +14,7 @@ use MyInvoice\Infrastructure\Database\Connection;
  * vat_classifications.vat_rate a defaulter automaticky chytne novou hodnotu.
  *
  * Pravidla per MF ČR (DPHDP3, aktuální seed):
- *   - Vystavená (sale, tuzemsko):    21% → 1,  12% → 2,  0% → 3
+ *   - Vystavená (sale, tuzemsko):    21% → 1,  12% → 2,  0% → bez defaultu
  *   - Vystavená (sale, reverse):     22 (EU služba §9/1; dodání zboží '20' se volí ručně)
  *   - Přijatá (purchase, tuzemsko):  21% → 40, 12% → 41, 0% → 42
  *   - Přijatá (purchase, reverse):   5  (tuzemský reverse charge)
@@ -28,7 +28,7 @@ use MyInvoice\Infrastructure\Database\Connection;
 final class VatClassificationDefaulter
 {
     /** Hard-coded fallback (matchne seed v migrace 0037 pro CZ 2025-2026 sazby) */
-    private const FALLBACK_SALE_TUZEMSKO    = ['21.0' => '1',  '12.0' => '2',  '0.0' => '3'];
+    private const FALLBACK_SALE_TUZEMSKO    = ['21.0' => '1',  '12.0' => '2'];
     private const FALLBACK_PURCHASE_TUZEMSKO = ['21.0' => '40', '12.0' => '41', '0.0' => '42'];
     // RC + EU odběratel: statistický default SLUŽBA '22' (§ 9 odst. 1, ř.21) — použije se
     // až když ani jednotky položek, ani CZ-NACE dodavatele nedají signál „zboží" (viz
@@ -75,7 +75,7 @@ final class VatClassificationDefaulter
      * `$supplierId` (volitelné, default 0 = jen globální) — multi-tenant scope.
      * Volej s tenant ID aby tenant viděl své custom kódy ELL.GLOBÁLNÍ; ne kódy jiných tenantů.
      */
-    public function defaultForSale(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null, int $supplierId = 0, bool $customerEuForeign = false, array $units = []): string
+    public function defaultForSale(float $vatRate, bool $reverseCharge = false, ?string $taxDate = null, int $supplierId = 0, bool $customerEuForeign = false, array $units = []): ?string
     {
         if ($reverseCharge) {
             $db = $this->lookup('sale', $vatRate, true, $taxDate, $supplierId);
@@ -85,6 +85,9 @@ final class VatClassificationDefaulter
             return $customerEuForeign
                 ? $this->classifyEuReverseChargeSale($units, $supplierId)
                 : self::FALLBACK_SALE_REVERSE_DOMESTIC;
+        }
+        if ($vatRate <= 0.0) {
+            return null;
         }
         return $this->lookup('sale', $vatRate, false, $taxDate, $supplierId)
             ?? $this->byRateFallback($vatRate, self::FALLBACK_SALE_TUZEMSKO);
@@ -248,7 +251,7 @@ final class VatClassificationDefaulter
      *
      * @param list<array{vat_rate?:float, total_with_vat?:float, unit?:string}> $items
      */
-    public function suggestHeaderForInvoice(array $items, bool $reverseCharge, string $direction, ?string $taxDate = null, int $supplierId = 0, bool $customerEuForeign = false): string
+    public function suggestHeaderForInvoice(array $items, bool $reverseCharge, string $direction, ?string $taxDate = null, int $supplierId = 0, bool $customerEuForeign = false): ?string
     {
         // Najdi dominantní sazbu (s největší totální částkou) a sesbírej měrné jednotky
         // (signál zboží/služba pro RC prodej do EU).

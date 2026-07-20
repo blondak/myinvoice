@@ -168,7 +168,15 @@ final class VatClassificationMapper
             // zrcadlový odpočet POTLAČÍ: výstupní samovyměření (primární ř.) zůstává, odpočet ne.
             $secondary = $r['dphdp3_line_secondary'];
             if ($secondary !== null && $secondary !== '' && $secondary !== $primary && empty($r['vat_deduction_none'])) {
-                $this->addLine($byLine, $secondary, $baseCzk, $vatCzk, $invId, $invoiceLineSeen, $label);
+                $this->addLine(
+                    $byLine,
+                    $secondary,
+                    (float) ($r['deduction_base_czk'] ?? $baseCzk),
+                    (float) ($r['deduction_vat_czk'] ?? $vatCzk),
+                    $invId,
+                    $invoiceLineSeen,
+                    $label,
+                );
             }
 
             // ř.47 — hodnota pořízeného majetku (doplňující údaj k ř.40-45).
@@ -177,7 +185,13 @@ final class VatClassificationMapper
                     ? $primary
                     : (($secondary !== null && $this->countsAsFixedAssetLine($secondary)) ? $secondary : null);
                 if ($assetEligibleLine !== null) {
-                    $this->addLine($byLine, '47', $baseCzk, $vatCzk, $invId, $invoiceLineSeen, 'Hodnota pořízeného majetku (§ 4 odst. 4 písm. c)');
+                    $assetBase = $assetEligibleLine === $secondary
+                        ? (float) ($r['deduction_base_czk'] ?? $baseCzk)
+                        : $baseCzk;
+                    $assetVat = $assetEligibleLine === $secondary
+                        ? (float) ($r['deduction_vat_czk'] ?? $vatCzk)
+                        : $vatCzk;
+                    $this->addLine($byLine, '47', $assetBase, $assetVat, $invId, $invoiceLineSeen, 'Hodnota pořízeného majetku (§ 4 odst. 4 písm. c)');
                 }
             }
         }

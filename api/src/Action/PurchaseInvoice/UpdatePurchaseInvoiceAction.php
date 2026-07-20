@@ -83,7 +83,13 @@ final class UpdatePurchaseInvoiceAction
 
         // Dodavatel neplátce DPH → bez nároku na odpočet. Default 'none' když neposláno;
         // explicitní volbu respektujeme (vědomý override), ale níže přidáme varování.
-        $vendorNonPayer = isset($vendor['is_vat_payer']) && !$vendor['is_vat_payer'];
+        // Plátcovství bereme ze snapshotu k datu plnění (`vendor_is_vat_payer` z těla, migrace
+        // 0133) — ne z živého flagu klienta, aby u historické faktury šlo dodavatele označit
+        // za plátce, i když dnes plátce není. Fallback na živý flag jen když snapshot chybí.
+        $vendorIsPayer = array_key_exists('vendor_is_vat_payer', $body)
+            ? (bool) $body['vendor_is_vat_payer']
+            : (isset($vendor['is_vat_payer']) ? (bool) $vendor['is_vat_payer'] : true);
+        $vendorNonPayer = !$vendorIsPayer;
         if ($vendorNonPayer && !array_key_exists('vat_deduction', $body)) {
             $body['vat_deduction'] = 'none';
         }

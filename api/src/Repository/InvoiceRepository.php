@@ -1307,6 +1307,76 @@ final class InvoiceRepository
     }
 
     /**
+     * Vrátí public_token faktury (web faktura); pokud ještě neexistuje, vygeneruje
+     * ho — bin2hex(random_bytes(24)) → 48 hex znaků (vzor approval_token).
+     * UPDATE podmíněný `public_token IS NULL` serializuje souběžné ensure — vyhraje
+     * první zápis, druhý si token přečte znovu.
+     */
+    public function ensurePublicToken(int $invoiceId): string
+    {
+        $pdo = $this->db->pdo();
+        $sel = $pdo->prepare('SELECT public_token FROM invoices WHERE id = ?');
+        $sel->execute([$invoiceId]);
+        $existing = $sel->fetchColumn();
+        if (is_string($existing) && $existing !== '') {
+            return $existing;
+        }
+
+        $token = bin2hex(random_bytes(24));
+        $upd = $pdo->prepare('UPDATE invoices SET public_token = ? WHERE id = ? AND public_token IS NULL');
+        $upd->execute([$token, $invoiceId]);
+        if ($upd->rowCount() === 1) {
+            return $token;
+        }
+        $sel->execute([$invoiceId]);
+        return (string) $sel->fetchColumn();
+    }
+
+    /**
+     * Zneplatní stávající veřejný odkaz vygenerováním nového tokenu (stará URL
+     * přestane platit). public_viewed_at se resetuje — vztahuje se k aktuálnímu odkazu.
+     */
+    public function regeneratePublicToken(int $invoiceId): string
+    {
+        $token = bin2hex(random_bytes(24));
+        $this->db->pdo()->prepare(
+            'UPDATE invoices SET public_token = ?, public_viewed_at = NULL WHERE id = ?'
+        )->execute([$token, $invoiceId]);
+        return $token;
+    }
+
+    /**
+     * Lehká reference veřejně viditelné faktury podle public_token, nebo null.
+     * Pravidlo viditelnosti (draft se nezobrazuje) je přímo v SQL, aby ho
+     * konzument nemohl zapomenout (vzor findByApprovalToken s expirací).
+     *
+     * @return array{id:int, supplier_id:int}|null
+     */
+    public function publicInvoiceRefByToken(string $token): ?array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT id, supplier_id FROM invoices WHERE public_token = ? AND status <> 'draft'"
+        );
+        $stmt->execute([$token]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row === false ? null : ['id' => (int) $row['id'], 'supplier_id' => (int) $row['supplier_id']];
+    }
+
+    /** Najde veřejně viditelnou fakturu podle public_token (web faktura), nebo null. */
+    public function findByPublicToken(string $token): ?array
+    {
+        $ref = $this->publicInvoiceRefByToken($token);
+        return $ref === null ? null : $this->find($ref['id']);
+    }
+
+    /** Zaznamená zobrazení web faktury klientem (poslední anonymní přístup). */
+    public function markPublicViewed(int $invoiceId): void
+    {
+        $this->db->pdo()->prepare('UPDATE invoices SET public_viewed_at = NOW() WHERE id = ?')
+            ->execute([$invoiceId]);
+    }
+
+    /**
      * Pro admin „Approval inbox" + reminder cron. Vrací requested faktury filtrované
      * podle dní od poslední upomínky/žádosti.
      *

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.47.0] — 2026-07-18
+
+### Added
+
+- **Export vystavených faktur do Money S3 (Seyfor).** Vystavené faktury lze exportovat do XML pro účetnictví **Money S3** (`format=money_s3` v exportu faktur), vedle stávajícího Stereo / Pohoda / ISDOC. Oficiální veřejné XSD pro tento formát neexistuje — struktura byla odvozena z reálného exportu Money S3 a ověřena proti uživatelské příručce. (#211) Sazby DPH se přitom neváží natvrdo na aktuální 12/21, ale **odvozují se z položek dokladu**: nižší nenulová sazba jde do sníženého koše, vyšší do základního, jediná sazba se rozřadí prahem 17 %. Díky tomu projdou i doklady ze starších období s historickými sazbami (15/21 pro 2013–2023, 14/20 pro 2012, 5/22 pro 1995–2003), zatímco dřív cokoli mimo 12/21 export tvrdě shodilo. Tři a víc různých nenulových sazeb na jednom dokladu dvoukošíkový model Money S3 neumí → zůstává tvrdá chyba. (#213)
+- **iDoklad — synchronizace bankovních účtů.** Import z iDokladu má novou volbu **Bankovní účty**, která načte číselník účtů z iDokladu a bezpečně jej namapuje na aktivní účty stejné měny v MyInvoice. Účet se propojí jen při jednoznačné shodě čísla účtu / IBANu (u českého účtu se kontroluje i kód banky); neznámý nebo nejednoznačný účet se pouze označí ke kontrole (`unmatched` / `ambiguous`). Synchronizace nikdy nezakládá ani nepřepisuje lokální bankovní účet a je idempotentní. Tvoří bezpečný základ pro budoucí import bankovních pohybů z iDokladu a jejich deduplikaci vůči GPC/IMAP. (#218, migrace 0135)
+- **Daňový optimalizátor — odhad čistého příjmu za minulý měsíc.** Nová rozbalovací karta ukazuje pravděpodobný čistý příjem za poslední uzavřený kalendářní měsíc: reálné zaplacené tržby a náklady, z nichž se odhadnou odvody (anualizací × 12 přes stejnou logiku jako roční přepočet — výdajový paušál se stropem 2 M příjmu, odpočty, dětské slevy, minimální vyměřovací základy pojistného — pak vydělené 12). Čistý příjem = zisk (tržby − skutečné náklady) minus odhadnuté odvody, tj. reálná hotovost, co zbyde. Zobrazuje se vždy nezávisle na roku zvoleném v přepínači. (#217, #219)
+
+### Fixed
+
+- **iDoklad — import vydané faktury přebírá její skutečný bankovní účet.** Při více účtech téže měny import dosud vždy dosadil výchozí účet měny, takže faktura vystavená např. s účtem Fio se po importu mohla zobrazit s výchozím účtem RB. Nově se účet hledá podle historických údajů `MyAddress` konkrétního dokladu (číslo účtu + kód banky, stejná normalizace jako v bankovním modulu, kód banky umí odvodit i z českého IBANu); výchozí účet měny je jen fallback při chybějícím nebo nejednoznačném účtu. (#216)
+- **Import ISDOC 5.x.** Parser měl namespace natvrdo na 6.x (`…/namespace/2013`), takže u staršího ISDOC 5.2 (`…/namespace/invoice`) nenašel `<ID>` a spadl na zavádějící „Chybí ISDOC ID (varsymbol)", přestože doklad oba elementy obsahoval. Namespace se nově bere z kořene dokumentu (struktura čtených elementů je mezi 5.x a 6.x shodná), u skutečně neznámého namespace parser vrací jasnou hlášku. (#208)
+- **Bankovní modul u účtů se stejným číslem lišících se kódem banky (návazně na #206).** Seznam výpisů i přehled stavů na účtech (včetně měsíčních grafů) nově správně rozlišují účty se shodným číslem podle kódu banky — výpisy si drží kód banky, filtrují se i podle něj a stavy/grafy se zobrazí pro všechny účty, ne jen pro výchozí. Kontrola jednoznačnosti při přiřazení „staršího výpisu bez kódu banky" byla sjednocena do jednoho helperu. (#209, #210, #212, #214)
+
+## [4.46.1] — 2026-07-16
+
+### Fixed
+
+- **Import GPC/ABO výpisu k účtu se stejným číslem u více bank (#206).** Když měl dodavatel dva bankovní účty se stejným číslem účtu lišící se jen kódem banky (např. Fio `…/2010` a Raiffeisenbank `…/5500`), mohl se nahraný GPC/ABO (i PDF) výpis tiše přiřadit k výchozímu účtu — GPC hlavička kód banky vlastního účtu nenese a kód v transakčních řádcích patří protistraně. Nově se v takovém případě import zastaví a vyžádá **ruční výběr cílového účtu** (stejný dialog jako u víceměnového účtu se sdíleným číslem); pokud číslu odpovídá jen jeden účet, přiřadí se automaticky. Kandidáti v dialogu se rozlišují měnou i kódem banky. U neinteraktivního adresářového skenu se nejednoznačnost zaloguje do chybového logu.
+- **Import PDF výpisu Raiffeisenbank — kurz kartové platby se 3+ desetinnými místy (#205).** Detekce řádku s kurzem počítala natvrdo se dvěma desetinnými místy, takže kurz jako `21.716 CZK/USD` se nerozpoznal a jeho useknutý prefix se vzal jako částka → self-check součtu výpis zamítl. Nově se rozpozná libovolný počet desetinných míst.
+
+## [4.46.0] — 2026-07-14
+
+### Added
+
+- **Web faktura — trvalý veřejný odkaz na vystavenou fakturu.** Každá vystavená faktura (i proforma či dobropis) může mít trvalý veřejný odkaz `/invoice/{token}`, na kterém si ji klient **bez přihlášení** prohlédne v prohlížeči, stáhne PDF a přílohy e-mailu (obdoba „web faktury" z Fakturoidu). Veřejná stránka je dvojjazyčná podle jazyka dokladu a ukazuje totéž co PDF: dodavatele, odběratele, položky s rozpadem DPH, součty, platební údaje s QR kódem a poznámky; stav úhrady se zobrazuje živě (Uhrazeno / Částečně uhrazeno / Po splatnosti). Odkaz se automaticky vkládá do e-mailu při odeslání faktury klientovi. V detailu faktury je pod „…" akce **Web faktura** s možností zkopírovat/otevřít odkaz, indikací „zobrazeno klientem" a revokací (**Vygenerovat nový odkaz** — starý okamžitě přestane platit). Payload veřejného API je striktní whitelist (neúnikají tokeny, snapshoty, interní ID ani kontaktní údaje klienta), přílohy jsou vázané na fakturu proti cross-invoice přístupu a endpointy mají vlastní rate-limit proti anonymnímu zneužití.
+
+## [4.45.0] — 2026-07-12
+
+### Added
+
+- **Import PDF výpisů Raiffeisenbank (vedle Creditasu, ČSOB a KB).** Výpisy z Raiffeisenbank (běžný i spořicí účet) jde nahrát rovnou jako **PDF** a systém je deterministicky rozparsuje na transakce (bez AI) — stejné tlačítko, párování, stavy účtů i originál ke stažení jako u GPC. RB má vertikální layout (dvojice dat zaúčtování + valuta jako kotva transakce) a odlišný číselný formát (desetinná tečka, mezera jako oddělovač tisíců); parser to řeší vlastní třídou v registru a hlídá se proti záměně typu transakce za název protiúčtu. Jako u ostatních bank platí self-check: součet transakcí musí na haléř přesně sednout na počáteční a konečný zůstatek z hlavičky, jinak se výpis odmítne.
+- **Sloupec „Start (km)" v knize jízd.** Tabulka jízd nově ukazuje počáteční stav tachometru (před sloupcem „Ujeto (km)").
+
+### Fixed
+
+- **Import z iDokladu — incremental sync „od posledního importu" (#197).** Filtr `DateLastChange>=…` iDoklad v3 API odmítal chybou HTTP 400 „Incorrect filter format". API vyžaduje tvar `sloupec~operátor~hodnota` (`DateLastChange~gte~…`); sjednoceno do jednoho helperu napříč kontakty, fakturami i dobropisy, takže inkrementální import projde.
+- **Import z iDokladu — duplicitní variabilní symbol u paušálů (#196).** Import vystavených faktur bral `varsymbol` přednostně z platebního VariableSymbolu; u paušálů/trvalých plateb má víc faktur stejný VS → kolize na UNIQUE indexu a import spadl na „Duplicate entry". V našem modelu je variabilní symbol číslo dokladu, takže se nově bere unikátní DocumentNumber (VariableSymbol jen jako fallback).
+- **Stažení archivovaného zdrojového ISDOC u přijaté faktury vracelo 404.** IIS pravidlo `hiddenSegments` blokovalo segment `source` kdekoli v URL, takže `GET /api/purchase-invoices/{id}/source` skončil chybou 404.8 dřív, než dorazil k PHP. Root-level `/source/` (plánovací dokumenty) zůstává chráněný.
+- **EPO výkazy — atribut `VetaP/stat` je název státu z číselníku, ne ISO2 kód (#201).** EPO XSD u `VetaP/stat` vyžaduje název státu z číselníku Země (např. „ČESKÁ REPUBLIKA"); dosud se posílal dvoupísmenný ISO2 kód („CZ"), který datovým typem projde, ale je věcně mimo číselník. Týká se kontrolního hlášení, přiznání DPH i souhrnného hlášení.
+- **Další vlna oprav věcné správnosti výkazů DPH z červencového auditu** (kontrolní hlášení, souhrnné hlášení). Opravena rekapitulace VetaC a poměrný odpočet u reverse charge, návrat služeb ze třetích zemí do KH oddílu A.2, doplněné validace DIČ a atributů zvláštních režimů KH a zaokrouhlení i kvartální termín souhrnného hlášení. Bez dopadu na běžné UI — mění se jen to, co teče do výkazů; kryto regresními testy.
+
 ## [4.44.4] — 2026-07-11
 
 ### Added

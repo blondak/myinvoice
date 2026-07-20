@@ -217,16 +217,42 @@ final class StatementImporter
               WHERE account_number IS NOT NULL OR iban IS NOT NULL'
         );
         if ($stmt === false) return null;
+        $matches = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $iban = isset($row['iban']) && is_string($row['iban']) ? $row['iban'] : null;
             if (AccountNumberNormalizer::matchesAny($accountNumber, $row['account_number'] ?? null, $iban)) {
-                return [
+                $matches[] = [
                     'code'      => (string) $row['code'],
                     'bank_code' => isset($row['bank_code']) && (string) $row['bank_code'] !== '' ? (string) $row['bank_code'] : null,
                 ];
             }
         }
-        return null;
+        if ($matches === []) return null;
+
+        // #206: víc účtů se stejným číslem účtu, lišících se kódem banky (příp. měnou),
+        // nelze v NEINTERAKTIVNÍ cestě (folder scan / fallback měny) jednoznačně
+        // rozlišit — GPC hlavička kód banky vlastního účtu nenese. Interaktivní upload
+        // to řeší volbou účtu (BankStatementAction::resolveTargetCurrency → 409
+        // ambiguous_account_currency). Tady jen zalogujeme varování a vezmeme první
+        // shodu (zachování chování), ať se adresářový sken nezasekne.
+        if (count($matches) > 1) {
+            $variants = [];
+            foreach ($matches as $m) {
+                $variants[($m['bank_code'] ?? '?') . '/' . $m['code']] = true;
+            }
+            if (count($variants) > 1) {
+                error_log(sprintf(
+                    '[bank-import] Nejednoznačný účet %s: odpovídá %d variantám (%s) — použita první (%s/%s). '
+                    . 'U interaktivního uploadu zvolte cílový účet ručně.',
+                    $accountNumber,
+                    count($matches),
+                    implode(', ', array_keys($variants)),
+                    $matches[0]['bank_code'] ?? '?',
+                    $matches[0]['code']
+                ));
+            }
+        }
+        return $matches[0];
     }
 
     /**

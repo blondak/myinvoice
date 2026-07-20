@@ -14,6 +14,7 @@ use MyInvoice\Service\Export\ExportPeriod;
 use MyInvoice\Service\Export\ExportPeriodResolver;
 use MyInvoice\Service\Export\IsdocExporter;
 use MyInvoice\Service\Export\MergedInvoicePdfExporter;
+use MyInvoice\Service\Export\MoneyS3XmlExporter;
 use MyInvoice\Service\Export\PohodaXmlExporter;
 use MyInvoice\Service\Export\StereoXmlExporter;
 use MyInvoice\Service\IpMatcher;
@@ -26,8 +27,8 @@ use ZipArchive;
 /**
  * Generický export faktur za měsíc nebo čtvrtletí do různých formátů:
  *
- *   GET /api/admin/export?format=pdf-zip|isdoc|pohoda|stereo&month=YYYY-MM[&type=invoice][&date_by=issue|tax]
- *   GET /api/admin/export?format=pdf-zip|isdoc|pohoda|stereo&period=quarterly&year=YYYY&quarter=1..4
+ *   GET /api/admin/export?format=pdf-zip|isdoc|pohoda|stereo|money_s3&month=YYYY-MM[&type=invoice][&date_by=issue|tax]
+ *   GET /api/admin/export?format=pdf-zip|isdoc|pohoda|stereo|money_s3&period=quarterly&year=YYYY&quarter=1..4
  *
  * Sdílený filter: period + type + date_by + supplier_id (z X-Supplier-Id middleware).
  * Per-format: výstup MIME a filename.
@@ -44,6 +45,7 @@ final class ExportAction
         private readonly PohodaXmlExporter $pohoda,
         private readonly StereoXmlExporter $stereo,
         private readonly MergedInvoicePdfExporter $mergedPdf,
+        private readonly MoneyS3XmlExporter $moneyS3,
         private readonly ExportPeriodResolver $periodResolver,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
@@ -106,6 +108,7 @@ final class ExportAction
                 'isdoc'   => $this->buildIsdoc($ids, $period),
                 'pohoda'  => $this->buildPohoda($ids, $sid, $period),
                 'stereo'  => $this->buildStereo($ids, $period),
+                'money_s3' => $this->buildMoneyS3($ids, $period),
                 default   => throw new \InvalidArgumentException("Neznámý formát: $format"),
             };
         } catch (\InvalidArgumentException $e) {
@@ -261,6 +264,16 @@ final class ExportAction
     private function buildStereo(array $ids, ExportPeriod $period): array
     {
         $r = $this->stereo->export($ids, $period->label);
+        return [$r['filename'], $r['content'], $r['mime']];
+    }
+
+    /**
+     * @param int[] $ids
+     * @return array{0:string,1:string,2:string}
+     */
+    private function buildMoneyS3(array $ids, ExportPeriod $period): array
+    {
+        $r = $this->moneyS3->export($ids, $period->label);
         return [$r['filename'], $r['content'], $r['mime']];
     }
 }

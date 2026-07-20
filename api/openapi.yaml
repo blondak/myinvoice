@@ -500,13 +500,18 @@ paths:
         - `isdoc` — ISDOC XML; jeden doklad = samostatný `.isdoc`, víc dokladů = ZIP
         - `pohoda` — Pohoda XML dataPack
         - `stereo` — Stereo (Ježek) XML
+        - `money_s3` — Money S3 (Seyfor) XML, formát „Faktury vydané"
+          (SeznamFaktVyd/FaktVyd). Bez oficiálního veřejného XSD — struktura
+          rekonstruovaná z reálného exportního vzorku. Podporuje jen sazby DPH
+          0 %, 12 % a 21 % (aktuální české sazby); jiná sazba na položce
+          export odmítne (400).
 
         Období: `month=YYYY-MM`, nebo `period=quarterly&year=YYYY&quarter=1..4`.
         `date_by=issue|tax` řídí zařazení do období (default issue; `tax` = DUZP,
         shodné s výkazy DPH).
       parameters:
         - $ref: '#/components/parameters/SupplierIdHeader'
-        - { in: query, name: format, required: true, schema: { type: string, enum: [pdf-zip, isdoc, pohoda, stereo] } }
+        - { in: query, name: format, required: true, schema: { type: string, enum: [pdf-zip, isdoc, pohoda, stereo, money_s3] } }
         - { in: query, name: month, schema: { type: string, pattern: '^\d{4}-\d{2}$' } }
         - { in: query, name: period, schema: { type: string, enum: [monthly, quarterly] } }
         - { in: query, name: year, schema: { type: integer } }
@@ -1211,6 +1216,74 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/public-link:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Web faktura — vrátí (a případně vytvoří) trvalý veřejný odkaz
+      description: |
+        Trvalý veřejný odkaz `/invoice/{token}` — klient si na něm fakturu
+        bez přihlášení prohlédne v HTML a stáhne PDF (obdoba „web faktury"
+        ve Fakturoidu). Token se generuje lazy při prvním volání; opakované
+        volání vrací tentýž odkaz (idempotentní). Odkaz se také automaticky
+        přikládá do e-mailu při odeslání faktury klientovi.
+
+        `public_viewed_at` = poslední zobrazení klientem (anonymní přístup);
+        null dokud klient fakturu neotevřel.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, example: "https://faktury.example.cz/invoice/a1b2…" }
+                  token: { type: string, description: "48 hex znaků" }
+                  public_viewed_at: { type: string, format: date-time, nullable: true }
+        '409':
+          description: Faktura je draft — web faktura je dostupná až po vystavení
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: "Faktura nenalezena" }
+
+  /api/v1/invoices/{id}/public-link/regenerate:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Web faktura — zneplatní stávající odkaz vygenerováním nového
+      description: |
+        Revokace veřejného odkazu (např. při úniku URL) — starý token přestane
+        okamžitě platit, vrací se nová URL. `public_viewed_at` se resetuje.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  token: { type: string }
+                  public_viewed_at: { type: string, nullable: true, example: null }
+        '409':
+          description: Faktura je draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: "Faktura nenalezena" }
 
   /api/v1/invoices/{id}/pdfs:
     parameters:
@@ -3665,12 +3738,26 @@ paths:
       responses:
         '200':
           description: List kódů (globální seed + tenant overrides)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VatClassification' }
     post:
       tags: [Codebooks]
       summary: Vytvoří custom VAT kód (per tenant)
       parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VatClassificationCreate' }
       responses:
-        '201': { description: Created }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VatClassification' }
 
   /api/v1/vat-classifications/{id}:
     put:
@@ -3679,8 +3766,17 @@ paths:
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
         - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VatClassificationInput' }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VatClassification' }
         '403': { description: Globální seed je read-only }
     delete:
       tags: [Codebooks]
@@ -5052,6 +5148,41 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    VatClassificationInput:
+      type: object
+      properties:
+        code: { type: string, maxLength: 8 }
+        label: { type: string, maxLength: 150 }
+        direction: { type: string, enum: [sale, purchase, both] }
+        dphdp3_line: { type: [string, 'null'] }
+        kh_section: { type: [string, 'null'] }
+        vat_rate: { type: [number, 'null'] }
+        is_reverse_charge: { type: boolean }
+        kh_regime_code:
+          type: [string, 'null']
+          enum: ['0', '1', '2', null]
+          description: VetaA4.kod_rezim_pl — běžné plnění, cestovní služba §89 nebo použité zboží §90.
+        kh_bad_debt:
+          type: [string, 'null']
+          enum: [N, P, null]
+          description: VetaA4/VetaB2.zdph_44 — běžné plnění nebo oprava nedobytné pohledávky.
+        display_order: { type: integer }
+        archived: { type: boolean }
+    VatClassificationCreate:
+      allOf:
+        - $ref: '#/components/schemas/VatClassificationInput'
+        - type: object
+          required: [code, label, direction]
+    VatClassification:
+      allOf:
+        - $ref: '#/components/schemas/VatClassificationInput'
+        - type: object
+          required: [id, supplier_id, archived, created_at]
+          properties:
+            id: { type: integer }
+            supplier_id: { type: [integer, 'null'] }
+            archived: { type: boolean }
+            created_at: { type: string, format: date-time }
     RevenueCategory:
       type: object
       properties:
@@ -5569,6 +5700,8 @@ components:
           type: string
           nullable: true
           enum: [none, requested, approved, rejected]
+        public_token: { type: string, nullable: true, description: "Token trvalého veřejného odkazu „web faktura\" (/invoice/{token}); null dokud odkaz nevznikl. Viz POST /invoices/{id}/public-link." }
+        public_viewed_at: { type: string, format: date-time, nullable: true, description: "Poslední zobrazení web faktury klientem (anonymní přístup); null = klient ji zatím neotevřel." }
         items:
           type: array
           items: { $ref: '#/components/schemas/InvoiceItem' }
@@ -6345,7 +6478,7 @@ components:
       description: "Položka seznamu výpisů (GET /bank-statements). Bankovní spojení dodavatele je per-měna na /settings/currencies, ne tady."
       properties:
         id: { type: integer, format: int64 }
-        source: { type: string, enum: [gpc, email_notice], description: "Původ výpisu: gpc = oficiální GPC/ABO výpis z banky, email_notice = virtuální výpis složený z e-mailových bankovních avíz." }
+        source: { type: string, enum: [gpc, pdf, email_notice, idoklad], description: "Původ výpisu: gpc = oficiální GPC/ABO výpis z banky, pdf = výpis rozparsovaný z PDF (banka bez GPC exportu), email_notice = virtuální výpis složený z e-mailových bankovních avíz, idoklad = virtuální výpis z bankovních pohybů importovaných z iDokladu. gpc a pdf jsou autoritativní; u shodné platby ze sekundárního zdroje se úhrada převede na ně a sekundární pohyb dostane match_status=ignored." }
         file_name: { type: string, example: "vypis_2026_05.gpc" }
         account_number: { type: string, example: "1234567890/0100" }
         bank_code: { type: string, nullable: true, example: "0100", description: "Kód banky účtu — autoritativně z konfigurovaného účtu (currencies.bank_code), fallback z výpisu. GPC výpisy ho samy nenesou." }
@@ -6356,6 +6489,7 @@ components:
         curr_balance: { type: number, format: float }
         transaction_count: { type: integer }
         matched_count: { type: integer }
+        ignored_count: { type: integer, description: "Počet položek s match_status=ignored — typicky pohyby sekundárního zdroje, jejichž úhradu převzal oficiální GPC/PDF výpis." }
         imported_at: { type: string, format: date-time }
         has_file: { type: boolean, description: "True pokud server má uložený originál výpisu — ke stažení přes /bank-statements/{id}/download." }
         has_pdf: { type: boolean, description: "True pokud je nahrán doprovodný PDF výpis." }
