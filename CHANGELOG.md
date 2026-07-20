@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.49.1] — 2026-07-20
+
+### Fixed
+
+- **Upgrade padal na migraci 0136, pokud v datech byly starší duplicitní bankovní pohyby.** Migrace `0136` přidávala na `bank_transactions` unikátní index přes `(source, source_ref)` a napřed tvrdě zastavila upgrade, když v datech našla duplicitu. Na instalacích s delší historií ale duplicitní e-mailová avíza reálně existují — pocházejí z doby před idempotenčním lookupem (#161) — takže se z pojistky proti souběhu stal blokátor celého upgradu aplikace, a to včetně všech následujících migrací. Unikátnost se nově nevyžaduje vůbec a zůstává jen běžný index; duplicitní avízo samo o sobě nic nerozbíjí (jde o obsahově shodné řádky), zato ruční čištění živé tabulky, na které visí `invoice_payments` a `payment_matches`, riskantní je. Idempotenci importů z iDokladu i z e-mailových avíz drží aplikační vrstva, kde byla i doteď, takže se pro uživatele nic nemění — jen upgrade projde. Instalace, které původní `0136` už úspěšně aplikovaly, si unikátní index nechají zahodit a dorovnají schéma. (#225, migrace 0139)
+- **Doklad s dlouhou adresou nešel vyexportovat do Pohody.** Exportér psal adresu protistrany syrově, přestože Pohoda XSD má na adresní typ délkové limity — faktura s ulicí delší než 64 znaků neprošla validací a export skončil chybou. Pole se nově ořezávají podle limitů ze schématu (firma 255, ulice a jméno 64, obec 45, PSČ 15, e-mail 98, telefon 40), s ohledem na diakritiku. Adresa je identifikační údaj, ne částka, takže zkrácení je přijatelnější než neexportovatelný doklad. Ostatní exportéry jsou v pořádku: Stereo ani Money S3 schéma nemají, ISDOC na adresních polích žádný limit nedefinuje.
+
 ## [4.49.0] — 2026-07-20
 
 ### Added
