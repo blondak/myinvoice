@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.49.0] — 2026-07-20
+
+### Added
+
+- **Klienta lze založit bez e-mailu.** Hlavní e-mail klienta byl dosud povinný, což nutilo vymýšlet fiktivní adresu u historických dokladů, kde e-mail protistrany prostě není k dispozici. Nově je pole volitelné; když ho vyplníte, kontroluje se dál na platný tvar, takže se do systému nedostane neodesílatelná adresa. Bez e-mailu klientovi nepůjde odeslat doklad ani upomínku — odesílací cesty vracejí srozumitelnou chybu místo pádu a cron automatických upomínek takového klienta hlásí jako **přeskočeného**, ne jako chybu běhu. E-mail vlastní firmy (dodavatele) zůstává povinný, protože se tiskne na fakturu a slouží jako odesílatel. Importy z iDokladu a Fakturoidu dosud u klientů bez e-mailu dosazovaly placeholder `unknown@import.local`, aby prošly přes `NOT NULL`; nově tam zůstane prázdno a migrace tento placeholder v existujících datech přepíše na prázdnou hodnotu, aby nevypadal jako reálná adresa. (#221, migrace 0138)
+
+### Fixed
+
+- **OSS ovládání v editoru zvyšovalo každý řádek položky.** Zaškrtávátko OSS sedělo nad polem popisu, takže i u dokladu bez jediného OSS plnění byla každá položka o řádek vyšší. Checkbox se přesunul na konec řádku hned před tlačítko smazání a popis má zpět plnou šířku; číselníky státu, sazby, typu plnění a původního období se po zaškrtnutí rozbalí do vlastního řádku pod položkou. Mobilní zobrazení zůstává beze změny.
+
 ## [4.48.0] — 2026-07-20
 
 ### Added
