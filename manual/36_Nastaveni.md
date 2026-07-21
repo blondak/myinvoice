@@ -13,6 +13,36 @@ aplikace:
 Správa opakovaně používaných fakturačních položek je kvůli návaznosti na
 vystavování dokladů v menu **Prodej → Ceník**.
 
+## Brandingové profily
+
+Brandingové profily jsou volitelný modul, který se zapíná v nastavení dodavatele.
+Dokud je vypnutý, faktury a e-maily používají původní údaje a branding dodavatele.
+Po zapnutí lze vytvořit profily pro různé obchodní značky. Profil může změnit
+logo, zobrazovaný název, slogan, barvu, kontaktní údaje a patičku e-mailu. Právní
+údaje dodavatele (firma, adresa, IČ a DIČ) zůstávají společné a profilem se nemění.
+
+Výchozí profil se použije vždy, když faktura, pravidelná fakturace ani zákazník
+neurčují jiný profil. Výchozí profil není povinný. Přepínač **Používat vlastní
+branding** v jednotlivém profilu řídí zobrazení jeho loga a barev v e-mailech i PDF.
+
+Každému profilu lze přiřadit také e-mailový profil odesílatele. Ten určuje
+SMTP účet, adresu odesílatele, Reply-To a případné podepisování zpráv. Není-li
+vybrán, použije se výchozí e-mailový profil dodavatele.
+
+E-mailový profil, který používá některý brandingový profil, nelze smazat.
+Chybová zpráva vypíše dotčené profily; nejprve jim nastav jiného odesílatele
+nebo výchozí profil dodavatele.
+
+Výchozí profil lze přiřadit zákazníkovi. Nový koncept faktury jej převezme a
+při vystavení se použitá identita uloží do snapshotu dokladu. Pozdější změna
+profilu nebo nahrání nového loga proto nezmění již vystavené faktury.
+
+Akce **Náhled e-mailu** u profilu zobrazí jeho logo, barvu, zobrazovaný název,
+kontakty i vlastní patičku. V náhledu lze přepínat mezi českou a anglickou
+variantou. Původní konfigurace brandingu e-mailů se používá při vypnutém modulu.
+Obsahové e-mailové šablony zůstávají společné pro dodavatele a spravují se
+odděleně na stránce **E-mail šablony**.
+
 ## 36.1 Číselníky
 
 **Systém → Číselníky**.
