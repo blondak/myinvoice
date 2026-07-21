@@ -49,6 +49,7 @@ final class BrandingProfilesAction
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
         if ($supplierId <= 0) return Json::error($response, 'no_supplier', 'Žádný supplier scope.', 400);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $body = (array) ($request->getParsedBody() ?? []);
         $errors = BrandingProfileValidation::validate($body);
         if ($errors !== []) return Json::error($response, 'validation_failed', 'Validace selhala', 400, ['fields' => $errors]);
@@ -67,6 +68,7 @@ final class BrandingProfilesAction
     {
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $id = (int) ($args['id'] ?? 0);
         if ($this->profiles->findForSupplier($id, $supplierId) === null) {
             return Json::error($response, 'not_found', 'Brandingový profil nenalezen.', 404);
@@ -89,6 +91,7 @@ final class BrandingProfilesAction
     {
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $id = (int) ($args['id'] ?? 0);
         $deleted = $this->profiles->delete($id, $supplierId);
         if (!$deleted) return Json::error($response, 'not_found', 'Brandingový profil nenalezen.', 404);
@@ -99,6 +102,7 @@ final class BrandingProfilesAction
     {
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $id = (int) ($args['id'] ?? 0);
         if (!$this->profiles->setDefault($id, $supplierId)) {
             return Json::error($response, 'not_found', 'Aktivní brandingový profil nenalezen.', 404);
@@ -112,8 +116,10 @@ final class BrandingProfilesAction
     {
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $id = (int) ($args['id'] ?? 0);
-        if ($this->profiles->findForSupplier($id, $supplierId) === null) {
+        $existing = $this->profiles->findForSupplier($id, $supplierId);
+        if ($existing === null) {
             return Json::error($response, 'not_found', 'Brandingový profil nenalezen.', 404);
         }
         $file = $request->getUploadedFiles()['file'] ?? null;
@@ -132,6 +138,7 @@ final class BrandingProfilesAction
             $file->moveTo($tmpPath);
             $result = $this->logoConverter->process($tmpPath, $supplierId, $id);
             $this->profiles->setLogoPath($id, $supplierId, $result['logo_path']);
+            $this->discardOrphanLogo((string) ($existing['logo_path'] ?? ''), $result['logo_path'], $supplierId);
         } catch (\RuntimeException $e) {
             return Json::error($response, 'conversion_failed', $e->getMessage(), 400);
         } finally {
@@ -144,12 +151,47 @@ final class BrandingProfilesAction
     {
         if (!$this->isAdmin($request)) return Json::error($response, 'forbidden', 'Pouze admin.', 403);
         $supplierId = $this->supplierId($request);
+        if (($gate = $this->requireEnabled($response, $supplierId)) !== null) return $gate;
         $id = (int) ($args['id'] ?? 0);
         if (!$this->profiles->setLogoPath($id, $supplierId, null)) {
             return Json::error($response, 'not_found', 'Brandingový profil nenalezen.', 404);
         }
         // Soubor záměrně nemažeme: vystavené faktury jej mohou mít ve snapshotu.
         return Json::ok($response, $this->profiles->findForSupplier($id, $supplierId));
+    }
+
+    /**
+     * Re-upload loga vyrábí nový soubor (jméno nese hash obsahu), takže ten
+     * předchozí by na disku zůstal navždy. Smažeme ho jen tehdy, když ho nedrží
+     * žádný jiný profil, dodavatel ani snapshot vystavené faktury — u těch je
+     * zachování souboru záměr (viz `deleteLogo`).
+     */
+    private function discardOrphanLogo(string $old, string $new, int $supplierId): void
+    {
+        if ($old === '' || $old === $new) return;
+        if ($this->profiles->isLogoPathInUse($old, $supplierId)) return;
+        $abs = \MyInvoice\Service\Mail\SafeLogoPath::resolve($old, $supplierId);
+        if ($abs === null) return;
+        \MyInvoice\Service\Pdf\PdfLogoFlattener::cleanup($abs);
+        @unlink($abs);
+        $svgSidecar = preg_replace('/\.png$/i', '.svg', $abs);
+        if (is_string($svgSidecar) && $svgSidecar !== $abs) @unlink($svgSidecar);
+    }
+
+    /**
+     * Mutace profilů dávají smysl jen se zapnutým modulem — čtecí cesty (PDF,
+     * e-maily, snapshot) gatují na `supplier.branding_profiles_enabled` v SQL,
+     * takže bez téhle brány šlo profil založit a pak ho nikde nezobrazit.
+     */
+    private function requireEnabled(Response $response, int $supplierId): ?Response
+    {
+        if ($this->profiles->isEnabled($supplierId)) return null;
+        return Json::error(
+            $response,
+            'branding_profiles_disabled',
+            'Brandingové profily nejsou pro tohoto dodavatele zapnuté.',
+            409,
+        );
     }
 
     private function supplierId(Request $request): int

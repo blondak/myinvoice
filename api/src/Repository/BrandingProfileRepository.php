@@ -24,6 +24,35 @@ final class BrandingProfileRepository
         return (bool) $stmt->fetchColumn();
     }
 
+    /**
+     * Drží ještě někdo tenhle soubor s logem? Kontrolujeme jiné profily, samotného
+     * dodavatele i snapshoty vystavených faktur — ty musí zůstat renderovatelné
+     * i po výměně loga, jinak by se staré doklady přegenerovaly bez obrázku.
+     */
+    public function isLogoPathInUse(string $logoPath, int $supplierId): bool
+    {
+        if ($logoPath === '') return false;
+
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT EXISTS (
+                 SELECT 1 FROM branding_profiles
+                  WHERE supplier_id = ? AND logo_path = ?
+             ) OR EXISTS (
+                 SELECT 1 FROM supplier WHERE id = ? AND logo_path = ?
+             ) OR EXISTS (
+                 SELECT 1 FROM invoices
+                  WHERE supplier_id = ?
+                    AND JSON_UNQUOTE(JSON_EXTRACT(supplier_snapshot, ?)) = ?
+             )'
+        );
+        $stmt->execute([
+            $supplierId, $logoPath,
+            $supplierId, $logoPath,
+            $supplierId, '$.logo_path', $logoPath,
+        ]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     /** @return list<array<string,mixed>> */
     public function listForSupplier(int $supplierId, bool $activeOnly = false): array
     {

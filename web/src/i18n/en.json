@@ -2610,6 +2610,7 @@
       "email_preview_title": "Email preview — {name}",
       "module_enabled": "Use branding profiles",
       "module_enabled_hint": "When enabled, invoices and emails can use different visual identities. When disabled, the original supplier settings are used.",
+      "disable_confirm": "Really turn off branding profiles? Invoices and emails will fall back to the original supplier settings. Profiles and their client assignments are kept and will apply again once you turn the module back on.",
       "invalid_color": "The color must use the #RRGGBB format.",
       "logo_too_large": "The logo may be at most 1 MiB.",
       "delete_confirm": "Delete profile “{name}”?"

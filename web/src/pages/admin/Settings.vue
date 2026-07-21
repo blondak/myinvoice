@@ -577,15 +577,7 @@ async function removeLogo() {
 
       </section>
 
-      <section class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
-        <label class="flex items-center gap-2 text-sm">
-          <input v-model="supplier.branding_profiles_enabled" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-          {{ t('settings.branding_profiles.module_enabled') }}
-        </label>
-        <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('settings.branding_profiles.module_enabled_hint') }}</p>
-      </section>
-
-      <BrandingProfilesSettings v-if="supplier.branding_profiles_enabled" @changed="load" />
+      <BrandingProfilesSettings v-model:enabled="supplier.branding_profiles_enabled" @changed="load" />
 
       <!-- Číslování faktur — samostatný box -->
       <section class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">

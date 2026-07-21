@@ -6,7 +6,12 @@ import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
 const toast = useToast()
-const emit = defineEmits<{ (event: 'changed'): void }>()
+const props = defineProps<{ enabled: boolean }>()
+const emit = defineEmits<{
+  (event: 'changed'): void
+  (event: 'update:enabled', value: boolean): void
+}>()
+const togglingModule = ref(false)
 const profiles = ref<BrandingProfile[]>([])
 const editing = ref<Partial<BrandingProfile> | null>(null)
 const saving = ref(false)
@@ -105,22 +110,60 @@ async function deleteLogo(profile: BrandingProfile) {
   } catch (e: any) { toast.error(e?.response?.data?.error?.message || t('common.error')) }
 }
 
-onMounted(load)
+// Přepínač se ukládá hned, ne až přes „Uložit" u dodavatele. Backend gatuje
+// profily na `supplier.branding_profiles_enabled`, takže dokud není hodnota
+// v DB, hlásí náhled e-mailu i práce s profily 404 „profil nenalezen".
+async function toggleModule(event: Event) {
+  const input = event.target as HTMLInputElement
+  const next = input.checked
+  // Vypnutí nic nemaže, jen přestane profily používat — což z UI není poznat,
+  // protože zmizí celý seznam. Proto to řekneme nahlas.
+  if (!next && !confirm(t('settings.branding_profiles.disable_confirm'))) {
+    input.checked = true
+    return
+  }
+  togglingModule.value = true
+  try {
+    await settingsApi.updateSupplier({ branding_profiles_enabled: next })
+    emit('update:enabled', next)
+    if (next) await load()
+    emit('changed')
+    toast.success(t('common.saved'))
+  } catch (e: any) {
+    input.checked = props.enabled
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  } finally { togglingModule.value = false }
+}
+
+onMounted(() => { if (props.enabled) load() })
 </script>
 
 <template>
   <section class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
-    <div class="flex items-start justify-between gap-4 mb-4">
+    <div class="flex items-start justify-between gap-4">
       <div>
         <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('settings.branding_profiles.title') }}</h2>
         <p class="text-xs text-neutral-500 mt-1">{{ t('settings.branding_profiles.hint') }}</p>
       </div>
-      <button class="h-9 px-3 rounded-md bg-primary-600 text-white text-sm" @click="edit()">
+      <button v-if="enabled" class="h-9 px-3 rounded-md bg-primary-600 text-white text-sm" @click="edit()">
         {{ t('settings.branding_profiles.add') }}
       </button>
     </div>
 
-    <div v-if="profiles.length" class="space-y-3">
+    <label class="flex items-center gap-2 text-sm mt-4">
+      <input
+        :checked="enabled"
+        :disabled="togglingModule"
+        type="checkbox"
+        class="rounded border-neutral-300 text-primary-600"
+        @change="toggleModule"
+      />
+      {{ t('settings.branding_profiles.module_enabled') }}
+    </label>
+    <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('settings.branding_profiles.module_enabled_hint') }}</p>
+
+    <template v-if="enabled">
+    <div v-if="profiles.length" class="space-y-3 mt-4">
       <article v-for="profile in profiles" :key="profile.id" class="border border-neutral-200 rounded-md p-3">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
@@ -146,7 +189,7 @@ onMounted(load)
         </div>
       </article>
     </div>
-    <p v-else class="text-sm text-neutral-500">{{ t('settings.branding_profiles.empty') }}</p>
+    <p v-else class="text-sm text-neutral-500 mt-4">{{ t('settings.branding_profiles.empty') }}</p>
 
     <div v-if="editing" class="mt-4 border-t border-neutral-200 pt-4">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -208,5 +251,6 @@ onMounted(load)
         <iframe :srcdoc="emailPreview.html" sandbox="allow-same-origin" class="w-full h-[560px] border border-neutral-200 rounded-md bg-neutral-50" />
       </div>
     </div>
+    </template>
   </section>
 </template>

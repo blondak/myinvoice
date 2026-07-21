@@ -17,12 +17,18 @@ use MyInvoice\Infrastructure\Config\RuntimePaths;
  * SQL, jiný service).
  *
  * Povolené tvary (SupplierLogoConverter::process pište jen tyhle):
- *   storage/supplier-logos/sup-{N}.png       — pro PNG po konverzi
- *   storage/supplier-logos/sup-{N}.svg       — případné SVG (zatím nepoužíváno)
+ *   storage/supplier-logos/sup-{N}.png                       — logo dodavatele
+ *   storage/supplier-logos/sup-{N}.svg                       — SVG sidecar (PDF)
+ *   storage/supplier-logos/sup-{N}-brand-{P}-{hash12}.png    — logo brandingového profilu
+ *   storage/supplier-logos/sup-{N}-brand-{P}-{hash12}.svg
+ *
+ * `{P}` je id brandingového profilu, `{hash12}` prvních 12 hex znaků SHA-256
+ * obsahu — díky němu re-upload nepřepíše soubor, který drží starší snapshot.
+ * Tenant se pořád pozná z `sup-{N}`, takže cizí logo nepropustíme.
  *
  * Vrací **absolutní cestu** pokud:
  *   - prefix odpovídá očekávanému dir
- *   - basename match `sup-{supplierId}.{ext}` (žádný traversal)
+ *   - basename match `sup-{supplierId}[-brand-{P}-{hash12}].{ext}` (žádný traversal)
  *   - extension je v allowlistu
  *   - realpath() neutekl mimo RuntimePaths::storage('supplier-logos')
  *   - soubor reálně existuje

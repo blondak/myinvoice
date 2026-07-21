@@ -2610,6 +2610,7 @@
       "email_preview_title": "Náhled e-mailu — {name}",
       "module_enabled": "Používat brandingové profily",
       "module_enabled_hint": "Po zapnutí lze pro faktury a e-maily volit různé vizuální identity. Při vypnutí se používá původní nastavení dodavatele.",
+      "disable_confirm": "Opravdu vypnout brandingové profily? Faktury a e-maily se vrátí k původnímu nastavení dodavatele. Profily ani jejich přiřazení u klientů se nesmažou a po opětovném zapnutí se zase použijí.",
       "invalid_color": "Barva musí být ve formátu #RRGGBB.",
       "logo_too_large": "Logo může mít nejvýše 1 MiB.",
       "delete_confirm": "Opravdu smazat profil „{name}“?"
