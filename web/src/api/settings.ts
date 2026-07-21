@@ -75,10 +75,14 @@ export interface Supplier {
   taxpayer_type?: 'fo' | 'po' | null
   vat_period?: 'monthly' | 'quarterly' | null
   flat_tax_band?: 'none' | 'band1' | 'band2' | 'band3' | null
+  oss_enabled?: boolean
+  oss_valid_from?: string | null
+  oss_valid_to?: string | null
+  oss_identification_country?: string | null
+  oss_return_currency?: string | null
   financial_office_code?: string | null
   workplace_code?: string | null
   cz_nace_code?: string | null
-  data_box_type?: string | null
   data_box_id?: string | null
   sest_jmeno?: string | null
   sest_prijmeni?: string | null

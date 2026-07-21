@@ -136,7 +136,8 @@ final class SouhrnneHlaseniBuilder
         $cleanDic = preg_replace('/^CZ/i', '', $dic) ?? $dic;
         $cleanDic = preg_replace('/[^0-9]/', '', $cleanDic) ?? '';
         $vetaP->setAttribute('dic', $cleanDic);
-        $vetaP->setAttribute('typ_ds', $supplier['data_box_type'] ?: 'F');
+        // typ_ds = typ daňového subjektu (F/P), ne typ datové schránky — viz EpoSupplierBlockBuilder.
+        $vetaP->setAttribute('typ_ds', ($supplier['taxpayer_type'] ?? null) === 'po' ? 'P' : 'F');
         if ($supplier['taxpayer_type'] === 'po') {
             $vetaP->setAttribute('zkrobchjm', (string) $supplier['company_name']);
         } else {
@@ -286,7 +287,7 @@ final class SouhrnneHlaseniBuilder
                     COALESCE(c.iso2, 'CZ') AS country_iso2,
                     s.ic, s.dic, s.is_vat_payer,
                     s.taxpayer_type, s.financial_office_code,
-                    s.workplace_code, s.data_box_type, s.data_box_id
+                    s.workplace_code, s.data_box_id
                FROM supplier s
           LEFT JOIN countries c ON c.id = s.country_id
               WHERE s.id = ?"

@@ -6,6 +6,7 @@ namespace MyInvoice\Service\Bank;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
+use Psr\Log\LoggerInterface;
 
 /**
  * Persist naparsovaného výpisu do DB (GPC nebo bank-specifický PDF parser — obojí
@@ -20,6 +21,7 @@ final class StatementImporter
         // Cross-source dedup GPC ← e-mailové avízo: převezme párování (i manuální/split)
         // z už spárované avízo-transakce místo dvojího párování téže platby.
         private readonly EmailNoticeReconciler $reconciler,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -241,15 +243,17 @@ final class StatementImporter
                 $variants[($m['bank_code'] ?? '?') . '/' . $m['code']] = true;
             }
             if (count($variants) > 1) {
-                error_log(sprintf(
-                    '[bank-import] Nejednoznačný účet %s: odpovídá %d variantám (%s) — použita první (%s/%s). '
+                $this->logger->warning(
+                    'Nejednoznačný účet při importu výpisu — použita první varianta. '
                     . 'U interaktivního uploadu zvolte cílový účet ručně.',
-                    $accountNumber,
-                    count($matches),
-                    implode(', ', array_keys($variants)),
-                    $matches[0]['bank_code'] ?? '?',
-                    $matches[0]['code']
-                ));
+                    [
+                        'account_number' => $accountNumber,
+                        'match_count'    => count($matches),
+                        'variants'       => array_keys($variants),
+                        'used_bank_code' => $matches[0]['bank_code'] ?? '?',
+                        'used_currency'  => $matches[0]['code'],
+                    ]
+                );
             }
         }
         return $matches[0];

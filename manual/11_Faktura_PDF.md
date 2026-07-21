@@ -54,6 +54,14 @@ stavu *Zaplaceno* mezi pohledávky. Platba navázaná na bankovní transakci se
 maže přes **Zrušit spárování** v detailu výpisu; platba s vystaveným daňovým
 dokladem až po jeho smazání/stornu.
 
+U faktur importovaných z externího systému může být doklad označen jako uhrazený
+ještě před importem bankovních dat. Pokud se později bankovní operace přímo spáruje
+s fakturou, detail zobrazí samostatný box **Související bankovní operace**. Obsahuje
+původní údaje z banky (datum, částku, účet a název protistrany, VS/KS/SS, popis a
+odkaz na výpis). Jde o dohledatelnou vazbu; bez samostatně evidované platby se tato
+operace znovu nezapočítává do uhrazené částky. Při nalezení stejné operace v GPC/PDF
+výpisu se odkaz přesune na tento autoritativní bankovní zdroj.
+
 Stav úhrady ukazuje badge: **Částečně uhrazeno** (přijata část peněz, zbytek
 se dál upomíná a počítá do pohledávek) a **Přeplaceno** (přišlo víc než
 částka k úhradě). V sumaci detailu je řádek **Uhrazeno** a **Zbývá uhradit**;
@@ -199,7 +207,7 @@ Per dodavatel lze nastavit:
 - **Reply-To** — kam má klient odpovědět (např. `fakturace@mywebdesign.cz` ≠
   technická adresa, ze které jde SMTP)
 
-Nastavuje se v **Systém → Dodavatelé → [tvůj dodavatel] → Editovat**.
+Nastavuje se v **Systém → Číselníky → Dodavatelé → [tvůj dodavatel] → Editovat**.
 
 ### 11.4.4 Volitelné přílohy emailu
 

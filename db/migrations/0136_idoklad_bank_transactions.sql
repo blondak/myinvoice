@@ -1,43 +1,19 @@
 -- Bankovní pohyby importované z iDokladu.
--- source_ref nese stabilní iDoklad BankStatement.Id a zajišťuje idempotenci.
+-- source_ref nese stabilní iDoklad BankStatement.Id a slouží k idempotenci importu.
 --
--- POZOR: UNIQUE níže se přidává na ŽIVOU tabulku. Kdyby v datech existovala
--- duplicita (source, source_ref), ALTER by spadl na kryptické „Duplicate entry"
--- a zablokoval i všechny NÁSLEDUJÍCÍ migrace — z pohledu uživatele se rozbije
--- upgrade aplikace, ne import z iDokladu. Proto se nejdřív ověří data a při
--- nálezu se migrace zastaví s čitelnou hláškou, ještě než se cokoli změní.
+-- POZOR — proč tu NENÍ UNIQUE (source, source_ref):
+-- Původní verze migrace UNIQUE přidávala a předem tvrdě zastavila upgrade, pokud
+-- v datech existovala duplicita. Na starších instalacích ale historické duplicity
+-- reálně existují (email_notice avíza z doby před idempotenčním lookupem, #161),
+-- takže se z pojistky proti race stal blokátor celého upgradu aplikace — viz #225.
+-- Duplicity samy o sobě nic nerozbíjí (jsou obsahově shodné), zato ruční čištění
+-- živé tabulky, na které visí invoice_payments / payment_matches, riskantní je.
 --
--- Duplicity dohledáš takto:
---   SELECT source, source_ref, COUNT(*) c FROM bank_transactions
---    WHERE source_ref IS NOT NULL GROUP BY 1,2 HAVING c > 1;
---
--- Vznikat by neměly (email_notice se zakládá přes idempotenční lookup v
--- BankEmailNoticeRepository), ale při race na dvou souběžných IMAP scanech to
--- teoreticky možné je. Řešení je ruční — jeden z řádků může nést navázané
--- invoice_payments / payment_matches, takže se nesmí mazat naslepo.
---
--- NULL se v UNIQUE indexu nikdy nekoliduje, takže GPC transakce (source_ref
--- IS NULL) jsou mimo hru a kontrola je záměrně vynechává.
-
-DELIMITER //
-
-BEGIN NOT ATOMIC
-  DECLARE dup_count INT DEFAULT 0;
-
-  SELECT COUNT(*) INTO dup_count FROM (
-    SELECT 1 FROM bank_transactions
-     WHERE source_ref IS NOT NULL
-     GROUP BY source, source_ref
-    HAVING COUNT(*) > 1
-  ) d;
-
-  IF dup_count > 0 THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
-      'Migrace 0136 zastavena: bank_transactions maji duplicitni (source, source_ref). Viz komentar v migraci.';
-  END IF;
-END //
-
-DELIMITER ;
+-- Idempotence proto zůstává jen na aplikační vrstvě, kde už byla:
+--   - IdokladBankTransactionImporter::exists()  (source='idoklad'  AND source_ref = ?)
+--   - BankEmailNoticeRepository                 (source='email_notice' AND source_ref = ?)
+-- Index níže je kvůli nim (a kvůli prefix scanu v lastExternalId()) nutný, ale
+-- záměrně NEunikátní.
 
 ALTER TABLE bank_statements
   MODIFY COLUMN source ENUM('gpc','email_notice','pdf','idoklad') NOT NULL DEFAULT 'gpc';
@@ -46,4 +22,4 @@ ALTER TABLE bank_transactions
   MODIFY COLUMN source ENUM('statement','email_notice','idoklad') NOT NULL DEFAULT 'statement';
 
 ALTER TABLE bank_transactions
-  ADD UNIQUE KEY IF NOT EXISTS uq_bank_transaction_source_ref (source, source_ref);
+  ADD KEY IF NOT EXISTS idx_bank_transaction_source_ref (source, source_ref);

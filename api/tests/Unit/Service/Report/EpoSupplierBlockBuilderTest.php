@@ -119,11 +119,29 @@ final class EpoSupplierBlockBuilderTest extends TestCase
         $this->assertSame($expected, EpoSupplierBlockBuilder::countryName($iso2));
     }
 
+    /**
+     * typ_ds musí vycházet z `taxpayer_type` (typ daňového subjektu). Dřív se
+     * plnil z typu datové schránky, který nikdo nevyplňoval → u s.r.o. padalo
+     * "F" a EPO odmítlo podání kvůli kmenové části DIČ.
+     */
+    public function testTypDsPodleTypuDanovehoSubjektu(): void
+    {
+        $po = $this->fillFor(['taxpayer_type' => 'po', 'company_name' => 'Firma s.r.o.']);
+        $this->assertSame('P', $po->getAttribute('typ_ds'));
+        $this->assertSame('Firma s.r.o.', $po->getAttribute('zkrobchjm'));
+
+        $fo = $this->fillFor(['taxpayer_type' => 'fo', 'company_name' => 'Josef Novák']);
+        $this->assertSame('F', $fo->getAttribute('typ_ds'));
+
+        $neznamy = $this->fillFor(['taxpayer_type' => null, 'company_name' => 'Josef Novák']);
+        $this->assertSame('F', $neznamy->getAttribute('typ_ds'));
+    }
+
     /** @param array<string,mixed> $overrides */
     private function fillFor(array $overrides): \DOMElement
     {
         $supplier = array_merge([
-            'financial_office_code' => '451', 'dic' => 'CZ1234567890', 'data_box_type' => 'F',
+            'financial_office_code' => '451', 'dic' => 'CZ1234567890',
             'taxpayer_type' => 'fo', 'company_name' => '', 'street' => 'Hlavní 1', 'city' => 'Praha',
             'zip' => '11000', 'country_iso2' => 'CZ',
         ], $overrides);

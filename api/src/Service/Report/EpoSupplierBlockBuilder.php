@@ -32,9 +32,14 @@ final class EpoSupplierBlockBuilder
         // DIČ — pattern [0-9]{1,10}, strip "CZ" prefix.
         $dic = (string) ($supplier['dic'] ?? '');
         $vetaP->setAttribute('dic', preg_replace('/^CZ/i', '', $dic) ?? $dic);
-        $vetaP->setAttribute('typ_ds', $supplier['data_box_type'] ?: 'F');
+        // typ_ds = TYP DAŇOVÉHO SUBJEKTU (F = fyzická, P = právnická osoba), NIKOLI typ
+        // datové schránky — ten se sem plnil dřív a shodil podání každé právnické
+        // osobě („U fyzické osoby musí být kmenová část DIČ tvořena RČ nebo vlastním
+        // číslem plátce"). Jediný autoritativní zdroj je `taxpayer_type` (fo/po).
+        $isPravnickaOsoba = ($supplier['taxpayer_type'] ?? null) === 'po';
+        $vetaP->setAttribute('typ_ds', $isPravnickaOsoba ? 'P' : 'F');
 
-        if (($supplier['taxpayer_type'] ?? null) === 'po') {
+        if ($isPravnickaOsoba) {
             $vetaP->setAttribute('zkrobchjm', (string) $supplier['company_name']);
         } else {
             // Fyzická osoba (OSVČ) — jmeno/prijmeni = sám daňový subjekt.
