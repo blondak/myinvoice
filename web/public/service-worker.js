@@ -2,16 +2,34 @@ const STATIC_CACHE_PREFIX = 'myinvoice-static-'
 const STATIC_CACHE = `${STATIC_CACHE_PREFIX}v1`
 const STATIC_DESTINATIONS = new Set(['font', 'image', 'script', 'style'])
 
+// Vite hashuje názvy souborů a ikony jsou stabilní → cache-first je bezpečné.
+const IMMUTABLE_PREFIXES = ['/assets/', '/pwa/']
+// Nehashovaná statika (invoice.css, logo.svg). Cache-first by tu držel starou
+// verzi až do bumpu STATIC_CACHE, proto stale-while-revalidate.
+const REVALIDATE_PREFIXES = ['/styles/']
+
 function isApiRequest(url) {
   return url.pathname === '/api' || url.pathname.startsWith('/api/')
 }
 
-function isCacheableAsset(request, url) {
-  if (!STATIC_DESTINATIONS.has(request.destination)) return false
+function hasPrefix(pathname, prefixes) {
+  return prefixes.some((prefix) => pathname.startsWith(prefix))
+}
 
-  return url.pathname.startsWith('/assets/')
-    || url.pathname.startsWith('/pwa/')
-    || url.pathname.startsWith('/styles/')
+function selectStrategy(request, url) {
+  if (request.method !== 'GET') return null
+  if (!STATIC_DESTINATIONS.has(request.destination)) return null
+
+  if (hasPrefix(url.pathname, IMMUTABLE_PREFIXES)) return cacheFirst
+  if (hasPrefix(url.pathname, REVALIDATE_PREFIXES)) return staleWhileRevalidate
+
+  return null
+}
+
+async function putIfStorable(cache, request, response) {
+  if (response.ok && response.type === 'basic') {
+    await cache.put(request, response.clone())
+  }
 }
 
 async function cacheFirst(request) {
@@ -20,10 +38,24 @@ async function cacheFirst(request) {
   if (cached) return cached
 
   const response = await fetch(request)
-  if (response.ok && response.type === 'basic') {
-    await cache.put(request, response.clone())
-  }
+  await putIfStorable(cache, request, response)
   return response
+}
+
+async function staleWhileRevalidate(request, event) {
+  const cache = await caches.open(STATIC_CACHE)
+  const cached = await cache.match(request)
+
+  const revalidated = fetch(request).then(async (response) => {
+    await putIfStorable(cache, request, response)
+    return response
+  })
+
+  if (!cached) return revalidated
+
+  // Cache se aktualizuje na pozadí; chyba sítě nesmí shodit odpověď z cache.
+  event.waitUntil(revalidated.catch(() => undefined))
+  return cached
 }
 
 self.addEventListener('install', (event) => {
@@ -53,7 +85,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (request.method === 'GET' && isCacheableAsset(request, url)) {
-    event.respondWith(cacheFirst(request))
+  const strategy = selectStrategy(request, url)
+  if (strategy) {
+    event.respondWith(strategy(request, event))
   }
 })
