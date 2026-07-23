@@ -3417,7 +3417,13 @@ paths:
       summary: ISDOC 6.0 XML export přijaté faktury
       description: |
         Role inversion — pro přijatou je `AccountingSupplierParty` = vendor,
-        `AccountingCustomerParty` = náš tenant.
+        `AccountingCustomerParty` = náš tenant. Kořenové `ID` obsahuje číslo
+        dokladu dodavatele; interní číslo MyInvoice je v
+        `Extensions/myi:InternalDocumentNumber` s namespace
+        `https://myinvoice.cz/isdoc/extensions/2026`. `PaymentMeans` obsahuje
+        evidovaný bankovní účet dodavatele a platební `VariableSymbol`; pokud
+        samostatný platební VS chybí, použije se jeho číselná podoba odvozená
+        z čísla faktury dodavatele.
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
         - $ref: '#/components/parameters/SupplierIdHeader'
@@ -3897,6 +3903,9 @@ paths:
         Počet rekonstrukcí je v hlavičce `X-Export-Reconstructed`.
 
         `isdoc` / `pohoda`: generují XML z dat faktury (PDF nepotřebují).
+        ISDOC obsahuje také evidovaný bankovní účet dodavatele a platební
+        variabilní symbol. Číslo dokladu dodavatele je v kořenovém `ID`, interní
+        číslo MyInvoice v namespacovaném `Extensions/myi:InternalDocumentNumber`.
 
         Období lze zadat legacy parametrem `month=YYYY-MM`, nebo explicitně
         `period=monthly&year=YYYY&month=M` / `period=quarterly&year=YYYY&quarter=1..4`.
