@@ -640,6 +640,10 @@
       "payment_ordered_all": "Handover: all",
       "payment_ordered_yes": "Handed over to pay",
       "payment_ordered_no": "Not handed over",
+      "import_batch": "Import (batch)",
+      "import_batch_all": "All imports",
+      "import_batch_current": "Selected import",
+      "import_batch_count": "{n} documents",
       "vendor_placeholder": "Select vendor",
       "search_placeholder": "Search number / vendor…"
     },
@@ -688,10 +692,12 @@
       "cancel": "Cancel ({n})",
       "delete": "Delete drafts ({n})",
       "to_payment_order": "Add to payment order ({n})",
+      "set_kind": "Set type ({n})…",
       "confirm_cancel": "Cancel {n} invoices? This cannot be undone.",
       "confirm_delete": "Delete {n} drafts? Action is irreversible.",
       "success": "{n} invoices processed.",
       "delete_success": "{n} drafts deleted.",
+      "kind_success": "Document type changed for {n} documents.",
       "partial": "Done {ok}, errors: {fail}"
     }
   },
@@ -4000,6 +4006,17 @@
       "extracted_via": "Extracted via: {source}",
       "go_to_invoice": "Open invoice",
       "raw_data": "Raw JSON from AI",
+      "col_file": "File",
+      "col_status": "Status",
+      "col_vendor": "Vendor",
+      "col_amount": "Amount",
+      "col_kind": "Document type",
+      "open": "Open",
+      "failed_short": "Error",
+      "duplicate": "duplicate",
+      "kind_changed": "Document type changed.",
+      "batch_summary": "Imported {ok} documents, {failed} with errors.",
+      "show_in_list": "Show in purchase invoices",
       "coming_hint": "—"
     }
   },

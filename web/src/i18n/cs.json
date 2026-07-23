@@ -640,6 +640,10 @@
       "payment_ordered_all": "Předání: vše",
       "payment_ordered_yes": "Předané k úhradě",
       "payment_ordered_no": "Nepředané k úhradě",
+      "import_batch": "Import (dávka)",
+      "import_batch_all": "Všechny importy",
+      "import_batch_current": "Vybraný import",
+      "import_batch_count": "{n} dokladů",
       "vendor_placeholder": "Vyber dodavatele",
       "search_placeholder": "Hledat číslo / dodavatele…"
     },
@@ -688,10 +692,12 @@
       "cancel": "Stornovat ({n})",
       "delete": "Smazat koncepty ({n})",
       "to_payment_order": "Do příkazu k úhradě ({n})",
+      "set_kind": "Nastavit typ ({n})…",
       "confirm_cancel": "Stornovat {n} faktur? Tuto akci nelze vrátit.",
       "confirm_delete": "Smazat {n} konceptů? Akce je nevratná.",
       "success": "Provedeno {n} faktur.",
       "delete_success": "Smazáno {n} konceptů.",
+      "kind_success": "Typ dokladu změněn u {n} dokladů.",
       "partial": "Provedeno {ok}, chyby: {fail}"
     }
   },
@@ -4000,6 +4006,17 @@
       "extracted_via": "Extrahováno přes: {source}",
       "go_to_invoice": "Otevřít fakturu",
       "raw_data": "Raw JSON z AI",
+      "col_file": "Soubor",
+      "col_status": "Stav",
+      "col_vendor": "Dodavatel",
+      "col_amount": "Částka",
+      "col_kind": "Typ dokladu",
+      "open": "Otevřít",
+      "failed_short": "Chyba",
+      "duplicate": "duplicita",
+      "kind_changed": "Typ dokladu změněn.",
+      "batch_summary": "Naimportováno {ok} dokladů, {failed} s chybou.",
+      "show_in_list": "Zobrazit v přijatých fakturách",
       "coming_hint": "—"
     }
   },

@@ -96,6 +96,8 @@ use MyInvoice\Action\PurchaseInvoice\GetPurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\PaymentQrAction;
 use MyInvoice\Action\PurchaseInvoice\PaymentOrderAction;
 use MyInvoice\Action\PurchaseInvoice\ListPurchaseInvoicesAction;
+use MyInvoice\Action\PurchaseInvoice\PurchaseInvoiceImportBatchesAction;
+use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceDocumentKindAction;
 use MyInvoice\Action\PurchaseInvoice\PurchaseInvoiceActivityAction;
 use MyInvoice\Action\PurchaseInvoice\ScanInboxAction;
 use MyInvoice\Action\PurchaseInvoice\SetPurchaseInvoiceExchangeRateAction;
@@ -355,6 +357,7 @@ final class Routes
         // scan-inbox je admin/accountant only (check v Action).
         $app->post   ('/api/purchase-invoices/scan-inbox',                ScanInboxAction::class);
         $app->get    ('/api/purchase-invoices/export',                     ExportPurchaseInvoicesAction::class);
+        $app->get    ('/api/purchase-invoices/import-batches',             PurchaseInvoiceImportBatchesAction::class);
         $app->get    ('/api/purchase-invoices',                           ListPurchaseInvoicesAction::class);
         $app->post   ('/api/purchase-invoices',                           CreatePurchaseInvoiceAction::class);
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}',                GetPurchaseInvoiceAction::class);
@@ -363,6 +366,7 @@ final class Routes
         $app->put    ('/api/purchase-invoices/{id:[0-9]+}/items',          SetPurchaseInvoiceItemsAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/exchange-rate', SetPurchaseInvoiceExchangeRateAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/transition',     TransitionPurchaseInvoiceStatusAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/document-kind',   SetPurchaseInvoiceDocumentKindAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/dismiss-extraction-warning', DismissExtractionWarningAction::class);
         // Propojení se zálohovou fakturou (advance) — proti dvojímu započtení nákladu
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}/advance-candidates', AdvanceCandidatesAction::class);
