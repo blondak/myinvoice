@@ -579,13 +579,20 @@ onMounted(async () => {
           <span v-else class="text-xs text-neutral-400">v{{ versionInfo.current }}</span>
         </div>
 
-        <!-- Mobile only: uživatel + jazyk + odhlásit (na dně sidebaru) -->
+        <!-- Mobile only: profil + ovládání relace (na dně sidebaru) -->
         <div class="lg:hidden border-t border-neutral-200 px-4 py-3 bg-neutral-50 space-y-3">
           <div class="flex items-center justify-between">
-            <div class="text-sm">
-              <div class="font-medium text-neutral-900">{{ auth.user?.name }}</div>
-              <div class="text-xs text-neutral-500">{{ auth.user?.email }} · {{ auth.user?.role }}</div>
-            </div>
+            <RouterLink
+              to="/profile/password"
+              @click="mobileOpen = false"
+              class="group min-w-0 flex-1 rounded-md -ml-2 px-2 py-1.5 text-sm hover:bg-surface"
+              :title="t('auth.profile_title')"
+            >
+              <div class="truncate font-medium text-neutral-900 group-hover:text-primary-700 group-hover:underline">
+                {{ auth.user?.name }}
+              </div>
+              <div class="truncate text-xs text-neutral-500">{{ auth.user?.email }} · {{ auth.user?.role }}</div>
+            </RouterLink>
             <a
               href="/manual" target="_blank" rel="noopener"
               class="inline-flex w-9 h-9 items-center justify-center rounded-md text-neutral-600 hover:bg-surface"
@@ -596,11 +603,9 @@ onMounted(async () => {
               </svg>
             </a>
           </div>
-          <!-- Přepínač motivu (System / Light / Dark) — mobilní varianta -->
-          <div class="flex">
+          <div class="flex items-center justify-between gap-2">
+            <!-- Přepínač motivu (System / Light / Dark) — mobilní varianta -->
             <ThemeToggle />
-          </div>
-          <div class="flex items-center justify-between gap-3">
             <div class="inline-flex items-center border border-neutral-200 bg-surface rounded-md overflow-hidden">
               <button
                 @click="setLocale('cs')" title="Čeština"
@@ -628,13 +633,15 @@ onMounted(async () => {
                 </svg>
               </button>
             </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
             <button
               @click="sessionSecurity.lock"
-              class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
+              class="cursor-pointer w-full px-2 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
             >{{ t('session_lock.lock_now') }}</button>
             <button
               @click="logout"
-              class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
+              class="cursor-pointer w-full px-2 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
             >{{ t('nav.logout') }}</button>
           </div>
         </div>
