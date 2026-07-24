@@ -68,6 +68,7 @@ Můžeš si změnit:
 | Heslo | Změna stávajícího hesla (vyžaduje původní) |
 | TOTP | Zobrazit stav a aktivovat pomocí QR + ověřovacího kódu |
 | Passkeys | Přidat, pojmenovat, přejmenovat nebo odvolat přístupový klíč |
+| Zámek aplikace | Převzít interval správce nebo zvolit vlastní přísnější interval |
 
 Pro běžný účet je vhodné mít dvě passkeys, případně jednu passkey a aktivní
 TOTP. Přidání nebo odvolání passkey vyžaduje čerstvé ověření existujícím silným
@@ -75,10 +76,15 @@ faktorem. Pokud žádný nemáš, první registrace vyžádá aktuální heslo.
 
 ## 7.6 Zamknutí a odemčení aplikace
 
-V uživatelském menu můžeš zvolit **Zamknout**. Aplikace se také automaticky
-zamkne po době nečinnosti nastavené správcem. Zámek je uložený na serveru:
-nejde jen o překryv obrazovky a zamčená session nemůže číst ani měnit business
-data přes API.
+V uživatelském menu můžeš zvolit **Zamknout**. V profilu na záložce
+**Zámek aplikace** lze také nastavit automatické zamknutí po nečinnosti.
+Volba **Použít nastavení správce** převezme společnou politiku instalace.
+Vlastní kladný interval může být pouze kratší nebo stejný jako limit správce.
+Pokud správce automatický zámek nevynucuje (`0`), můžeš jej pro svůj účet
+dobrovolně zapnout v rozsahu 1 až 1440 minut.
+
+Zámek je uložený na serveru: nejde jen o překryv obrazovky a zamčená session
+nemůže číst ani měnit business data přes API.
 
 Pro odemčení stiskni **Odemknout pomocí passkey** a potvrď systémový dialog.
 Odemčení nevyžaduje znovu zadat e-mail a heslo. Když passkey není dostupná,

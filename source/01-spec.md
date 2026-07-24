@@ -811,9 +811,11 @@ Server identification:
   - úspěšném login
   - elevation privilegií (změna hesla, přechod readonly → admin)
   - každých 24h aktivity
-- **Idle app-lock:** `session.lock_after_minutes` (výchozí `0`, automatický
-  zámek zapne až explicitní kladná hodnota) se počítá z heartbeatů skutečného vstupu
-  uživatele. Po timeoutu je session serverově `locked` a business API vrací
+- **Idle app-lock:** `session.lock_after_minutes` je výchozí instance-wide
+  hodnota a při kladném čísle také horní limit osobní volby. Výchozí `0` nic
+  nevynucuje a zachovává kompatibilitu; uživatel může sám zvolit 1–1440 minut.
+  Efektivní timeout se počítá z heartbeatů skutečného vstupu uživatele. Po
+  timeoutu je session serverově `locked` a business API vrací
   `423 session_locked`; passkey unlock rotuje session ID a CSRF bez prodloužení
   absolutní platnosti.
 - **Absolute timeout:** 30 dní od prvního přihlášení → force re-login.

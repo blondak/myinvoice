@@ -184,10 +184,25 @@ Chování:
 ### 39.2.7 Serverový zámek session
 
 Automatický zámek browserové a PWA session je ve výchozím stavu vypnutý, aby se
-po aktualizaci nezměnilo chování existujících instalací. Správce jej explicitně
-zapne kladným timeoutem pomocí `session.lock_after_minutes` nebo
-`MYINVOICE_SESSION_LOCK_AFTER_MINUTES`. Výchozí hodnota `0` automatický zámek
-vypíná; ruční **Zamknout** v uživatelském menu zůstává dostupné.
+po aktualizaci nezměnilo chování existujících instalací. Správce nastavuje
+výchozí timeout pomocí `session.lock_after_minutes` nebo
+`MYINVOICE_SESSION_LOCK_AFTER_MINUTES`. Hodnota `0` znamená, že správce zámek
+nevynucuje. Uživatel jej přesto může dobrovolně zapnout v profilu na záložce
+**Zámek aplikace**.
+
+Osobní nastavení má tyto hranice:
+
+- **Použít nastavení správce** zachová hodnotu správce; při `0` je automatický
+  zámek vypnutý.
+- Pokud správce nastavil kladnou hodnotu, osobní interval může být pouze stejný
+  nebo kratší.
+- Při hodnotě správce `0` lze zvolit vlastní interval 1 až 1440 minut.
+- Pozdější snížení limitu správce okamžitě zpřísní i dříve uloženou delší osobní
+  volbu.
+- Zkrácení timeoutu se vyhodnotí serverově hned při uložení a může aktuální
+  session rovnou zamknout.
+
+Ruční **Zamknout** v uživatelském menu zůstává dostupné bez ohledu na timeout.
 
 Aktivitu posouvají pouze skutečné vstupy do viditelné soukromé stránky, například
 kliknutí, dotyk nebo klávesa. Polling, běžné API requesty, focus okna ani service

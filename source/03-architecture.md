@@ -343,7 +343,7 @@ return [
     'session' => [
         'driver'        => 'auto',              // auto | redis | db
         'lifetime_days' => 30,
-        'lock_after_minutes' => 0,               // výchozí off; kladná hodnota zapne idle lock
+        'lock_after_minutes' => 0,               // výchozí + maximum osobní volby; 0 nic nevynucuje
         'cookie_name'   => '__Host-myinvoice_session',
         'cookie_secure' => true,
         'cookie_samesite' => 'Lax',

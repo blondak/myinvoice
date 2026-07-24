@@ -53,7 +53,7 @@ return [
     'session' => [
         'driver'        => 'auto',                   // 'auto' = Redis pokud běží, jinak DB | 'redis' | 'db'
         'lifetime_days' => 30,                       // platnost cookie i serverové session
-        'lock_after_minutes' => 0,                   // výchozí off; kladná hodnota zapne automatický zámek, ruční zůstává dostupné
+        'lock_after_minutes' => 0,                   // výchozí interval a maximum osobní volby; 0 nic nevynucuje, uživatel si může nastavit 1–1440 min
         'cookie_name'   => '__Host-myinvoice_session', // __Host- prefix → vyžaduje Secure + Path=/ + bez Domain (přísnější CSRF). Pro HTTP dev změnit na 'myinvoice_session' a cookie_secure=false.
         'cookie_secure' => true,                     // true vyžaduje HTTPS — false jen pro lokální HTTP dev (a __Host- nebude fungovat)
         'cookie_samesite' => 'Lax',                  // 'Lax' | 'Strict' | 'None' (None vyžaduje secure=true)

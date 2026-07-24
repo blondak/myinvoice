@@ -237,7 +237,7 @@ MYINVOICE_DATA_DIR=/data        # default v compose souborech; sjednocuje
                                 # log/, storage/, private/ a cfg.local.php pod /data
 MYINVOICE_AUTH_REQUIRE_MFA=true  # vyžadovat passkey nebo TOTP
 MYINVOICE_AUTH_MFA_METHODS=passkey,totp
-MYINVOICE_SESSION_LOCK_AFTER_MINUTES=15 # volitelné; výchozí 0 zámek vypíná
+MYINVOICE_SESSION_LOCK_AFTER_MINUTES=15 # výchozí interval a maximum osobní volby; 0 nic nevynucuje
 ```
 
 Default je `20` pokusů s pauzou `3` sekundy. Pokud proměnné nenastavíš, použije
