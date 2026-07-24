@@ -206,6 +206,7 @@ final class Routes
             $g->post('/setup-crpdph-lookup', SetupCrpDphLookupAction::class);  // public proxy do registru plátců DPH (účty z DIČ)
             $g->post('/setup-sample',    SetupSampleAction::class);         // public sample data generator (jen pokud nejsou data)
             $g->post('/login',           LoginAction::class);
+            $g->post('/webauthn/login/options', [LoginAction::class, 'passkeyOptions']);
             $g->post('/logout',          LogoutAction::class);
             $g->get ('/me',              MeAction::class);
             $g->get ('/api-me',          ApiMeAction::class);  // connection-test pro bearer i session

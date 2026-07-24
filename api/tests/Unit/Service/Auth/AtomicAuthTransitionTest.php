@@ -178,6 +178,52 @@ final class AtomicAuthTransitionTest extends TestCase
         );
     }
 
+    public function testDiscoverablePasskeyLoginResolvesCredentialAndCommitsStrongSession(): void
+    {
+        [$credentialId, $record] = $this->createCredential(2, 'Passwordless login key');
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+            null,
+            null,
+            null,
+            random_bytes(32),
+            ['challenge' => 'synthetic-passwordless-login', 'allowCredentials' => []],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+        $transition = $this->transitionFor($record->publicKeyCredentialId);
+        $payload = ['rawId' => 'synthetic', 'response' => ['userHandle' => 'synthetic']];
+
+        $candidateUserId = $transition->discoverableLoginUserId($payload);
+        self::assertSame($this->userId, $candidateUserId);
+        $completed = $transition->completeDiscoverableLogin(
+            $flowToken,
+            $payload,
+            '127.0.0.1',
+            'PHPUnit',
+            $candidateUserId,
+        );
+
+        $session = $this->sessions->load($completed['session']['token']);
+        self::assertNotNull($session);
+        self::assertSame('passkey', $session['auth_method']);
+        self::assertSame('strong', $session['assurance_level']);
+        self::assertSame($credentialId, $session['auth_credential_id']);
+        self::assertSame(
+            3,
+            $this->credentials->findActiveForUserById($this->userId, $credentialId)?->record->counter,
+        );
+
+        $this->expectException(OneTimeTokenException::class);
+        $transition->completeDiscoverableLogin(
+            $flowToken,
+            $payload,
+            '127.0.0.1',
+            'PHPUnit',
+            $candidateUserId,
+        );
+    }
+
     public function testUnlockCommitsCounterAndSessionRotationTogether(): void
     {
         [$credentialId, $record] = $this->createCredential(8, 'Unlock key');
@@ -834,18 +880,18 @@ final class AtomicAuthTransitionTest extends TestCase
     {
         $passkeys = $this->createMock(PasskeyService::class);
         $passkeys->method('credentialId')->willReturn($credentialId);
-        $passkeys->method('verifyAssertion')->willReturnCallback(
-            static function (
-                array $payload,
-                array $options,
-                CredentialRecord $stored,
-            ) use ($beforeCounterUpdate): CredentialRecord {
-                $beforeCounterUpdate?->__invoke();
-                $verified = clone $stored;
-                $verified->counter++;
-                return $verified;
-            },
-        );
+        $verify = static function (
+            array $payload,
+            array $options,
+            CredentialRecord $stored,
+        ) use ($beforeCounterUpdate): CredentialRecord {
+            $beforeCounterUpdate?->__invoke();
+            $verified = clone $stored;
+            $verified->counter++;
+            return $verified;
+        };
+        $passkeys->method('verifyAssertion')->willReturnCallback($verify);
+        $passkeys->method('verifyDiscoverableAssertion')->willReturnCallback($verify);
         return new PasskeySessionTransitionService(
             $this->db,
             $this->securityClock,

@@ -11,12 +11,14 @@ final class WebAuthnCeremonyStore
 {
     public const PURPOSE_REGISTER = 'passkey.register';
     public const PURPOSE_LOGIN = 'passkey.login';
+    public const PURPOSE_DISCOVERABLE_LOGIN = 'passkey.login.discoverable';
     public const PURPOSE_STEP_UP = 'passkey.step_up';
     public const PURPOSE_UNLOCK = 'session.unlock';
 
     private const PURPOSES = [
         self::PURPOSE_REGISTER,
         self::PURPOSE_LOGIN,
+        self::PURPOSE_DISCOVERABLE_LOGIN,
         self::PURPOSE_STEP_UP,
         self::PURPOSE_UNLOCK,
     ];
@@ -31,7 +33,7 @@ final class WebAuthnCeremonyStore
      */
     public function create(
         string $purpose,
-        int $userId,
+        ?int $userId,
         ?string $sessionToken,
         ?string $operation,
         string $challenge,
@@ -42,6 +44,12 @@ final class WebAuthnCeremonyStore
     ): string {
         $operation = $operation !== null ? trim($operation) : null;
         self::validateContext($purpose, $sessionToken, $operation);
+        if ($purpose === self::PURPOSE_DISCOVERABLE_LOGIN && $userId !== null) {
+            throw new \InvalidArgumentException('Discoverable login nesmí být předem vázaný na uživatele.');
+        }
+        if ($purpose !== self::PURPOSE_DISCOVERABLE_LOGIN && ($userId === null || $userId < 1)) {
+            throw new \InvalidArgumentException('WebAuthn flow vyžaduje platného uživatele.');
+        }
         if (strlen($challenge) < 32 || strlen($challenge) > 64) {
             throw new \InvalidArgumentException('WebAuthn challenge musí mít 32 až 64 bajtů.');
         }
@@ -118,20 +126,57 @@ final class WebAuthnCeremonyStore
         );
     }
 
+    public function consumeDiscoverableLogin(string $flowToken): WebAuthnCeremony
+    {
+        return $this->consumeBound(
+            $flowToken,
+            self::PURPOSE_DISCOVERABLE_LOGIN,
+            null,
+            null,
+            null,
+        );
+    }
+
     public function peekLoginUserId(string $flowToken): ?int
+    {
+        $context = $this->peekLoginContext($flowToken);
+        return $context !== null && $context['purpose'] === self::PURPOSE_LOGIN
+            ? $context['user_id']
+            : null;
+    }
+
+    /**
+     * @return array{purpose:string,user_id:?int}|null
+     */
+    public function peekLoginContext(string $flowToken): ?array
     {
         if (!self::isTokenShapeValid($flowToken)) {
             return null;
         }
-        $stmt = $this->db->pdo()->prepare(
-            'SELECT user_id
+        $pdo = $this->db->pdo();
+        $cutoff = $this->securityClock->capture($pdo);
+        $stmt = $pdo->prepare(
+            'SELECT purpose, user_id, expires_at, used_at
                FROM webauthn_ceremonies
-              WHERE flow_token_hash = ? AND purpose = ?
+              WHERE flow_token_hash = ? AND purpose IN (?, ?)
               LIMIT 1'
         );
-        $stmt->execute([hash('sha256', $flowToken, true), self::PURPOSE_LOGIN]);
-        $userId = $stmt->fetchColumn();
-        return $userId !== false ? (int) $userId : null;
+        $stmt->execute([
+            hash('sha256', $flowToken, true),
+            self::PURPOSE_LOGIN,
+            self::PURPOSE_DISCOVERABLE_LOGIN,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false
+            || $row['used_at'] !== null
+            || self::parseTime((string) $row['expires_at']) <= $cutoff->utc
+        ) {
+            return null;
+        }
+        return [
+            'purpose' => (string) $row['purpose'],
+            'user_id' => $row['user_id'] !== null ? (int) $row['user_id'] : null,
+        ];
     }
 
     /**
@@ -247,7 +292,7 @@ final class WebAuthnCeremonyStore
 
         return new WebAuthnCeremony(
             (string) $row['purpose'],
-            (int) $row['user_id'],
+            $row['user_id'] !== null ? (int) $row['user_id'] : null,
             $row['operation'] !== null ? (string) $row['operation'] : null,
             (string) $row['challenge'],
             $options,
@@ -297,10 +342,15 @@ final class WebAuthnCeremonyStore
         if (!in_array($purpose, self::PURPOSES, true)) {
             throw new \InvalidArgumentException('Neznámý účel WebAuthn flow.');
         }
-        if ($purpose === self::PURPOSE_LOGIN && $sessionToken !== null) {
+        $loginPurpose = in_array(
+            $purpose,
+            [self::PURPOSE_LOGIN, self::PURPOSE_DISCOVERABLE_LOGIN],
+            true,
+        );
+        if ($loginPurpose && $sessionToken !== null) {
             throw new \InvalidArgumentException('Login flow nesmí být vázané na existující session.');
         }
-        if ($purpose !== self::PURPOSE_LOGIN && ($sessionToken === null || $sessionToken === '')) {
+        if (!$loginPurpose && ($sessionToken === null || $sessionToken === '')) {
             throw new \InvalidArgumentException('WebAuthn flow musí být vázané na session.');
         }
         if ($purpose === self::PURPOSE_STEP_UP && ($operation === null || trim($operation) === '')) {

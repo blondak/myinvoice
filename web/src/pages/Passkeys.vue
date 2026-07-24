@@ -44,8 +44,8 @@ async function add() {
     const registered = await authApi.passkeyRegisterVerify(flow.flow_token, credential, label.value.trim())
     if (registered.csrf_token) {
       auth.setSessionCsrfToken(registered.csrf_token)
-      await auth.refresh()
     }
+    await auth.refresh()
     label.value = ''
     currentPassword.value = ''
     totpCode.value = ''
@@ -76,6 +76,7 @@ async function revoke(item: PasskeyCredential) {
     const proof = await stepUp(`passkey.revoke:${item.id}`)
     await authApi.passkeyRevoke(item.id, proof)
     totpCode.value = ''
+    await auth.refresh()
     await load()
   } catch (e: any) {
     error.value = e?.response?.data?.error?.message || t('passkeys.operation_failed')
@@ -96,15 +97,32 @@ onMounted(() => void load())
     </p>
 
     <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm space-y-3 mb-5">
-      <input v-model="label" maxlength="100" :placeholder="t('passkeys.label_placeholder')"
-             class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
-      <input v-if="list.length === 0 && !auth.user?.totp_enabled" v-model="currentPassword"
-             type="password" autocomplete="current-password" :placeholder="t('auth.current_password')"
-             class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
-      <input v-if="auth.user?.totp_enabled" v-model="totpCode" inputmode="numeric" maxlength="6"
-             :placeholder="t('passkeys.totp_optional')"
-             class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono" />
-      <button @click="add" :disabled="busy || !label.trim() || !passkeySupported"
+      <div>
+        <label for="passkey-label" class="block text-sm font-medium text-neutral-700 mb-1">
+          {{ t('passkeys.credential_label') }} *
+        </label>
+        <input id="passkey-label" v-model="label" type="text" maxlength="100"
+               autocomplete="off" required :placeholder="t('passkeys.label_placeholder')"
+               class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
+      </div>
+      <div v-if="list.length === 0 && !auth.user?.totp_enabled">
+        <label for="passkey-current-password" class="block text-sm font-medium text-neutral-700 mb-1">
+          {{ t('auth.current_password') }} *
+        </label>
+        <input id="passkey-current-password" v-model="currentPassword"
+               type="password" autocomplete="current-password" required
+               class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
+      </div>
+      <div v-if="auth.user?.totp_enabled">
+        <label for="passkey-totp" class="block text-sm font-medium text-neutral-700 mb-1">
+          {{ t('passkeys.totp_label') }}
+        </label>
+        <input id="passkey-totp" v-model="totpCode" type="text" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6" pattern="\d{6}"
+               :placeholder="t('passkeys.totp_optional')"
+               class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono" />
+      </div>
+      <button type="button" @click="add" :disabled="busy || !label.trim() || !passkeySupported"
               class="h-10 px-4 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white rounded-md font-medium">
         {{ t('passkeys.add') }}
       </button>

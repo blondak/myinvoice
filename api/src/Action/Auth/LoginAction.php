@@ -49,6 +49,66 @@ final class LoginAction
         private readonly ClockInterface $clock,
     ) {}
 
+    public function passkeyOptions(Request $request, Response $response): Response
+    {
+        if (!(bool) $this->config->get('auth.passwordless_login.enabled', false)) {
+            return Json::error(
+                $response,
+                'passwordless_login_disabled',
+                'Přihlášení pouze pomocí passkey není v této instalaci povolené.',
+                403,
+            );
+        }
+        if (!$this->mfaPolicy->isMethodAllowed('passkey')) {
+            return Json::error(
+                $response,
+                'mfa_method_not_allowed',
+                'Přihlášení pomocí passkey není v této instalaci povolené.',
+                403,
+            );
+        }
+        if (!$this->passkeys->isAvailable()) {
+            return Json::error(
+                $response,
+                'passkeys_unavailable',
+                'Passkeys nejsou kvůli konfiguraci této instalace dostupné.',
+                503,
+            );
+        }
+
+        $body = (array) ($request->getParsedBody() ?? []);
+        $turnstileToken = isset($body['cf_turnstile_response'])
+            ? (string) $body['cf_turnstile_response']
+            : '';
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $userAgent = $request->getHeaderLine('User-Agent');
+        if (!$this->turnstile->verify($turnstileToken, $ip, 'login')) {
+            $this->logger->log('auth.captcha_failed', null, null, null, [
+                'ip' => $ip,
+                'login_method' => 'passkey',
+            ], $ip, $userAgent);
+            return Json::error($response, 'captcha_failed', 'CAPTCHA selhala.', 400);
+        }
+
+        $challenge = random_bytes(32);
+        $options = $this->passkeys->discoverableAssertionOptions($challenge);
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+            null,
+            null,
+            null,
+            $challenge,
+            $options,
+            $ip,
+            $userAgent,
+        );
+
+        return Json::ok($response, [
+            'flow_token' => $flowToken,
+            'public_key' => $options,
+        ]);
+    }
+
     public function __invoke(Request $request, Response $response): Response
     {
         $body = (array) ($request->getParsedBody() ?? []);

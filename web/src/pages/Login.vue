@@ -23,6 +23,7 @@ const totp = ref('')
 const totpRequired = ref(false)
 const passkeyFlow = ref<{ flowToken: string; publicKey: Record<string, any>; methods: string[] } | null>(null)
 const passkeyBusy = ref(false)
+const passwordlessBusy = ref(false)
 const passkeySupported = isWebAuthnAvailable()
 const error = ref<string>('')
 const captchaRequired = ref(false)
@@ -87,6 +88,7 @@ onMounted(async () => {
 })
 
 async function submit() {
+  if (passwordlessBusy.value) return
   // Guard: pokud captcha vyžadovaná a token chybí, nepouštět request.
   // (button má `:disabled` ale Enter v inputu submitne form i s disabled buttonem
   //  → bez tohoto guardu by 1. pokus šel s prázdným tokenem → 400 captcha_failed.)
@@ -150,6 +152,36 @@ async function submit() {
       error.value = msg || t('auth.login_failed')
       turnstile.reset()
     }
+  }
+}
+
+async function loginWithPasskey() {
+  if (!passkeySupported || !auth.setupStatus?.passwordless_login_enabled) return
+  if (captchaRequired.value && !turnstile.token.value) {
+    error.value = t('auth.captcha_loading')
+    return
+  }
+
+  passwordlessBusy.value = true
+  error.value = ''
+  try {
+    const flow = await authApi.passkeyLoginOptions(turnstile.token.value || undefined)
+    const credential = await getCredential(flow.public_key)
+    await authApi.passkeyLoginVerify(flow.flow_token, credential)
+    await auth.refresh()
+    router.push('/')
+  } catch (e: any) {
+    const code = e?.response?.data?.error?.code
+    if (code === 'captcha_failed') {
+      error.value = t('auth.captcha_failed')
+    } else if (code === 'too_many_attempts') {
+      error.value = e?.response?.data?.error?.message || t('auth.too_many_attempts')
+    } else {
+      error.value = t('auth.passwordless_passkey_failed')
+    }
+  } finally {
+    turnstile.reset()
+    passwordlessBusy.value = false
   }
 }
 
@@ -217,6 +249,30 @@ async function resendCode() {
         <p class="text-sm text-neutral-500 mb-6">{{ t('auth.login_subtitle') }}</p>
 
         <form @submit.prevent="submit" class="space-y-4">
+          <div v-if="auth.setupStatus?.passwordless_login_enabled" class="space-y-3">
+            <button
+              v-if="passkeySupported"
+              type="button"
+              :disabled="passwordlessBusy || auth.loading || (captchaRequired && !turnstile.token.value)"
+              autofocus
+              class="w-full h-10 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white font-medium rounded-md transition"
+              @click="loginWithPasskey"
+            >
+              {{ passwordlessBusy ? t('auth.passkey_verifying') : t('auth.passwordless_passkey_login') }}
+            </button>
+            <p v-if="passkeySupported" class="text-xs text-neutral-500 text-center">
+              {{ t('auth.passwordless_passkey_hint') }}
+            </p>
+            <p v-else class="text-sm text-warning-700">
+              {{ t('auth.passwordless_passkey_unsupported') }}
+            </p>
+            <div class="flex items-center gap-3" aria-hidden="true">
+              <span class="h-px flex-1 bg-neutral-200"></span>
+              <span class="text-xs text-neutral-500">{{ t('auth.or_password_login') }}</span>
+              <span class="h-px flex-1 bg-neutral-200"></span>
+            </div>
+          </div>
+
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('auth.email') }}</label>
             <input
@@ -224,7 +280,7 @@ async function resendCode() {
               type="email"
               autocomplete="email"
               required
-              autofocus
+              :autofocus="!auth.setupStatus?.passwordless_login_enabled"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"
             />
           </div>
@@ -316,7 +372,7 @@ async function resendCode() {
 
           <button
             type="submit"
-            :disabled="auth.loading || !!passkeyFlow || (captchaRequired && !turnstile.token.value)"
+            :disabled="auth.loading || passwordlessBusy || !!passkeyFlow || (captchaRequired && !turnstile.token.value)"
             class="w-full h-10 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white font-medium rounded-md transition"
           >
             {{ auth.loading ? '…' : t('auth.login') }}

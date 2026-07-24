@@ -30,3 +30,13 @@ test('request options decode unpadded challenge and credential IDs', () => {
   )
   assert.equal(options.userVerification, 'required')
 })
+
+test('discoverable request options keep an empty credential allow-list', () => {
+  const options = requestOptionsFromJson({
+    challenge: 'AQI',
+    allowCredentials: [],
+    userVerification: 'required',
+  })
+
+  assert.deepEqual(options.allowCredentials, [])
+})

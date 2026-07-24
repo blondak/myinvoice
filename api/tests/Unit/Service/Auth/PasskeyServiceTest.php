@@ -76,6 +76,18 @@ final class PasskeyServiceTest extends TestCase
         $this->service->assertionOptions([], random_bytes(32));
     }
 
+    public function testDiscoverableAssertionOptionsOmitCredentialListAndRequireVerification(): void
+    {
+        $challenge = random_bytes(32);
+
+        $options = $this->service->discoverableAssertionOptions($challenge);
+
+        self::assertSame('invoice.example.cz', $options['rpId']);
+        self::assertSame('required', $options['userVerification']);
+        self::assertSame(self::base64url($challenge), $options['challenge']);
+        self::assertSame([], $options['allowCredentials']);
+    }
+
     public function testMalformedRegistrationPayloadIsMappedToSanitizedError(): void
     {
         $options = $this->service->registrationOptions(
@@ -116,6 +128,26 @@ final class PasskeyServiceTest extends TestCase
             self::assertNull($e->getPrevious());
             self::assertStringNotContainsString('secret', $e->getMessage());
         }
+    }
+
+    public function testDiscoverableAssertionRequiresMatchingReturnedUserHandle(): void
+    {
+        [$credential, $options, $payload] = $this->discoverableAssertion();
+
+        $verified = $this->service->verifyDiscoverableAssertion(
+            $payload,
+            $options,
+            $credential,
+        );
+        self::assertSame(1, $verified->counter);
+
+        $payload['response']['userHandle'] = null;
+        $this->expectException(PasskeyVerificationException::class);
+        $this->service->verifyDiscoverableAssertion(
+            $payload,
+            $options,
+            $credential,
+        );
     }
 
     public function testCredentialIdDecodesUnpaddedBase64Url(): void
@@ -160,6 +192,82 @@ final class PasskeyServiceTest extends TestCase
             false,
             true,
         );
+    }
+
+    /**
+     * @return array{CredentialRecord,array<string,mixed>,array<string,mixed>}
+     */
+    private function discoverableAssertion(): array
+    {
+        $privateKey = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+            'curve_name' => 'prime256v1',
+        ]);
+        self::assertInstanceOf(\OpenSSLAsymmetricKey::class, $privateKey);
+        $details = openssl_pkey_get_details($privateKey);
+        self::assertIsArray($details);
+        $x = (string) ($details['ec']['x'] ?? '');
+        $y = (string) ($details['ec']['y'] ?? '');
+        self::assertSame(32, strlen($x));
+        self::assertSame(32, strlen($y));
+
+        $credentialId = random_bytes(32);
+        $userHandle = random_bytes(32);
+        $credentialPublicKey = "\xA5\x01\x02\x03\x26\x20\x01\x21\x58\x20"
+            . $x
+            . "\x22\x58\x20"
+            . $y;
+        $credential = CredentialRecord::create(
+            $credentialId,
+            PublicKeyCredentialDescriptor::CREDENTIAL_TYPE_PUBLIC_KEY,
+            ['internal'],
+            'none',
+            EmptyTrustPath::create(),
+            Uuid::fromBinary(str_repeat("\0", 16)),
+            $credentialPublicKey,
+            $userHandle,
+            0,
+            null,
+            false,
+            false,
+            true,
+        );
+
+        $challenge = random_bytes(32);
+        $options = $this->service->discoverableAssertionOptions($challenge);
+        $clientDataJson = json_encode([
+            'type' => 'webauthn.get',
+            'challenge' => self::base64url($challenge),
+            'origin' => 'https://invoice.example.cz',
+            'crossOrigin' => false,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $authenticatorData = hash('sha256', 'invoice.example.cz', true)
+            . "\x05"
+            . pack('N', 1);
+        self::assertTrue(openssl_sign(
+            $authenticatorData . hash('sha256', $clientDataJson, true),
+            $signature,
+            $privateKey,
+            OPENSSL_ALGO_SHA256,
+        ));
+
+        return [
+            $credential,
+            $options,
+            [
+                'id' => self::base64url($credentialId),
+                'rawId' => self::base64url($credentialId),
+                'type' => 'public-key',
+                'authenticatorAttachment' => 'platform',
+                'clientExtensionResults' => [],
+                'response' => [
+                    'clientDataJSON' => self::base64url($clientDataJson),
+                    'authenticatorData' => self::base64url($authenticatorData),
+                    'signature' => self::base64url($signature),
+                    'userHandle' => self::base64url($userHandle),
+                ],
+            ],
+        ];
     }
 
     private static function base64url(string $value): string

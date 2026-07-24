@@ -124,7 +124,9 @@ Migrace `0145_webauthn_passkeys_foundation.sql` přidává:
 - `webauthn_credentials` — credential ID, veřejný klíč, counter, transporty,
   backup metadata, název a čas vytvoření/použití/odvolání,
 - `webauthn_ceremonies` — hash opaque flow tokenu, challenge, účel, operation,
-  vazba na user/session, options a jednorázové `used_at`,
+  volitelná vazba na user/session, options a jednorázové `used_at`; discoverable
+  login má vlastní účel a `user_id = NULL`, protože účet určí až ověřená
+  credential spolu s odpovídajícím user handle,
 - `mfa_step_up_proofs` — hash proof tokenu vázaný na user, session, operation,
   metodu a nejvýše jednu credential.
 

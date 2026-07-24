@@ -94,6 +94,7 @@ final class SessionLockMiddlewareTest extends TestCase
     {
         foreach ([
             '/api/auth/login',
+            '/api/auth/webauthn/login/options',
             '/api/auth/webauthn/login/verify',
         ] as $path) {
             $locks = $this->createMock(SessionLockService::class);

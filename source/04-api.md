@@ -27,6 +27,7 @@ GET  /api/auth/totp/status               POST /api/auth/totp/setup
 POST /api/auth/totp/enable
 GET  /api/auth/webauthn/credentials
 POST /api/auth/webauthn/register/options POST /api/auth/webauthn/register/verify
+POST /api/auth/webauthn/login/options
 POST /api/auth/webauthn/login/verify
 POST /api/auth/webauthn/step-up/options  POST /api/auth/webauthn/step-up/verify
 PATCH/DELETE /api/auth/webauthn/credentials/{id}
@@ -211,6 +212,7 @@ Vždy dostupný. Vrací stav prvotního nastavení + public captcha info.
 {
   "needs_setup": true,
   "version": "1.9.0",
+  "passwordless_login_enabled": false,
   "captcha": { "provider": "turnstile", "site_key": "0x4...", "script_url": "https://..." }
 }
 ```
@@ -248,6 +250,27 @@ zbývající absolutní Max-Age.
 
 Errors: `401 invalid_credentials`, `401 totp_required`, `401 totp_invalid`, `423 captcha_required`, `423 captcha_failed`, `429 too_many_attempts`.
 
+### `POST /auth/webauthn/login/options`
+
+Ve výchozím stavu vypnutý veřejný začátek passwordless loginu. Vyžaduje
+`auth.passwordless_login.enabled = true`, povolenou metodu `passkey` a platnou
+WebAuthn konfiguraci.
+
+```json
+{ "cf_turnstile_response": "..." }
+```
+
+Vrací `{ "flow_token": "...", "public_key": { ... } }`. Request options mají
+prázdné `allowCredentials`, takže účet vybere authenticator z discoverable
+passkeys pro aktuální RP ID. Flow předem neobsahuje user ID, expiruje nejpozději
+za pět minut a je jednorázové.
+
+Klient odešle assertion na `POST /auth/webauthn/login/verify` ve stejném formátu
+jako po heslovém loginu. Server podle globálně unikátního credential ID načte
+kandidáta a před vydáním session ověří podpis, RP/origin, povinné user
+verification, credential ID i neprázdný shodný `userHandle`. Neznámá credential
+a chybné ověření vracejí stejnou obecnou chybu.
+
 ### `POST /auth/logout` → 204
 
 ### `GET /auth/me` → aktuální user nebo 401
@@ -277,6 +300,8 @@ Errors: `401 invalid_credentials`, `401 totp_required`, `401 totp_invalid`, `423
 - Options/verify flow je pětiminutový, jednorázový a server ukládá jen hash
   opaque tokenu. Každá ceremony je vázaná na účel a podle typu také session a
   operation.
+- Discoverable passwordless login používá samostatný účel bez předem známého
+  uživatele; identitu smí určit až podepsaná credential se shodným user handle.
 - `POST /auth/mfa/step-up/totp` nebo WebAuthn step-up vydá jednorázový proof
   pro konkrétní operaci, například `api_token.create`.
 - `GET /auth/session/status` vrací minimální stav. `activity` posouvá deadline
@@ -853,6 +878,7 @@ Označí transakci jako ignorovanou (nezahrne do reportů, neptá se na párová
 | Endpoint | Limit |
 |---|---|
 | `POST /auth/login` | 10/min/IP, navíc brute-force guard per email+IP/24 |
+| `POST /auth/webauthn/login/options` | 10/min/IP |
 | `POST /auth/webauthn/login/verify` | 10/min/IP + 10 neúspěšných assertion / 10 min / user |
 | Ostatní WebAuthn/session endpointy | 20/min/user; activity heartbeat 120/min/user |
 | `POST /auth/forgot` | 3/hod/email, 10/hod/IP |
@@ -877,6 +903,7 @@ Header: `Retry-After: 45`.
 - `GET /auth/setup-status`
 - `POST /auth/setup`, `/auth/setup-ares-lookup`, `/auth/setup-sample`
 - `POST /auth/login`, `/auth/forgot`, `/auth/reset`
+- `POST /auth/webauthn/login/options`, `/auth/webauthn/login/verify`
 - `GET /codebooks/*` (pomáhá login screen lokalizovat)
 - `GET /api/public/approval/{token}` + `POST /api/public/approval/{token}/decide`
 

@@ -4,12 +4,19 @@
 
 ![Přihlašovací obrazovka](img/04_login.webp)
 
-Zadej e-mail + heslo a klikni **Přihlásit**. Pokud má účet zapnuté silné
-vícefaktorové ověření, následuje potvrzení passkey nebo zadání TOTP kódu. Po
-úspěšném ověření tě systém pustí na [Přehled (dashboard)](08_Prehled.md).
+Pokud správce povolil přihlášení bez hesla a máš zaregistrovanou passkey,
+klikni na **Přihlásit přístupovým klíčem**. V systémovém dialogu vyber účet a
+potvrď otiskem, obličejem, PINem nebo jinou metodou zařízení. E-mail ani heslo
+nezadáváš.
+
+Jako fallback zadej e-mail + heslo a klikni **Přihlásit**. Pokud má účet
+zapnuté silné vícefaktorové ověření, následuje potvrzení passkey nebo zadání
+TOTP kódu. Po úspěšném ověření tě systém pustí na
+[Přehled (dashboard)](08_Prehled.md).
 
 | Pole | Význam |
 |---|---|
+| Přihlásit přístupovým klíčem | Přihlášení bez e-mailu a hesla; zobrazí se jen při povolení správcem |
 | E-mail | Login zadaný při registraci |
 | Heslo | Heslo zadané při registraci |
 | Zapomenuté heslo? | Odkaz na obnovu — viz § 7.4 |
@@ -27,14 +34,16 @@ e-mail přijde upozornění.
 
 ## 7.3 Vícefaktorové ověření (passkey / TOTP)
 
-Pokud má účet passkey, aplikace ji po zadání hesla nabídne jako hlavní způsob
-ověření. Systémový dialog zařízení může použít otisk prstu, obličej, PIN, gesto,
-heslo zařízení nebo externí bezpečnostní klíč. MyInvoice konkrétní metodu
-nevybírá a biometrická data nikdy nedostane.
+Passkey lze použít přímo k přihlášení bez e-mailu a hesla, pokud tuto možnost
+povolil správce, nebo jako silný druhý krok po zadání e-mailu a hesla.
+Systémový dialog zařízení může použít otisk prstu, obličej, PIN, gesto, heslo
+zařízení nebo externí bezpečnostní klíč. MyInvoice konkrétní metodu nevybírá a
+biometrická data nikdy nedostane.
 
 Má-li účet současně aktivní TOTP, můžeš místo passkey zvolit
-**Použít kód z autentikátoru** a zadat aktuální šestimístný kód. Zrušení
-systémového dialogu passkey TOTP samo nespustí.
+**Použít kód z autentikátoru** po standardním přihlášení e-mailem a heslem a
+zadat aktuální šestimístný kód. Zrušení systémového dialogu passkey TOTP samo
+nespustí.
 
 MyInvoice nepoužívá záložní jednorázové recovery kódy. Obnova přístupu probíhá
 jinou passkey, TOTP nebo administrátorským CLI rescue. Podrobnosti jsou v

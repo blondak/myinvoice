@@ -45,6 +45,7 @@ final class AuthMiddleware implements MiddlewareInterface
         '/api/auth/setup-crpdph-lookup',
         '/api/auth/setup-sample',
         '/api/auth/login',
+        '/api/auth/webauthn/login/options',
         '/api/auth/webauthn/login/verify',
         '/api/auth/forgot',
         '/api/auth/reset',

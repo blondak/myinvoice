@@ -219,6 +219,132 @@ final class LoginActionPasskeyTest extends TestCase
         )->getStatusCode());
     }
 
+    public function testPasswordlessOptionsCreateAnonymousDiscoverableCeremony(): void
+    {
+        $turnstile = $this->createMock(TurnstileVerifier::class);
+        $turnstile->expects(self::once())
+            ->method('verify')
+            ->with('captcha-token', '127.0.0.1', 'login')
+            ->willReturn(true);
+        $ipMatcher = $this->createMock(IpMatcher::class);
+        $ipMatcher->expects(self::once())
+            ->method('clientIpFromRequest')
+            ->willReturn('127.0.0.1');
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->expects(self::once())->method('isAvailable')->willReturn(true);
+        $passkeys->expects(self::once())
+            ->method('discoverableAssertionOptions')
+            ->with(self::callback(static fn (mixed $challenge): bool => is_string($challenge) && strlen($challenge) === 32))
+            ->willReturn([
+                'challenge' => 'encoded',
+                'allowCredentials' => [],
+                'userVerification' => 'required',
+            ]);
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::once())->method('isMethodAllowed')->with('passkey')->willReturn(true);
+        $ceremonies = $this->createMock(WebAuthnCeremonyStore::class);
+        $ceremonies->expects(self::once())
+            ->method('create')
+            ->with(
+                WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                null,
+                null,
+                null,
+                self::callback(static fn (mixed $challenge): bool => is_string($challenge) && strlen($challenge) === 32),
+                [
+                    'challenge' => 'encoded',
+                    'allowCredentials' => [],
+                    'userVerification' => 'required',
+                ],
+                '127.0.0.1',
+                'PHPUnit',
+            )
+            ->willReturn('opaque-flow-token');
+
+        $action = $this->optionsAction(
+            new Config(['auth' => ['passwordless_login' => ['enabled' => true]]]),
+            $turnstile,
+            $ipMatcher,
+            $passkeys,
+            $ceremonies,
+            $policy,
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/webauthn/login/options')
+            ->withHeader('User-Agent', 'PHPUnit')
+            ->withParsedBody(['cf_turnstile_response' => 'captcha-token']);
+
+        $response = $action->passkeyOptions(
+            $request,
+            (new ResponseFactory())->createResponse(),
+        );
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('opaque-flow-token', $body['flow_token']);
+        self::assertSame([], $body['public_key']['allowCredentials']);
+        self::assertSame('required', $body['public_key']['userVerification']);
+    }
+
+    public function testPasswordlessOptionsRemainDisabledByDefault(): void
+    {
+        $turnstile = $this->createMock(TurnstileVerifier::class);
+        $turnstile->expects(self::never())->method('verify');
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->expects(self::never())->method('isAvailable');
+        $ceremonies = $this->createMock(WebAuthnCeremonyStore::class);
+        $ceremonies->expects(self::never())->method('create');
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::never())->method('isMethodAllowed');
+
+        $action = $this->optionsAction(
+            new Config([]),
+            $turnstile,
+            $this->createMock(IpMatcher::class),
+            $passkeys,
+            $ceremonies,
+            $policy,
+        );
+        $response = $action->passkeyOptions(
+            (new ServerRequestFactory())
+                ->createServerRequest('POST', '/api/auth/webauthn/login/options'),
+            (new ResponseFactory())->createResponse(),
+        );
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(403, $response->getStatusCode());
+        self::assertSame('passwordless_login_disabled', $body['error']['code']);
+    }
+
+    private function optionsAction(
+        Config $config,
+        TurnstileVerifier $turnstile,
+        IpMatcher $ipMatcher,
+        PasskeyService $passkeys,
+        WebAuthnCeremonyStore $ceremonies,
+        MfaPolicyService $policy,
+    ): LoginAction {
+        return new LoginAction(
+            $this->createMock(Connection::class),
+            $this->createMock(PasswordHasher::class),
+            $this->createMock(BruteForceGuard::class),
+            $turnstile,
+            $this->createMock(ActivityLogger::class),
+            $ipMatcher,
+            $config,
+            $this->createMock(TotpService::class),
+            $this->createMock(SecretEncryption::class),
+            $this->createMock(EmailOtpService::class),
+            $this->createMock(TrustedDeviceService::class),
+            $this->createMock(PasskeyCredentialRepository::class),
+            $passkeys,
+            $ceremonies,
+            $policy,
+            $this->createMock(LoginSessionIssuer::class),
+            $this->createMock(ClockInterface::class),
+        );
+    }
+
     private function storedCredential(): StoredPasskeyCredential
     {
         $record = CredentialRecord::create(

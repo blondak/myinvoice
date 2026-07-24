@@ -117,6 +117,63 @@ final class PasskeySessionTransitionServiceTest extends TestCase
         self::assertSame(2, $savepointCalls);
     }
 
+    public function testUnknownDiscoverableCredentialConsumesAnonymousCeremony(): void
+    {
+        $flowToken = str_repeat('a', 43);
+        $cutoff = SecurityTime::fromDateTime(new \DateTimeImmutable('2026-07-24 12:00:00 UTC'));
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects(self::once())->method('beginTransaction')->willReturn(true);
+        $pdo->expects(self::once())->method('inTransaction')->willReturn(true);
+        $pdo->expects(self::once())->method('commit')->willReturn(true);
+        $pdo->expects(self::never())->method('prepare');
+        $pdo->expects(self::never())->method('rollBack');
+        $savepointCalls = 0;
+        $pdo->expects(self::exactly(2))
+            ->method('exec')
+            ->willReturnCallback(static function (string $statement) use (&$savepointCalls): int {
+                $expected = $savepointCalls++ === 0
+                    ? 'SAVEPOINT webauthn_ceremony_consumed'
+                    : 'ROLLBACK TO SAVEPOINT webauthn_ceremony_consumed';
+                TestCase::assertSame($expected, $statement);
+                return 0;
+            });
+
+        $ceremonies = $this->createMock(WebAuthnCeremonyStore::class);
+        $ceremonies->expects(self::once())
+            ->method('consumeInTransaction')
+            ->with(
+                $pdo,
+                $cutoff,
+                $flowToken,
+                WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                null,
+                null,
+                null,
+            )
+            ->willReturn(new WebAuthnCeremony(
+                WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                null,
+                null,
+                random_bytes(32),
+                ['challenge' => 'synthetic'],
+            ));
+        $ceremonies->expects(self::never())->method('markAttemptUsedInTransaction');
+
+        try {
+            $this->service($pdo, $cutoff, $ceremonies)->completeDiscoverableLogin(
+                $flowToken,
+                ['rawId' => 'unknown'],
+                '127.0.0.1',
+                'PHPUnit',
+                null,
+            );
+            self::fail('Neznámá discoverable credential musí být odmítnuta.');
+        } catch (PasskeyVerificationException) {
+        }
+
+        self::assertSame(2, $savepointCalls);
+    }
+
     private function transactionPdo(PDOStatement $userStatement): PDO
     {
         $pdo = $this->createMock(PDO::class);

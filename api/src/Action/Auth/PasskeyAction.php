@@ -255,20 +255,35 @@ final class PasskeyAction
         }
         $body = (array) ($request->getParsedBody() ?? []);
         $credentialPayload = $body['credential'] ?? null;
+        $credentialPayload = is_array($credentialPayload) ? $credentialPayload : [];
         $flowToken = trim((string) ($body['flow_token'] ?? ''));
-        $ceremonyUserId = $this->ceremonies->peekLoginUserId($flowToken);
-        if ($ceremonyUserId !== null && $this->bruteForce->isPasskeyLocked($ceremonyUserId)) {
+        $loginContext = $this->ceremonies->peekLoginContext($flowToken);
+        $discoverable = ($loginContext['purpose'] ?? null)
+            === WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN;
+        $candidateUserId = $discoverable
+            ? $this->sessionTransitions->discoverableLoginUserId($credentialPayload)
+            : ($loginContext['user_id'] ?? null);
+        if ($candidateUserId !== null && $this->bruteForce->isPasskeyLocked($candidateUserId)) {
             return $this->passkeyRateLimited($response);
         }
         try {
-            $completed = $this->sessionTransitions->completeLogin(
-                $flowToken,
-                is_array($credentialPayload) ? $credentialPayload : [],
-                $this->clientIp($request),
-                $request->getHeaderLine('User-Agent'),
-                $ceremonyUserId ?? 0,
-            );
-            $this->bruteForce->recordPasskeySuccess($ceremonyUserId);
+            $completed = $discoverable
+                ? $this->sessionTransitions->completeDiscoverableLogin(
+                    $flowToken,
+                    $credentialPayload,
+                    $this->clientIp($request),
+                    $request->getHeaderLine('User-Agent'),
+                    $candidateUserId,
+                )
+                : $this->sessionTransitions->completeLogin(
+                    $flowToken,
+                    $credentialPayload,
+                    $this->clientIp($request),
+                    $request->getHeaderLine('User-Agent'),
+                    (int) ($candidateUserId ?? 0),
+                );
+            $verifiedUserId = (int) $completed['user']['id'];
+            $this->bruteForce->recordPasskeySuccess($verifiedUserId);
             return $this->loginIssuer->issuePrepared(
                 $response,
                 $completed['user'],
@@ -278,25 +293,25 @@ final class PasskeyAction
                 $completed['session'],
             );
         } catch (PasskeyCounterAnomalyException $e) {
-            if ($ceremonyUserId !== null) {
+            if ($candidateUserId !== null) {
                 $this->log(
                     $request,
                     'auth.passkey_counter_anomaly',
-                    $ceremonyUserId,
+                    $candidateUserId,
                     $e->credentialId,
                     ['credential_id' => $e->credentialId],
                 );
-                $this->bruteForce->recordPasskeyFailure($ceremonyUserId);
+                $this->bruteForce->recordPasskeyFailure($candidateUserId);
             }
             return $this->loginVerificationFailed($response);
         } catch (OneTimeTokenException|PasskeyVerificationException) {
-            if ($ceremonyUserId !== null) {
-                $this->bruteForce->recordPasskeyFailure($ceremonyUserId);
+            if ($candidateUserId !== null) {
+                $this->bruteForce->recordPasskeyFailure($candidateUserId);
                 $this->logger->log(
                     'auth.login_failed',
-                    $ceremonyUserId,
+                    $candidateUserId,
                     'user',
-                    $ceremonyUserId,
+                    $candidateUserId,
                     ['reason' => 'passkey_invalid'],
                     $this->clientIp($request),
                     $request->getHeaderLine('User-Agent'),

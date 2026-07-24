@@ -122,6 +122,9 @@ final class RateLimitMiddleware implements MiddlewareInterface
         if ($path === '/api/auth/webauthn/login/verify' && $method === 'POST') {
             return ['rl:passkey-login:ip:' . $this->ipBucket($ip), (int) ($rl['login_per_min_per_ip'] ?? 10), 60];
         }
+        if ($path === '/api/auth/webauthn/login/options' && $method === 'POST') {
+            return ['rl:passkey-login-options:ip:' . $this->ipBucket($ip), (int) ($rl['login_per_min_per_ip'] ?? 10), 60];
+        }
 
         if ($userId > 0 && str_starts_with($path, '/api/auth/session/')) {
             $limit = $path === '/api/auth/session/activity' ? 120 : 20;

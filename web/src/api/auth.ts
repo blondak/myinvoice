@@ -40,6 +40,7 @@ export interface SupplierBrief {
 export interface SetupStatus {
   needs_setup: boolean
   version: string
+  passwordless_login_enabled: boolean
   captcha: {
     provider: 'turnstile' | 'none'
     site_key: string
@@ -198,6 +199,11 @@ export const authApi = {
 
   login: (payload: LoginPayload) =>
     api.post<AuthSessionContract>('/auth/login', payload).then(r => r.data),
+
+  passkeyLoginOptions: (captchaToken?: string) =>
+    api.post<WebAuthnFlow>('/auth/webauthn/login/options', {
+      cf_turnstile_response: captchaToken,
+    }).then(r => r.data),
 
   passkeyLoginVerify: (flowToken: string, credential: Record<string, any>) =>
     api.post<AuthSessionContract>('/auth/webauthn/login/verify', {

@@ -2,7 +2,8 @@
 
 Bezpečnost MyInvoice stojí na několika navazujících vrstvách:
 
-1. **Autentizace** — bcrypt hesla + peppered + brute-force ochrana + CAPTCHA
+1. **Autentizace** — heslo (bcrypt + pepper) nebo volitelně passkey bez hesla,
+   brute-force ochrana a CAPTCHA
 2. **Silné MFA** — passkey nebo TOTP
 3. **Síťová izolace** — IP allowlist (volitelný, doporučeno v produkci)
 4. **Autorizace** — role-based access (admin / accountant / readonly)
@@ -43,6 +44,7 @@ passkey spolu s TOTP.
 
 Passkey se používá:
 
+- samostatně k přihlášení bez e-mailu a hesla, pokud tuto možnost správce povolí,
 - po správném e-mailu a hesle místo TOTP,
 - k odemčení zamčené browserové/PWA session,
 - jako čerstvé potvrzení citlivé operace, například vytvoření API tokenu.
@@ -80,12 +82,40 @@ TOTP = time-based one-time password (RFC 6238).
 > Při ztrátě autentikátoru použij jinou passkey, nebo CLI rescue:
 > `php api/bin/reset-mfa.php <email>` — viz [§ 39.2.4](#3924-obnova-pristupu).
 
-### 39.2.3 Přihlášení s MFA
+### 39.2.3 Přihlášení s passkey a MFA
 
 Po zadání e-mailu a hesla nabídne aplikace passkey, pokud ji účet má. Je-li
 aktivní také TOTP, lze explicitně přepnout na šestimístný kód z autentikátoru.
 
 ![2FA výzva](img/04_2fa.webp)
+
+Správce může navíc explicitně povolit přihlášení pouze pomocí passkey:
+
+```php
+'auth' => [
+    'passwordless_login' => [
+        'enabled' => true,
+    ],
+],
+```
+
+Totéž lze nastavit přes ENV:
+
+```bash
+MYINVOICE_AUTH_PASSWORDLESS_LOGIN=true
+```
+
+Výchozí hodnota je `false`, takže aktualizace nezmění dosavadní přihlašování.
+Funkce je dostupná jen tehdy, když `auth.allowed_mfa_methods` obsahuje
+`passkey` a WebAuthn konfigurace je platná. Přihlašovací stránka potom nabídne
+**Přihlásit přístupovým klíčem**. Browser zobrazí passkeys pro aktuální doménu
+a vybraný klíč bezpečně předá identitu účtu; e-mail ani heslo se neposílají.
+Ověření uživatele na zařízení je povinné a úspěšná passkey rovnou vytvoří
+silně ověřenou session, bez dalšího TOTP.
+
+Passwordless režim neodstraňuje heslo ani standardní formulář. Ten zůstává
+fallbackem pro jiné zařízení a cestou k TOTP. Pokud passkey není dostupná,
+zruš systémový dialog a přihlas se e-mailem a heslem.
 
 Účet s passkey nedostane automatický fallback na e-mailový kód. Pokud passkey
 na aktuálním zařízení není dostupná, použij jinou passkey, TOTP nebo rescue.

@@ -351,6 +351,9 @@ return [
     'auth' => [
         'require_mfa' => null,                   // null = kompatibilita s require_totp
         'allowed_mfa_methods' => ['passkey', 'totp'],
+        'passwordless_login' => [
+            'enabled' => false,                  // opt-in discoverable passkey login
+        ],
         'require_totp' => false,                 // legacy TOTP-only politika
     ],
     'smtp' => [

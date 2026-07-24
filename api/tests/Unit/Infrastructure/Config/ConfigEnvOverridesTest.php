@@ -110,12 +110,23 @@ PHP);
         $this->setEnv('MYINVOICE_SESSION_LOCK_AFTER_MINUTES', '30');
         $this->setEnv('MYINVOICE_AUTH_REQUIRE_MFA', 'true');
         $this->setEnv('MYINVOICE_AUTH_MFA_METHODS', ' passkey, totp ');
+        $this->setEnv('MYINVOICE_AUTH_PASSWORDLESS_LOGIN', 'true');
 
         $cfg = Config::load($this->tmpDir);
 
         self::assertSame(30, $cfg->get('session.lock_after_minutes'));
         self::assertTrue($cfg->get('auth.require_mfa'));
         self::assertSame(['passkey', 'totp'], $cfg->get('auth.allowed_mfa_methods'));
+        self::assertTrue($cfg->get('auth.passwordless_login.enabled'));
+    }
+
+    public function testPasswordlessLoginDefaultsToDisabled(): void
+    {
+        $this->unsetEnv('MYINVOICE_AUTH_PASSWORDLESS_LOGIN');
+
+        $cfg = Config::load($this->tmpDir);
+
+        self::assertFalse($cfg->get('auth.passwordless_login.enabled'));
     }
 
     public function testSessionLockEnvironmentOverrideRejectsNonIntegerValue(): void

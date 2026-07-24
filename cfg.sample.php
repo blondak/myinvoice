@@ -63,6 +63,12 @@ return [
         'require_mfa' => null,
         'allowed_mfa_methods' => ['passkey', 'totp'],
 
+        // Opt-in přihlášení discoverable passkey bez zadání e-mailu a hesla.
+        // Vyžaduje povolenou passkey metodu a správně nastavený HTTPS WebAuthn origin.
+        'passwordless_login' => [
+            'enabled' => false,
+        ],
+
         // true = vynutit TOTP (2FA) pro VŠECHNY uživatele. Po loginu, pokud uživatel
         // ještě nemá totp_enabled=1, je zamčen na stránce /setup-totp dokud 2FA
         // neaktivuje. Single escape route je odhlášení. Doporučeno pro produkci

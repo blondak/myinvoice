@@ -11,7 +11,7 @@ final readonly class WebAuthnCeremony
      */
     public function __construct(
         public string $purpose,
-        public int $userId,
+        public ?int $userId,
         public ?string $operation,
         public string $challenge,
         public array $options,

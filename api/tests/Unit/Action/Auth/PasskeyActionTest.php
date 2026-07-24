@@ -17,6 +17,7 @@ use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\MfaStepUpService;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasskeySessionTransitionService;
+use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\PasswordHasher;
 use MyInvoice\Service\Auth\SessionManager;
 use MyInvoice\Service\Auth\SessionCookieFactory;
@@ -140,9 +141,12 @@ final class PasskeyActionTest extends TestCase
         $stored = $this->storedCredential(42, 17, 'Pixel 9');
         $payload = ['rawId' => 'synthetic-base64url', 'response' => []];
         $this->ceremonies->expects(self::once())
-            ->method('peekLoginUserId')
+            ->method('peekLoginContext')
             ->with('flow-token')
-            ->willReturn(17);
+            ->willReturn([
+                'purpose' => WebAuthnCeremonyStore::PURPOSE_LOGIN,
+                'user_id' => 17,
+            ]);
         $this->bruteForce->expects(self::once())
             ->method('isPasskeyLocked')
             ->with(17)
@@ -213,12 +217,132 @@ final class PasskeyActionTest extends TestCase
         self::assertSame(204, $response->getStatusCode());
     }
 
+    public function testDiscoverableLoginResolvesUserFromCredentialAndIssuesStrongSession(): void
+    {
+        $stored = $this->storedCredential(42, 17, 'Pixel 9');
+        $payload = ['rawId' => 'synthetic-base64url', 'response' => ['userHandle' => 'synthetic']];
+        $this->ceremonies->expects(self::once())
+            ->method('peekLoginContext')
+            ->with('flow-token')
+            ->willReturn([
+                'purpose' => WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                'user_id' => null,
+            ]);
+        $this->sessionTransitions->expects(self::once())
+            ->method('discoverableLoginUserId')
+            ->with($payload)
+            ->willReturn(17);
+        $this->bruteForce->expects(self::once())
+            ->method('isPasskeyLocked')
+            ->with(17)
+            ->willReturn(false);
+        $now = new \DateTimeImmutable('2026-07-24 12:00:00 UTC');
+        $context = \MyInvoice\Service\Auth\SessionAuthContext::strong('passkey', $now, 42);
+        $session = [
+            'token' => str_repeat('c', 64),
+            'csrf_token' => str_repeat('d', 64),
+            'expires_at' => 1_800_000_000,
+            'issued_at' => $now,
+        ];
+        $user = [
+            'id' => 17,
+            'email' => 'synthetic@example.invalid',
+            'name' => 'Synthetic User',
+            'role' => 'admin',
+            'locale' => 'cs',
+            'totp_enabled' => 0,
+        ];
+        $this->sessionTransitions->expects(self::once())
+            ->method('completeDiscoverableLogin')
+            ->with('flow-token', $payload, '127.0.0.1', 'PHPUnit', 17)
+            ->willReturn([
+                'session' => $session,
+                'credential' => $stored,
+                'user' => $user,
+                'auth_context' => $context,
+            ]);
+        $this->sessionTransitions->expects(self::never())->method('completeLogin');
+        $this->bruteForce->expects(self::once())->method('recordPasskeySuccess')->with(17);
+        $this->loginIssuer->expects(self::once())
+            ->method('issuePrepared')
+            ->with(
+                self::anything(),
+                $user,
+                '127.0.0.1',
+                'PHPUnit',
+                $context,
+                $session,
+            )
+            ->willReturnCallback(static fn (
+                \Psr\Http\Message\ResponseInterface $response,
+            ): \Psr\Http\Message\ResponseInterface => $response->withStatus(204));
+        $this->ipMatcher->expects(self::exactly(2))
+            ->method('clientIpFromRequest')
+            ->willReturn('127.0.0.1');
+
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/webauthn/login/verify')
+            ->withHeader('User-Agent', 'PHPUnit')
+            ->withParsedBody([
+                'flow_token' => 'flow-token',
+                'credential' => $payload,
+            ]);
+        $response = $this->action()->loginVerify(
+            $request,
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(204, $response->getStatusCode());
+    }
+
+    public function testUnknownDiscoverableCredentialReturnsGenericErrorWithoutAccountBucket(): void
+    {
+        $payload = ['rawId' => 'unknown-base64url', 'response' => []];
+        $this->ceremonies->expects(self::once())
+            ->method('peekLoginContext')
+            ->with('flow-token')
+            ->willReturn([
+                'purpose' => WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                'user_id' => null,
+            ]);
+        $this->sessionTransitions->expects(self::once())
+            ->method('discoverableLoginUserId')
+            ->with($payload)
+            ->willReturn(null);
+        $this->bruteForce->expects(self::never())->method('isPasskeyLocked');
+        $this->sessionTransitions->expects(self::once())
+            ->method('completeDiscoverableLogin')
+            ->with('flow-token', $payload, '127.0.0.1', 'PHPUnit', null)
+            ->willThrowException(new PasskeyVerificationException('Ověření passkey selhalo.'));
+        $this->bruteForce->expects(self::never())->method('recordPasskeyFailure');
+        $this->loginIssuer->expects(self::never())->method('issuePrepared');
+        $this->ipMatcher->method('clientIpFromRequest')->willReturn('127.0.0.1');
+
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/webauthn/login/verify')
+            ->withHeader('User-Agent', 'PHPUnit')
+            ->withParsedBody([
+                'flow_token' => 'flow-token',
+                'credential' => $payload,
+            ]);
+        $response = $this->action()->loginVerify(
+            $request,
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(401, $response->getStatusCode());
+        self::assertSame('passkey_verification_failed', $this->errorCode($response));
+    }
+
     public function testLoginVerifyConsumesMalformedAttemptAndRecordsUserFailure(): void
     {
         $this->ceremonies->expects(self::once())
-            ->method('peekLoginUserId')
+            ->method('peekLoginContext')
             ->with('flow-token')
-            ->willReturn(17);
+            ->willReturn([
+                'purpose' => WebAuthnCeremonyStore::PURPOSE_LOGIN,
+                'user_id' => 17,
+            ]);
         $this->bruteForce->expects(self::once())
             ->method('isPasskeyLocked')
             ->with(17)

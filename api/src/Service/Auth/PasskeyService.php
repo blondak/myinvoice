@@ -145,6 +145,26 @@ final class PasskeyService
     }
 
     /**
+     * @return array<string,mixed>
+     */
+    public function discoverableAssertionOptions(string $challenge): array
+    {
+        $this->initialize();
+        $config = $this->config();
+        self::validateChallenge($challenge);
+
+        $options = PublicKeyCredentialRequestOptions::create(
+            $challenge,
+            $config->rpId(),
+            [],
+            PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_REQUIRED,
+            self::CEREMONY_TIMEOUT_MS,
+        );
+
+        return $this->serializeOptions($options);
+    }
+
+    /**
      * @param array<string,mixed> $credentialPayload
      * @param array<string,mixed> $storedOptions
      */
@@ -180,6 +200,41 @@ final class PasskeyService
         array $storedOptions,
         CredentialRecord $storedCredential,
     ): CredentialRecord {
+        return $this->verifyAssertionMode(
+            $credentialPayload,
+            $storedOptions,
+            $storedCredential,
+            false,
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $credentialPayload
+     * @param array<string,mixed> $storedOptions
+     */
+    public function verifyDiscoverableAssertion(
+        array $credentialPayload,
+        array $storedOptions,
+        CredentialRecord $storedCredential,
+    ): CredentialRecord {
+        return $this->verifyAssertionMode(
+            $credentialPayload,
+            $storedOptions,
+            $storedCredential,
+            true,
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $credentialPayload
+     * @param array<string,mixed> $storedOptions
+     */
+    private function verifyAssertionMode(
+        array $credentialPayload,
+        array $storedOptions,
+        CredentialRecord $storedCredential,
+        bool $discoverable,
+    ): CredentialRecord {
         try {
             $this->initialize();
             $config = $this->config();
@@ -192,8 +247,17 @@ final class PasskeyService
             if (!hash_equals($storedCredential->publicKeyCredentialId, $credential->rawId)) {
                 throw new \UnexpectedValueException('Credential ID mismatch.');
             }
-            if ($credential->response->userHandle !== null
-                && !hash_equals($storedCredential->userHandle, $credential->response->userHandle)
+            $responseUserHandle = $credential->response->userHandle;
+            if ($discoverable
+                && ($responseUserHandle === null
+                    || $responseUserHandle === ''
+                    || !hash_equals($storedCredential->userHandle, $responseUserHandle))
+            ) {
+                throw new \UnexpectedValueException('Discoverable assertion user handle mismatch.');
+            }
+            if (!$discoverable
+                && $responseUserHandle !== null
+                && !hash_equals($storedCredential->userHandle, $responseUserHandle)
             ) {
                 throw new \UnexpectedValueException('User handle mismatch.');
             }
@@ -204,7 +268,7 @@ final class PasskeyService
                 $credential->response,
                 $options,
                 $config->rpId(),
-                $storedCredential->userHandle,
+                $discoverable ? null : $storedCredential->userHandle,
             );
         } catch (\Throwable) {
             throw new PasskeyVerificationException('Ověření passkey selhalo.');

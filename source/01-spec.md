@@ -59,7 +59,9 @@ Pokud `GET /api/auth/setup-status` vrátí `{ "needs_setup": true }`, router př
 3. **Krok 3 — Hotovo:** výzva k přihlášení s nově vytvořenými údaji.
 
 #### Backend
-- `GET /api/auth/setup-status` — jediný always-available endpoint. Vrací `{ "needs_setup": <bool>, "version": "..." }`.
+- `GET /api/auth/setup-status` — jediný always-available endpoint. Vrací stav
+  setupu, veřejnou CAPTCHA konfiguraci a efektivní
+  `passwordless_login_enabled`.
 - `POST /api/auth/setup` — proběhne jen pokud `users` tabulka je prázdná (idempotence + ochrana). Body:
   ```json
   {
@@ -822,8 +824,10 @@ Server identification:
 - **Concurrent sessions:** povolené (uživatel může být na desktopu i mobilu).
 - **Logout invaliduje session na serveru** (smaže z Redis/DB), ne jen cookie.
 - **MFA:** passkey/WebAuthn a TOTP jsou silné faktory. E-mailové OTP není silný
-  faktor pro povinnou MFA. Passkey se používá po hesle, pro účelový step-up a
-  k odemčení; passwordless login není součástí aktuálního stavu.
+  faktor pro povinnou MFA. Passkey se používá po hesle, pro účelový step-up,
+  k odemčení a při administrátorském opt-in také jako discoverable
+  passwordless login bez předem známého e-mailu. Úspěšná assertion vyžaduje
+  user verification a vydá silně ověřenou session.
 
 #### 9.3.3 First-run setup
 Viz kapitola 2.0. Setup endpoint pracuje pod IP allowlist (pokud aktivní s `apply_to=all`) a má rate-limit 5/hod/IP. Po vytvoření prvního admina je trvale uzamčen.

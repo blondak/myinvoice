@@ -237,6 +237,7 @@ MYINVOICE_DATA_DIR=/data        # default v compose souborech; sjednocuje
                                 # log/, storage/, private/ a cfg.local.php pod /data
 MYINVOICE_AUTH_REQUIRE_MFA=true  # vyžadovat passkey nebo TOTP
 MYINVOICE_AUTH_MFA_METHODS=passkey,totp
+MYINVOICE_AUTH_PASSWORDLESS_LOGIN=true # povolit passkey login bez e-mailu a hesla; default false
 MYINVOICE_SESSION_LOCK_AFTER_MINUTES=15 # výchozí interval a maximum osobní volby; 0 nic nevynucuje
 ```
 

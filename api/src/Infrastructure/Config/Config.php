@@ -210,6 +210,9 @@ final class Config
             'auth' => [
                 'require_mfa'         => null,
                 'allowed_mfa_methods' => ['passkey', 'totp'],
+                'passwordless_login'  => [
+                    'enabled' => false,
+                ],
             ],
             'ares' => [
                 'api'       => 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty',
@@ -294,6 +297,7 @@ final class Config
             'MYINVOICE_AUTH_REQUIRE_TOTP'    => ['auth.require_totp', 'bool'],
             'MYINVOICE_AUTH_REQUIRE_MFA'     => ['auth.require_mfa', 'bool'],
             'MYINVOICE_AUTH_MFA_METHODS'     => ['auth.allowed_mfa_methods', 'csv'],
+            'MYINVOICE_AUTH_PASSWORDLESS_LOGIN' => ['auth.passwordless_login.enabled', 'bool'],
 
             // SMTP
             'MYINVOICE_SMTP_HOST'       => ['smtp.host', 'string'],

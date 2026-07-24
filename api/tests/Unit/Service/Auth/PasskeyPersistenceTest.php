@@ -297,6 +297,32 @@ final class PasskeyPersistenceTest extends TestCase
         $store->consumeLogin($token);
     }
 
+    public function testDiscoverableLoginCeremonyHasNoBoundUserAndIsOneTime(): void
+    {
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
+        $token = $store->create(
+            WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+            null,
+            null,
+            null,
+            random_bytes(32),
+            ['challenge' => 'encoded-challenge', 'allowCredentials' => []],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+
+        self::assertSame([
+            'purpose' => WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+            'user_id' => null,
+        ], $store->peekLoginContext($token));
+        $ceremony = $store->consumeDiscoverableLogin($token);
+        self::assertNull($ceremony->userId);
+        self::assertSame(WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN, $ceremony->purpose);
+
+        $this->expectException(OneTimeTokenException::class);
+        $store->consumeDiscoverableLogin($token);
+    }
+
     public function testStepUpProofIsBoundAndOneTime(): void
     {
         $record = $this->credentialRecord($this->credentials->userHandle($this->userId));

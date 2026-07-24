@@ -50,6 +50,8 @@ services:
       # Vestavěný cron v app kontejneru (default 1). Při více replikách app nastav 0
       # v jedné běžící replice ho nech zapnutý, jinak by úlohy běžely vícenásobně.
       MYINVOICE_ENABLE_CRON: ${MYINVOICE_ENABLE_CRON:-1}
+      # Prázdná hodnota nepřebíjí cfg.docker.php; true/false lze nastavit v .env.
+      MYINVOICE_AUTH_PASSWORDLESS_LOGIN: ${MYINVOICE_AUTH_PASSWORDLESS_LOGIN:-}
 
   db:
     image: mariadb:11

@@ -116,7 +116,77 @@ final class PasskeySessionTransitionService
         string $userAgent,
         int $userId,
     ): array {
-        if ($userId < 1) {
+        return $this->completeLoginMode(
+            $flowToken,
+            $credentialPayload,
+            $ip,
+            $userAgent,
+            $userId,
+            false,
+        );
+    }
+
+    /**
+     * Vrátí pouze kandidátní účet pro předběžný per-user lockout. Výsledek se
+     * nesmí použít jako autentizace; transakce credential i účet znovu zamkne
+     * a ověří kryptograficky.
+     *
+     * @param array<string,mixed> $credentialPayload
+     */
+    public function discoverableLoginUserId(array $credentialPayload): ?int
+    {
+        try {
+            $credentialId = $this->passkeys->credentialId($credentialPayload);
+        } catch (PasskeyVerificationException) {
+            return null;
+        }
+        return $this->credentials->findActiveByCredentialId($credentialId)?->userId;
+    }
+
+    /**
+     * @param array<string,mixed> $credentialPayload
+     * @return array{
+     *   session:array{token:string,csrf_token:string,expires_at:int,issued_at:\DateTimeImmutable},
+     *   credential:StoredPasskeyCredential,
+     *   user:array<string,mixed>,
+     *   auth_context:SessionAuthContext
+     * }
+     */
+    public function completeDiscoverableLogin(
+        string $flowToken,
+        array $credentialPayload,
+        string $ip,
+        string $userAgent,
+        ?int $candidateUserId,
+    ): array {
+        return $this->completeLoginMode(
+            $flowToken,
+            $credentialPayload,
+            $ip,
+            $userAgent,
+            $candidateUserId ?? 0,
+            true,
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $credentialPayload
+     * @return array{
+     *   session:array{token:string,csrf_token:string,expires_at:int,issued_at:\DateTimeImmutable},
+     *   credential:StoredPasskeyCredential,
+     *   user:array<string,mixed>,
+     *   auth_context:SessionAuthContext
+     * }
+     */
+    private function completeLoginMode(
+        string $flowToken,
+        array $credentialPayload,
+        string $ip,
+        string $userAgent,
+        int $userId,
+        bool $discoverable,
+    ): array {
+        if (!$discoverable && $userId < 1) {
             throw new OneTimeTokenException('Neplatné nebo spotřebované WebAuthn flow.');
         }
 
@@ -125,24 +195,50 @@ final class PasskeySessionTransitionService
         $ceremonyConsumed = false;
         try {
             $cutoff = $this->clock->capture($pdo);
+            if ($userId < 1) {
+                $this->ceremonies->consumeInTransaction(
+                    $pdo,
+                    $cutoff,
+                    $flowToken,
+                    WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN,
+                    null,
+                    null,
+                    null,
+                );
+                $ceremonyConsumed = true;
+                $this->saveCeremonyConsumption($pdo);
+                throw new PasskeyVerificationException('Ověření passkey selhalo.');
+            }
+
             $user = $this->lockActiveUser($pdo, $userId);
             $ceremony = $this->ceremonies->consumeInTransaction(
                 $pdo,
                 $cutoff,
                 $flowToken,
-                WebAuthnCeremonyStore::PURPOSE_LOGIN,
-                $userId,
+                $discoverable
+                    ? WebAuthnCeremonyStore::PURPOSE_DISCOVERABLE_LOGIN
+                    : WebAuthnCeremonyStore::PURPOSE_LOGIN,
+                $discoverable ? null : $userId,
                 null,
                 null,
             );
             $ceremonyConsumed = true;
             $this->saveCeremonyConsumption($pdo);
+            if ($discoverable && $ceremony->userId !== null) {
+                throw new PasskeyVerificationException('Ověření passkey selhalo.');
+            }
             $stored = $this->lockCredential($pdo, $credentialPayload, $userId);
-            $verified = $this->passkeys->verifyAssertion(
-                $credentialPayload,
-                $ceremony->options,
-                $stored->record,
-            );
+            $verified = $discoverable
+                ? $this->passkeys->verifyDiscoverableAssertion(
+                    $credentialPayload,
+                    $ceremony->options,
+                    $stored->record,
+                )
+                : $this->passkeys->verifyAssertion(
+                    $credentialPayload,
+                    $ceremony->options,
+                    $stored->record,
+                );
             if (!$this->credentials->updateAfterAssertionInTransaction(
                 $pdo,
                 $stored,
