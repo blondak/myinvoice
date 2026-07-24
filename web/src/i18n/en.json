@@ -3513,7 +3513,13 @@
       "amount": "Amount",
       "no_data": "No EU supplies in this period (no issued invoices with VAT classification 20/22 for EU clients with VAT ID).",
       "note": "Recapitulative statement is submitted by VAT payers with at least 1 EU supply in the period. Identified persons (non-payers) submit when B2B EU services or goods purchases over the limit.",
-      "note_quarterly_goods": "⚠️ Quarterly ESL is only allowed for services (code 22, §9/1). Goods supplies to EU (code 20) require monthly submission regardless of taxpayer type (§ 102(3) of Act 235/2004)."
+      "note_quarterly_goods": "⚠️ Quarterly ESL is only allowed for services (code 22, §9/1). Goods supplies to EU (code 20) require monthly submission regardless of taxpayer type (§ 102(3) of Act 235/2004).",
+      "sh_type": {
+        "0": "Supply of goods to EU",
+        "1": "Transfer of business assets",
+        "2": "Triangular trade (intermediary)",
+        "3": "Supply of services to EU"
+      }
     },
     "submissions": {
       "title": "EPO XML submission archive",

@@ -71,6 +71,14 @@ final class DphPriznaniBuilder
         }
 
         $lines = $this->mapper->aggregateForDphPriznani($supplierId, $year, $month, $period);
+        // #238: doklady v cizí měně bez kurzu — NEházíme chybu, vrátíme je v
+        // `missing_rates` a akce je při stažení doplní z ČNB (náhled jen varuje).
+        $missingRates = $this->mapper->missingRatesForPeriod($supplierId, $year, $month, $period);
+        if ($missingRates !== []) {
+            $warnings[] = 'Chybí kurz u dokladů v cizí měně: '
+                . implode(', ', \MyInvoice\Service\Report\VatLedgerService::missingExchangeRateLabels($missingRates))
+                . '. Při stažení XML se doplní z ČNB.';
+        }
         $this->appendSalesDataWarnings($supplierId, $year, $month, $period, $warnings);
         if ($isIdentified) {
             $lines = $this->filterLinesForIdentified($lines, $warnings);
@@ -331,6 +339,7 @@ final class DphPriznaniBuilder
             'xml'      => $dom->saveXML() ?: '',
             'summary'  => $summary,
             'warnings' => $warnings,
+            'missing_rates' => $missingRates,
         ];
     }
 

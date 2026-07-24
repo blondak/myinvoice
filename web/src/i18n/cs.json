@@ -3513,7 +3513,13 @@
       "amount": "Hodnota",
       "no_data": "V tomto měsíci nejsou žádné EU dodávky (žádné vystavené faktury s VAT klasifikací 20/22 pro EU klienty s DIČ).",
       "note": "Souhrnné hlášení podávají plátci DPH s alespoň 1 EU dodávkou v období. Identifikované osoby (neplátci) podávají při B2B EU službách nebo nákupech zboží z EU nad limit.",
-      "note_quarterly_goods": "⚠️ Kvartální SH je povoleno pouze při poskytování služeb (kód 22, §9/1). Dodání zboží do EU (kód 20) vyžaduje měsíční podání bez ohledu na typ plátce (§ 102 odst. 3 zákona 235/2004 Sb.)."
+      "note_quarterly_goods": "⚠️ Kvartální SH je povoleno pouze při poskytování služeb (kód 22, §9/1). Dodání zboží do EU (kód 20) vyžaduje měsíční podání bez ohledu na typ plátce (§ 102 odst. 3 zákona 235/2004 Sb.).",
+      "sh_type": {
+        "0": "Dodání zboží do EU",
+        "1": "Přemístění obchodního majetku",
+        "2": "Třístranný obchod (prostředník)",
+        "3": "Poskytnutí služby do EU"
+      }
     },
     "submissions": {
       "title": "Archiv podání EPO XML",

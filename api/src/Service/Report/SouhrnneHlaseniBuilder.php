@@ -23,7 +23,7 @@ use MyInvoice\Infrastructure\Database\Connection;
  *     - **1** = Přemístění obchodního majetku do JČS (§ 13 odst. 6)
  *     - **2** = Dodání zboží formou třístranného obchodu prostřední osobou (§ 17, ř.31, VAT kód "31")
  *     - **3** = Poskytnutí služby s místem plnění v JČS (§ 9 odst. 1, ř.21, VAT kód "22")
- *   - DIČ kupujícího (s prefixem země, např. SK1234567890)
+ *   - DIČ kupujícího BEZ prefixu země (kód země je zvlášť v k_stat), např. 1234567890
  *   - Hodnota plnění v CZK (základ daně, bez DPH)
  *   - Počet plnění
  *
@@ -77,7 +77,16 @@ final class SouhrnneHlaseniBuilder
         }
         $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $endMonth)))->modify('last day of this month')->format('Y-m-d');
 
-        $rows = $this->collectEuSupplies($supplierId, $start, $end);
+        $missingRates = [];
+        $rows = $this->collectEuSupplies($supplierId, $start, $end, $missingRates);
+
+        // #238: EU dodávky v cizí měně bez zafixovaného kurzu. NEházíme chybu — vrátíme
+        // je v `missing_rates`; akce při stažení je doplní z ČNB, náhled jen varuje.
+        if ($missingRates !== []) {
+            $warnings[] = 'Chybí kurz u EU dodávek v cizí měně: '
+                . implode(', ', VatLedgerService::missingExchangeRateLabels($missingRates))
+                . '. Při stažení XML se doplní z ČNB.';
+        }
 
         $periodLabel = $period === 'quarterly' && $quarter !== null
             ? "tomto čtvrtletí"
@@ -122,7 +131,10 @@ final class SouhrnneHlaseniBuilder
         } else {
             $vetaD->setAttribute('mesic', (string) $month);
         }
-        $vetaD->setAttribute('shvies_forma', 'B'); // B = řádné
+        // shvies_forma: EPO povoluje pouze [RN] — R = řádné, N = následné (opravné).
+        // (Pozn.: dřívější 'B' bylo omylem převzato z KH — DPHSHV žádné 'B' nezná
+        //  a EPO ho odmítá „...neodpovídá regulárnímu výrazu [RN]". Issue #238.)
+        $vetaD->setAttribute('shvies_forma', 'R');
         $vetaD->setAttribute('dokument', 'SHV');
         $shv->appendChild($vetaD);
 
@@ -167,9 +179,12 @@ final class SouhrnneHlaseniBuilder
             $rowNum++;
             $v = $dom->createElement('VetaR');
             $v->setAttribute('c_rad', (string) $rowNum);
-            $v->setAttribute('k_storno', 'N'); // N = řádné, není to oprava
+            // k_storno se v ŘÁDNÉM hlášení NEvyplňuje — EPO ho odmítá („Pro řádné
+            // souhrnné hlášení nesmí být vyplněn kód storna"). Slouží jen pro storno
+            // řádky v NÁSLEDNÉM hlášení (to zatím negenerujeme). Issue #238.
             // k_stat = kód státu pro DPH/VIES (Řecko má ISO "GR", ale DPH kód "EL").
             $v->setAttribute('k_stat', KontrolniHlaseniBuilder::khCountryCode($r['country_iso2']));
+            // c_vat = DIČ BEZ prefixu země (kód země nese k_stat). Issue #238.
             $v->setAttribute('c_vat', $r['vat_id']);
             $v->setAttribute('k_pln_eu', $r['sh_type']);
             $v->setAttribute('pln_hodnota', $this->formatAmount($r['amount']));
@@ -197,6 +212,7 @@ final class SouhrnneHlaseniBuilder
                 'submission_deadline' => $deadline,
             ],
             'warnings' => $warnings,
+            'missing_rates' => $missingRates,
         ];
     }
 
@@ -207,20 +223,46 @@ final class SouhrnneHlaseniBuilder
      * @return list<array{country_iso2:string, vat_id:string, sh_type:string,
      *                   amount:float, count:int, counterparty_name:string}>
      */
-    private function collectEuSupplies(int $supplierId, string $start, string $end): array
+    private function collectEuSupplies(int $supplierId, string $start, string $end, array &$missingRates = []): array
     {
         // Projekce kanonických řádků (VatLedgerService) — vystavená EU B2B plnění:
         // kód 20/21/22, EU země (≠ CZ) s DIČ. base_czk je už PŘEPOČTENÝ na CZK kurzem
         // faktury (oprava staré chyby — SH dříve sčítalo total_without_vat v cizí měně).
         $result = [];
+        $missingSeen = [];
         foreach ($this->ledger->rows($supplierId, $start, $end, includeDrafts: false) as $r) {
             if ($r['source'] !== 'sale') continue;
             $code = $r['code'];
             if ($code === null || !isset(self::VAT_CODE_TO_SH_TYPE[$code])) continue;
             if (!$r['country_is_eu'] || $r['country_iso2'] === 'CZ' || $r['country_iso2'] === null) continue;
 
-            $vatId = $this->normalizeVatId((string) ($r['counterparty_dic'] ?? ''), (string) $r['country_iso2']);
+            // c_vat = DIČ BEZ prefixu země (strhne jen prefix odpovídající zemi, ne
+            // libovolná 2 písmena — FR má alfanumerickou vnitrostátní část; GR→EL).
+            // Používáme sdílenou (a proti VIES ověřenou) normalizaci z KH. Issue #238.
+            $vatId = KontrolniHlaseniBuilder::cleanEuVatId(
+                (string) ($r['counterparty_dic'] ?? ''),
+                (string) $r['country_iso2'],
+            );
             if ($vatId === '') continue; // bez DIČ nelze podat SH
+
+            // Daňová pojistka: EU dodávka v cizí měně bez zafixovaného kurzu by se
+            // vykázala s náhradním kurzem 1.0 (EUR jako CZK). Sesbíráme ji do
+            // $missingRates — akce ji při stažení doplní z ČNB (issue #238).
+            if (!empty($r['exchange_rate_missing'])) {
+                $key = 'sale:' . (int) $r['invoice_id'];
+                if (!isset($missingSeen[$key])) {
+                    $missingSeen[$key] = true;
+                    $doc = (string) ($r['doc_number'] ?? '') ?: ('#' . (string) $r['invoice_id']);
+                    $missingRates[] = [
+                        'invoice_id' => (int) $r['invoice_id'],
+                        'source'     => 'sale',
+                        'currency'   => (string) $r['currency'],
+                        'tax_date'   => isset($r['tax_date']) ? (string) $r['tax_date'] : null,
+                        'issue_date' => isset($r['issue_date']) ? (string) $r['issue_date'] : null,
+                        'doc'        => $doc,
+                    ];
+                }
+            }
 
             $shType = self::VAT_CODE_TO_SH_TYPE[$code];
             $key = "{$r['country_iso2']}|{$vatId}|{$shType}";
@@ -245,23 +287,6 @@ final class SouhrnneHlaseniBuilder
             unset($row['_invoice_ids']);
             return $row;
         }, array_values($result));
-    }
-
-    /**
-     * Normalize VAT ID — odstraní mezery + uppercase. Pokud nemá country prefix,
-     * přidá z `country_iso2`.
-     */
-    private function normalizeVatId(string $dic, string $countryIso2): string
-    {
-        $dic = preg_replace('/\s+/', '', strtoupper(trim($dic))) ?? '';
-        if ($dic === '') return '';
-        // Kód státu pro DPH/VIES (Řecko: ISO "GR" → DPH "EL").
-        $code = KontrolniHlaseniBuilder::khCountryCode($countryIso2);
-        // Pokud už začíná kódem země (2 písmena), ponech — jen GR převeď na EL.
-        if (preg_match('/^[A-Z]{2}/', $dic)) {
-            return str_starts_with($dic, 'GR') ? 'EL' . substr($dic, 2) : $dic;
-        }
-        return $code . $dic;
     }
 
     /**
