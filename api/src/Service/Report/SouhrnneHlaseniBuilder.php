@@ -138,33 +138,12 @@ final class SouhrnneHlaseniBuilder
         $vetaD->setAttribute('dokument', 'SHV');
         $shv->appendChild($vetaD);
 
-        // VetaP — identifikace poplatníka
+        // VetaP — identifikace poplatníka. Sdílený helper (stejný jako DPHDP3/DPHKH1):
+        // odstranění akademických titulů + rozdělení jména na jmeno/prijmeni (#200) a
+        // adresy na ulice/c_pop/c_orient. `includeContact: false`, protože DPHSHV XSD
+        // atributy email/c_telef nezná (na rozdíl od DPH/KH) — EPO by je odmítlo.
         $vetaP = $dom->createElement('VetaP');
-        $vetaP->setAttribute('c_ufo', (string) ($supplier['financial_office_code'] ?: '451'));
-        if (!empty($supplier['workplace_code'])) {
-            $vetaP->setAttribute('c_pracufo', (string) $supplier['workplace_code']);
-        }
-        $dic = (string) ($supplier['dic'] ?? '');
-        $cleanDic = preg_replace('/^CZ/i', '', $dic) ?? $dic;
-        $cleanDic = preg_replace('/[^0-9]/', '', $cleanDic) ?? '';
-        $vetaP->setAttribute('dic', $cleanDic);
-        // typ_ds = typ daňového subjektu (F/P), ne typ datové schránky — viz EpoSupplierBlockBuilder.
-        $vetaP->setAttribute('typ_ds', ($supplier['taxpayer_type'] ?? null) === 'po' ? 'P' : 'F');
-        if ($supplier['taxpayer_type'] === 'po') {
-            $vetaP->setAttribute('zkrobchjm', (string) $supplier['company_name']);
-        } else {
-            $parts = explode(' ', trim((string) $supplier['company_name']), 2);
-            $vetaP->setAttribute('jmeno', $parts[0] ?? '');
-            $vetaP->setAttribute('prijmeni', $parts[1] ?? $parts[0] ?? '');
-        }
-        $vetaP->setAttribute('ulice', (string) ($supplier['street'] ?? ''));
-        $vetaP->setAttribute('naz_obce', (string) ($supplier['city'] ?? ''));
-        $vetaP->setAttribute('psc', preg_replace('/\s/', '', (string) ($supplier['zip'] ?? '')) ?? '');
-        // `stat` = NÁZEV státu z číselníku Země (naz_zeme_c25), NE ISO2 kód (#201).
-        $statName = EpoSupplierBlockBuilder::countryName((string) ($supplier['country_iso2'] ?? 'CZ'));
-        if ($statName !== null) {
-            $vetaP->setAttribute('stat', $statName);
-        }
+        EpoSupplierBlockBuilder::fillVetaP($vetaP, $supplier, includeContact: false);
         $shv->appendChild($vetaP);
 
         // VetaR — jednotlivé řádky souhrnného hlášení (per VAT_ID + typ plnění).
@@ -310,9 +289,13 @@ final class SouhrnneHlaseniBuilder
         $stmt = $this->db->pdo()->prepare(
             "SELECT s.id, s.company_name, s.street, s.city, s.zip,
                     COALESCE(c.iso2, 'CZ') AS country_iso2,
-                    s.ic, s.dic, s.is_vat_payer,
+                    s.ic, s.dic, s.is_vat_payer, s.is_identified,
                     s.taxpayer_type, s.financial_office_code,
-                    s.workplace_code, s.data_box_id
+                    s.workplace_code, s.data_box_id,
+                    s.email, s.phone, s.cz_nace_code,
+                    s.street_number_pop, s.street_number_orient,
+                    s.opr_jmeno, s.opr_prijmeni, s.opr_postaveni,
+                    s.sest_jmeno, s.sest_prijmeni, s.sest_telefon, s.sest_email, s.sest_funkce
                FROM supplier s
           LEFT JOIN countries c ON c.id = s.country_id
               WHERE s.id = ?"

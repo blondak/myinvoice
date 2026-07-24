@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.50.1] — 2026-07-24
+
+### Fixed
+
+- **Souhrnné hlášení (DPHSHV) chybně rozdělovalo jméno fyzické osoby a nerozdělovalo adresu.** Oprava rozdělení jména z issue #200 (odstranění akademických titulů) se aplikovala jen na přiznání k DPH a kontrolní hlášení — souhrnné hlášení si `VetaP` sestavovalo vlastní starou logikou, která zůstala neopravená. U OSVČ `MUDr. Josef Novák` tak vzniklo `jmeno="MUDr."`, `prijmeni="Josef Novák"` místo správného `jmeno="Josef"`, `prijmeni="Novák"`. Ze stejného důvodu se celá adresa psala do atributu `ulice` (`ulice="Nová 158"`) místo rozdělení na `ulice="Nová"` a `c_pop="158"`. Souhrnné hlášení nově sestavuje `VetaP` stejným sdíleným helperem jako přiznání a kontrolní hlášení (odstranění vedoucích i koncových titulů, přednost strukturovaných polí jméno/příjmení, rozdělení adresy na ulici a čísla popisné/orientační). Kontaktní atributy `email`/`c_telef`, které DPHSHV na rozdíl od DPH/KH nezná, se do souhrnného hlášení záměrně nevkládají, aby ho EPO neodmítlo. Jde čistě o generátor XML — stačí nasadit a hlášení znovu vyexportovat. (#200)
+
 ## [4.50.0] — 2026-07-24
 
 ### Fixed

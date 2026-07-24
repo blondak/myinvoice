@@ -137,8 +137,36 @@ final class EpoSupplierBlockBuilderTest extends TestCase
         $this->assertSame('F', $neznamy->getAttribute('typ_ds'));
     }
 
+    /**
+     * DPHDP3/DPHKH1 znají email/c_telef, DPHSHV NE — souhrnné hlášení volá
+     * s `includeContact: false` a XSD by kontaktní atributy odmítlo (#200).
+     */
+    public function testContactAttributesEmittedByDefault(): void
+    {
+        $v = $this->fillFor(['email' => 'a@b.cz', 'phone' => '+420 722 944 990']);
+        $this->assertSame('a@b.cz', $v->getAttribute('email'));
+        $this->assertSame('722944990', $v->getAttribute('c_telef'));
+    }
+
+    public function testContactAttributesSuppressedForSouhrnneHlaseni(): void
+    {
+        $v = $this->fillFor(['email' => 'a@b.cz', 'phone' => '+420 722 944 990'], includeContact: false);
+        $this->assertFalse($v->hasAttribute('email'), 'DPHSHV VetaP nesmí mít email');
+        $this->assertFalse($v->hasAttribute('c_telef'), 'DPHSHV VetaP nesmí mít c_telef');
+        // Ostatní atributy zůstávají vyplněné (kontrola, že jsme neshodili celý blok).
+        $this->assertSame('ČESKÁ REPUBLIKA', $v->getAttribute('stat'));
+    }
+
+    /** Adresa se v DPHSHV rozdělí na ulice/c_pop (#200 — dřív „Nová 158" celé v ulice). */
+    public function testAddressSplitAppliesForSouhrnneHlaseni(): void
+    {
+        $v = $this->fillFor(['street' => 'Nová 158'], includeContact: false);
+        $this->assertSame('Nová', $v->getAttribute('ulice'));
+        $this->assertSame('158', $v->getAttribute('c_pop'));
+    }
+
     /** @param array<string,mixed> $overrides */
-    private function fillFor(array $overrides): \DOMElement
+    private function fillFor(array $overrides, bool $includeContact = true): \DOMElement
     {
         $supplier = array_merge([
             'financial_office_code' => '451', 'dic' => 'CZ1234567890',
@@ -147,7 +175,7 @@ final class EpoSupplierBlockBuilderTest extends TestCase
         ], $overrides);
         $dom = new \DOMDocument();
         $v = $dom->createElement('VetaP');
-        EpoSupplierBlockBuilder::fillVetaP($v, $supplier);
+        EpoSupplierBlockBuilder::fillVetaP($v, $supplier, $includeContact);
         return $v;
     }
 }
