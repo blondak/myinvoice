@@ -14,6 +14,7 @@ use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasskeySessionTransitionService;
 use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\SessionLockPolicy;
+use MyInvoice\Service\Auth\SessionLockPreferenceService;
 use MyInvoice\Service\Auth\SessionLockResult;
 use MyInvoice\Service\Auth\SessionLockService;
 use MyInvoice\Service\Auth\SessionManager;
@@ -51,6 +52,7 @@ final class SessionActionTest extends TestCase
             $this->createMock(SessionManager::class),
             $locks,
             new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
+            $this->createMock(SessionLockPreferenceService::class),
             $credentials,
             $passkeys,
             $this->createMock(WebAuthnCeremonyStore::class),
@@ -131,6 +133,7 @@ final class SessionActionTest extends TestCase
             $this->createMock(SessionManager::class),
             $this->createMock(SessionLockService::class),
             new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
+            $this->createMock(SessionLockPreferenceService::class),
             $this->createMock(PasskeyCredentialRepository::class),
             $passkeys,
             $this->createMock(WebAuthnCeremonyStore::class),
@@ -155,5 +158,94 @@ final class SessionActionTest extends TestCase
         self::assertSame(401, $response->getStatusCode());
         $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('session_unlock_failed', $body['error']['code']);
+    }
+
+    public function testUpdateLockPreferenceReturnsEffectivePolicyAndCurrentSessionState(): void
+    {
+        $preferences = $this->createMock(SessionLockPreferenceService::class);
+        $preferences->expects(self::once())->method('get')->with(17)->willReturn([
+            'user_lock_after_minutes' => null,
+            'admin_lock_after_minutes' => 15,
+            'maximum_lock_after_minutes' => 15,
+            'effective_lock_after_minutes' => 15,
+        ]);
+        $preferences->expects(self::once())->method('update')->with(17, 5)->willReturn([
+            'user_lock_after_minutes' => 5,
+            'admin_lock_after_minutes' => 15,
+            'maximum_lock_after_minutes' => 15,
+            'effective_lock_after_minutes' => 5,
+        ]);
+        $locks = $this->createMock(SessionLockService::class);
+        $locks->expects(self::once())
+            ->method('evaluate')
+            ->with(str_repeat('a', 64))
+            ->willReturn(SessionLockResult::active(
+                new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
+                new \DateTimeImmutable('2026-07-24 12:01:00 UTC'),
+            ));
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->method('countActiveForUser')->willReturn(1);
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->method('isAvailable')->willReturn(true);
+        $logger = $this->createMock(ActivityLogger::class);
+        $logger->expects(self::once())
+            ->method('log')
+            ->with(
+                'auth.session_lock_preference_changed',
+                17,
+                'user',
+                17,
+                [
+                    'lock_after_minutes' => 5,
+                    'effective_lock_after_minutes' => 5,
+                ],
+                '127.0.0.1',
+                'PHPUnit',
+            );
+        $ipMatcher = $this->createMock(IpMatcher::class);
+        $ipMatcher->method('clientIpFromRequest')->willReturn('127.0.0.1');
+        $action = new SessionAction(
+            $this->createMock(SessionManager::class),
+            $locks,
+            new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
+            $preferences,
+            $credentials,
+            $passkeys,
+            $this->createMock(WebAuthnCeremonyStore::class),
+            $logger,
+            $ipMatcher,
+            $this->createMock(ClockInterface::class),
+            $this->createMock(BruteForceGuard::class),
+            $this->createMock(SessionCookieFactory::class),
+            $this->createMock(PasskeySessionTransitionService::class),
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('PUT', '/api/auth/session/lock-preference')
+            ->withHeader('User-Agent', 'PHPUnit')
+            ->withAttribute(AuthMiddleware::ATTR_METHOD, 'session')
+            ->withAttribute(AuthMiddleware::ATTR_TOKEN, str_repeat('a', 64))
+            ->withAttribute(AuthMiddleware::ATTR_USER, [
+                'id' => 17,
+                'role' => 'readonly',
+                'session_lock_after_minutes' => null,
+            ])
+            ->withAttribute(AuthMiddleware::ATTR_SESSION, [
+                'csrf_token' => str_repeat('b', 64),
+                'assurance_level' => 'strong',
+            ])
+            ->withParsedBody(['lock_after_minutes' => 5]);
+
+        $response = $action->updateLockPreference(
+            $request,
+            (new ResponseFactory())->createResponse(),
+        );
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(5, $body['user_lock_after_minutes']);
+        self::assertSame(15, $body['admin_lock_after_minutes']);
+        self::assertSame(5, $body['effective_lock_after_minutes']);
+        self::assertSame(5, $body['session']['lock_after_minutes']);
+        self::assertSame('2026-07-24T12:05:00.000000Z', $body['session']['idle_expires_at']);
     }
 }

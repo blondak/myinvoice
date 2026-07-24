@@ -211,6 +211,8 @@ final class RoleMiddlewareTest extends TestCase
                 ['GET', '/api/auth/session/status'],
                 ['POST', '/api/auth/session/activity'],
                 ['POST', '/api/auth/session/lock'],
+                ['GET', '/api/auth/session/lock-preference'],
+                ['PUT', '/api/auth/session/lock-preference'],
                 ['POST', '/api/auth/session/unlock/options'],
                 ['POST', '/api/auth/session/unlock/verify'],
                 ['PATCH', '/api/auth/webauthn/credentials/42'],

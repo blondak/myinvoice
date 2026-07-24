@@ -316,7 +316,8 @@ final class PasskeySessionTransitionService
     private function lockActiveUser(PDO $pdo, int $userId): array
     {
         $stmt = $pdo->prepare(
-            'SELECT id, email, name, role, locale, password_hash, totp_enabled
+            'SELECT id, email, name, role, locale, password_hash, totp_enabled,
+                    session_lock_after_minutes
                FROM users
               WHERE id = ? AND is_active = 1
               FOR UPDATE'
@@ -328,6 +329,9 @@ final class PasskeySessionTransitionService
         }
         $user['id'] = (int) $user['id'];
         $user['totp_enabled'] = (int) ($user['totp_enabled'] ?? 0);
+        $user['session_lock_after_minutes'] = ($user['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $user['session_lock_after_minutes']
+            : null;
         return $user;
     }
 

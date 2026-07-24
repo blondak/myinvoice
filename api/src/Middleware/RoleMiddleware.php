@@ -60,6 +60,7 @@ final class RoleMiddleware implements MiddlewareInterface
         '/api/auth/session/status',
         '/api/auth/session/activity',
         '/api/auth/session/lock',
+        '/api/auth/session/lock-preference',
         '/api/auth/session/unlock/options',
         '/api/auth/session/unlock/verify',
         '/api/csrf-token',

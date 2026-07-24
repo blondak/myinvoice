@@ -39,11 +39,11 @@ final readonly class SessionLockResult
         return new self(true, true, $transitioned, $reason, $lastUserActivityAt, $lockedAt, $evaluatedAt);
     }
 
-    public function idleExpiresAt(SessionLockPolicy $policy): ?\DateTimeImmutable
+    public function idleExpiresAt(int $timeoutMinutes): ?\DateTimeImmutable
     {
-        if (!$this->sessionExists || $this->locked || !$policy->isEnabled() || $this->lastUserActivityAt === null) {
+        if (!$this->sessionExists || $this->locked || $timeoutMinutes < 1 || $this->lastUserActivityAt === null) {
             return null;
         }
-        return $this->lastUserActivityAt->modify(sprintf('+%d seconds', $policy->timeoutSeconds()));
+        return $this->lastUserActivityAt->modify(sprintf('+%d minutes', $timeoutMinutes));
     }
 }

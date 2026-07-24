@@ -95,7 +95,13 @@ final class LoginAction
         }
 
         // Načti usera (vždy zavolej dummyVerify pokud user neexistuje → konstantní timing)
-        $stmt = $this->db->pdo()->prepare('SELECT id, email, name, role, locale, password_hash, is_active, totp_secret, totp_enabled FROM users WHERE email = ? LIMIT 1');
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id, email, name, role, locale, password_hash, is_active,
+                    totp_secret, totp_enabled, session_lock_after_minutes
+               FROM users
+              WHERE email = ?
+              LIMIT 1'
+        );
         $stmt->execute([$email]);
         $user = $stmt->fetch(\PDO::FETCH_ASSOC);
 

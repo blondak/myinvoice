@@ -79,12 +79,16 @@ final class MeAction
         $assurance = (string) ($session['assurance_level'] ?? 'legacy');
         $mustSetupMfa = $assurance === 'setup';
         $now = $this->clock->now()->setTimezone(new \DateTimeZone('UTC'));
+        $userTimeout = ($user['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $user['session_lock_after_minutes']
+            : null;
+        $effectiveTimeout = $this->lockPolicy->effectiveTimeoutMinutes($userTimeout);
         $idleExpiresAt = null;
-        if ($assurance !== 'setup' && $this->lockPolicy->isEnabled()) {
+        if ($assurance !== 'setup' && $effectiveTimeout > 0) {
             $lastActivity = self::parseUtc((string) ($session['last_user_activity_at'] ?? ''));
             $idleExpiresAt = self::isoUtc($lastActivity->modify(sprintf(
-                '+%d seconds',
-                $this->lockPolicy->timeoutSeconds(),
+                '+%d minutes',
+                $effectiveTimeout,
             )));
         }
 
@@ -109,7 +113,7 @@ final class MeAction
             'require_mfa'         => $this->mfaPolicy->isRequired(),
             'allowed_mfa_methods' => $this->mfaPolicy->allowedMethods(),
             'session_state'       => 'active',
-            'lock_after_minutes'  => $this->lockPolicy->timeoutMinutes(),
+            'lock_after_minutes'  => $effectiveTimeout,
             'server_time'         => self::isoUtc($now),
             'idle_expires_at'     => $idleExpiresAt,
         ]);

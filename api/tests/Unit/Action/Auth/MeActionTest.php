@@ -70,11 +70,12 @@ final class MeActionTest extends TestCase
                 'role' => 'admin',
                 'locale' => 'cs',
                 'totp_enabled' => true,
+                'session_lock_after_minutes' => 5,
             ])
             ->withAttribute(AuthMiddleware::ATTR_SESSION, [
                 'csrf_token' => str_repeat('b', 64),
                 'assurance_level' => 'strong',
-                'last_user_activity_at' => '2026-07-24 11:50:00.000000',
+                'last_user_activity_at' => '2026-07-24 11:58:00.000000',
             ])
             ->withAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0);
 
@@ -89,9 +90,9 @@ final class MeActionTest extends TestCase
         self::assertTrue($body['require_mfa']);
         self::assertSame(['passkey', 'totp'], $body['allowed_mfa_methods']);
         self::assertSame('active', $body['session_state']);
-        self::assertSame(15, $body['lock_after_minutes']);
+        self::assertSame(5, $body['lock_after_minutes']);
         self::assertSame('2026-07-24T12:00:00.000000Z', $body['server_time']);
-        self::assertSame('2026-07-24T12:05:00.000000Z', $body['idle_expires_at']);
+        self::assertSame('2026-07-24T12:03:00.000000Z', $body['idle_expires_at']);
         self::assertSame(str_repeat('b', 64), $body['csrf_token']);
     }
 }

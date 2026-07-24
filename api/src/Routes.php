@@ -229,6 +229,8 @@ final class Routes
             $g->get   ('/session/status',                     [SessionAction::class, 'status']);
             $g->post  ('/session/activity',                   [SessionAction::class, 'activity']);
             $g->post  ('/session/lock',                       [SessionAction::class, 'lock']);
+            $g->get   ('/session/lock-preference',            [SessionAction::class, 'lockPreference']);
+            $g->put   ('/session/lock-preference',            [SessionAction::class, 'updateLockPreference']);
             $g->post  ('/session/unlock/options',             [SessionAction::class, 'unlockOptions']);
             $g->post  ('/session/unlock/verify',              [SessionAction::class, 'unlockVerify']);
             // API tokeny (Personal Access Tokens) — správa jen ze session auth

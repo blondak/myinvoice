@@ -117,8 +117,12 @@ final class LoginSessionIssuer
         }
         $requireTotp = (bool) $this->config->get('auth.require_totp', false);
         $mustSetupMfa = $authContext->assuranceLevel === 'setup';
-        $idleExpiresAt = $authContext->assuranceLevel !== 'setup' && $this->lockPolicy->isEnabled()
-            ? self::isoUtc($now->modify(sprintf('+%d seconds', $this->lockPolicy->timeoutSeconds())))
+        $userTimeout = ($user['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $user['session_lock_after_minutes']
+            : null;
+        $effectiveTimeout = $this->lockPolicy->effectiveTimeoutMinutes($userTimeout);
+        $idleExpiresAt = $authContext->assuranceLevel !== 'setup' && $effectiveTimeout > 0
+            ? self::isoUtc($now->modify(sprintf('+%d minutes', $effectiveTimeout)))
             : null;
         $cookieSecure = (bool) $this->config->get('session.cookie_secure', true);
         $cookieSameSite = (string) $this->config->get('session.cookie_samesite', 'Lax');
@@ -141,7 +145,7 @@ final class LoginSessionIssuer
             'require_mfa' => $this->mfaPolicy->isRequired(),
             'allowed_mfa_methods' => $this->mfaPolicy->allowedMethods(),
             'session_state' => 'active',
-            'lock_after_minutes' => $this->lockPolicy->timeoutMinutes(),
+            'lock_after_minutes' => $effectiveTimeout,
             'server_time' => self::isoUtc($now),
             'idle_expires_at' => $idleExpiresAt,
         ])->withHeader(

@@ -15,6 +15,7 @@ use MyInvoice\Service\Auth\PasskeyCounterAnomalyException;
 use MyInvoice\Service\Auth\PasskeySessionTransitionService;
 use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\SessionLockPolicy;
+use MyInvoice\Service\Auth\SessionLockPreferenceService;
 use MyInvoice\Service\Auth\SessionLockResult;
 use MyInvoice\Service\Auth\SessionLockService;
 use MyInvoice\Service\Auth\SessionManager;
@@ -32,6 +33,7 @@ final class SessionAction
         private readonly SessionManager $sessions,
         private readonly SessionLockService $locks,
         private readonly SessionLockPolicy $policy,
+        private readonly SessionLockPreferenceService $preferences,
         private readonly PasskeyCredentialRepository $credentials,
         private readonly PasskeyService $passkeys,
         private readonly WebAuthnCeremonyStore $ceremonies,
@@ -99,6 +101,75 @@ final class SessionAction
         }
 
         return Json::ok($response, $this->state($context, $result));
+    }
+
+    public function lockPreference(Request $request, Response $response): Response
+    {
+        $context = $this->context($request);
+        if ($context === null) {
+            return $this->expired($response);
+        }
+
+        try {
+            return Json::ok($response, $this->preferences->get($context['user_id']));
+        } catch (\DomainException) {
+            return $this->expired($response);
+        }
+    }
+
+    public function updateLockPreference(Request $request, Response $response): Response
+    {
+        $context = $this->context($request);
+        if ($context === null) {
+            return $this->expired($response);
+        }
+        $body = $request->getParsedBody();
+        if (!is_array($body)
+            || !array_key_exists('lock_after_minutes', $body)
+            || array_keys($body) !== ['lock_after_minutes']
+            || ($body['lock_after_minutes'] !== null && !is_int($body['lock_after_minutes']))
+        ) {
+            return Json::error(
+                $response,
+                'validation_failed',
+                'lock_after_minutes musí být celé číslo minut nebo null pro nastavení správce.',
+                400,
+            );
+        }
+
+        try {
+            $before = $this->preferences->get($context['user_id']);
+            $preference = $this->preferences->update(
+                $context['user_id'],
+                $body['lock_after_minutes'],
+            );
+        } catch (\InvalidArgumentException $e) {
+            return Json::error($response, 'validation_failed', $e->getMessage(), 400);
+        } catch (\DomainException) {
+            return $this->expired($response);
+        }
+
+        $context['user']['session_lock_after_minutes'] = $preference['user_lock_after_minutes'];
+        $lock = $this->locks->evaluate($context['token']);
+        if (!$lock->sessionExists) {
+            return $this->expired($response);
+        }
+        if ($lock->transitioned) {
+            $this->audit($request, 'auth.session_locked', $context['user_id'], [
+                'reason' => $lock->reason,
+            ]);
+        }
+        if ($before['user_lock_after_minutes'] !== $preference['user_lock_after_minutes']) {
+            $this->audit($request, 'auth.session_lock_preference_changed', $context['user_id'], [
+                'lock_after_minutes' => $preference['user_lock_after_minutes'],
+                'effective_lock_after_minutes' => $preference['effective_lock_after_minutes'],
+            ]);
+        }
+
+        return Json::ok($response, [
+            ...$preference,
+            'session' => $this->state($context, $lock),
+        ]);
     }
 
     public function unlockOptions(Request $request, Response $response): Response
@@ -242,6 +313,10 @@ final class SessionAction
      */
     private function state(array $context, SessionLockResult $lock): array
     {
+        $userTimeout = ($context['user']['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $context['user']['session_lock_after_minutes']
+            : null;
+        $effectiveTimeout = $this->policy->effectiveTimeoutMinutes($userTimeout);
         $unlockMethods = $this->passkeys->isAvailable()
             && $this->credentials->countActiveForUser($context['user_id']) > 0
             ? ['passkey']
@@ -250,10 +325,10 @@ final class SessionAction
             'session_state' => $lock->locked ? 'locked' : 'active',
             'csrf_token' => (string) ($context['session']['csrf_token'] ?? ''),
             'server_time' => $this->isoUtc($lock->evaluatedAt ?? $this->clock->now()),
-            'idle_expires_at' => ($idle = $lock->idleExpiresAt($this->policy)) !== null
+            'idle_expires_at' => ($idle = $lock->idleExpiresAt($effectiveTimeout)) !== null
                 ? $this->isoUtc($idle)
                 : null,
-            'lock_after_minutes' => $this->policy->timeoutMinutes(),
+            'lock_after_minutes' => $effectiveTimeout,
             'unlock_methods' => $unlockMethods,
             'user' => [
                 'id' => $context['user_id'],

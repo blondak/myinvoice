@@ -48,7 +48,10 @@ final class SessionLockService
             return SessionLockResult::missing();
         }
         if (!$this->policy->isEnabled() && !$manualLock) {
-            return $this->readWithoutIdleTransition($token);
+            [$snapshot, $effectiveTimeout] = $this->readWithoutIdleTransition($token);
+            if (!$snapshot->sessionExists || $snapshot->locked || $effectiveTimeout === 0) {
+                return $snapshot;
+            }
         }
 
         $pdo = $this->db->pdo();
@@ -56,12 +59,14 @@ final class SessionLockService
         try {
             $cutoff = $this->clock->capture($pdo);
             $stmt = $pdo->prepare(
-                'SELECT last_user_activity_at, locked_at, lock_reason
-                   FROM sessions
-                  WHERE id = ?
-                    AND expires_at > FROM_UNIXTIME(?)
-                    AND replaced_at IS NULL
-                    AND revoked_at IS NULL
+                'SELECT s.last_user_activity_at, s.locked_at, s.lock_reason,
+                        u.session_lock_after_minutes
+                   FROM sessions s
+                   JOIN users u ON u.id = s.user_id AND u.is_active = 1
+                  WHERE s.id = ?
+                    AND s.expires_at > FROM_UNIXTIME(?)
+                    AND s.replaced_at IS NULL
+                    AND s.revoked_at IS NULL
                   FOR UPDATE'
             );
             $stmt->execute([$token, $cutoff->epochSeconds]);
@@ -85,8 +90,11 @@ final class SessionLockService
             }
 
             $now = $cutoff->utc;
-            $idleExpired = $this->policy->isEnabled()
-                && $lastActivity <= $now->modify(sprintf('-%d seconds', $this->policy->timeoutSeconds()));
+            $timeoutSeconds = $this->policy->effectiveTimeoutSeconds(
+                self::nullableTimeout($row['session_lock_after_minutes'] ?? null),
+            );
+            $idleExpired = $timeoutSeconds > 0
+                && $lastActivity <= $now->modify(sprintf('-%d seconds', $timeoutSeconds));
 
             if ($manualLock || $idleExpired) {
                 $reason = $manualLock ? 'manual' : 'idle';
@@ -136,42 +144,58 @@ final class SessionLockService
      * Autoritativní čtení ale zachovává fail-closed kontrolu zániku session
      * a respektuje případný ruční zámek.
      */
-    private function readWithoutIdleTransition(string $token): SessionLockResult
+    /**
+     * @return array{SessionLockResult,int}
+     */
+    private function readWithoutIdleTransition(string $token): array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT last_user_activity_at, locked_at, lock_reason,
+            'SELECT s.last_user_activity_at, s.locked_at, s.lock_reason,
+                    u.session_lock_after_minutes,
                     UTC_TIMESTAMP(6) AS evaluated_at
-               FROM sessions
-              WHERE id = ?
-                AND expires_at > CURRENT_TIMESTAMP(6)
-                AND replaced_at IS NULL
-                AND revoked_at IS NULL
+               FROM sessions s
+               JOIN users u ON u.id = s.user_id AND u.is_active = 1
+              WHERE s.id = ?
+                AND s.expires_at > CURRENT_TIMESTAMP(6)
+                AND s.replaced_at IS NULL
+                AND s.revoked_at IS NULL
               LIMIT 1'
         );
         $stmt->execute([$token]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
             $this->sessions->invalidateCache($token);
-            return SessionLockResult::missing();
+            return [SessionLockResult::missing(), 0];
         }
 
         $lastActivity = self::parseUtc((string) $row['last_user_activity_at']);
         $evaluatedAt = self::parseUtc((string) $row['evaluated_at']);
+        $effectiveTimeout = $this->policy->effectiveTimeoutMinutes(
+            self::nullableTimeout($row['session_lock_after_minutes'] ?? null),
+        );
         if ($row['locked_at'] !== null) {
-            return SessionLockResult::locked(
-                $lastActivity,
-                self::parseUtc((string) $row['locked_at']),
-                (string) $row['lock_reason'],
-                false,
-                $evaluatedAt,
-            );
+            return [
+                SessionLockResult::locked(
+                    $lastActivity,
+                    self::parseUtc((string) $row['locked_at']),
+                    (string) $row['lock_reason'],
+                    false,
+                    $evaluatedAt,
+                ),
+                $effectiveTimeout,
+            ];
         }
-        return SessionLockResult::active($lastActivity, $evaluatedAt);
+        return [SessionLockResult::active($lastActivity, $evaluatedAt), $effectiveTimeout];
     }
 
     private static function isTokenShapeValid(string $token): bool
     {
         return strlen($token) === 64 && ctype_xdigit($token);
+    }
+
+    private static function nullableTimeout(mixed $value): ?int
+    {
+        return $value === null ? null : (int) $value;
     }
 
     private static function parseUtc(string $time): \DateTimeImmutable

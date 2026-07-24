@@ -111,6 +111,7 @@ final class LoginSessionIssuerTest extends TestCase
                 'role' => 'admin',
                 'locale' => 'cs',
                 'totp_enabled' => 0,
+                'session_lock_after_minutes' => 5,
             ],
             '127.0.0.1',
             'PHPUnit',
@@ -138,9 +139,9 @@ final class LoginSessionIssuerTest extends TestCase
         self::assertTrue($body['require_mfa']);
         self::assertSame(['passkey', 'totp'], $body['allowed_mfa_methods']);
         self::assertSame('active', $body['session_state']);
-        self::assertSame(15, $body['lock_after_minutes']);
+        self::assertSame(5, $body['lock_after_minutes']);
         self::assertSame('2026-03-28T09:40:00.000000Z', $body['server_time']);
-        self::assertSame('2026-03-28T09:55:00.000000Z', $body['idle_expires_at']);
+        self::assertSame('2026-03-28T09:45:00.000000Z', $body['idle_expires_at']);
         $cookie = $response->getHeaderLine('Set-Cookie');
         self::assertStringContainsString('__Host-myinvoice_session=' . str_repeat('a', 64), $cookie);
         self::assertStringContainsString('HttpOnly; Path=/; Max-Age=3600; SameSite=Lax; Secure', $cookie);

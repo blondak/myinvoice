@@ -72,8 +72,9 @@ final class AtomicAuthTransitionTest extends TestCase
             if (!$this->db->hasTable('webauthn_credentials')
                 || !$this->db->hasTable('webauthn_ceremonies')
                 || !$this->db->hasTable('mfa_step_up_proofs')
+                || !$this->db->hasColumn('users', 'session_lock_after_minutes')
             ) {
-                $this->markTestSkipped('WebAuthn migration 0145 is not applied.');
+                $this->markTestSkipped('WebAuthn/session preference migrations are not applied.');
             }
 
             $stmt = $this->db->pdo()->prepare(

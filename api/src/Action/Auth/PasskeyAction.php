@@ -532,7 +532,8 @@ final class PasskeyAction
     private function freshUser(int $userId): ?array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT id, email, name, role, locale, password_hash, totp_enabled
+            'SELECT id, email, name, role, locale, password_hash, totp_enabled,
+                    session_lock_after_minutes
                FROM users
               WHERE id = ? AND is_active = 1'
         );

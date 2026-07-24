@@ -26,6 +26,7 @@ final class SessionLockDisabledPolicyTest extends TestCase
             'last_user_activity_at' => '2026-07-24 12:00:00.000000',
             'locked_at' => null,
             'lock_reason' => null,
+            'session_lock_after_minutes' => null,
             'evaluated_at' => '2026-07-24 12:05:00.000000',
         ]);
         $pdo = $this->createMock(\PDO::class);

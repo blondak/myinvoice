@@ -44,8 +44,9 @@ final class SessionSecurityTest extends TestCase
             $this->db = new Connection($this->config);
             if (!$this->db->hasColumn('sessions', 'session_family_id')
                 || !$this->db->hasColumn('sessions', 'last_user_activity_at')
+                || !$this->db->hasColumn('users', 'session_lock_after_minutes')
             ) {
-                $this->markTestSkipped('WebAuthn migration 0145 is not applied.');
+                $this->markTestSkipped('WebAuthn/session preference migrations are not applied.');
             }
 
             $stmt = $this->db->pdo()->prepare(
@@ -133,7 +134,7 @@ final class SessionSecurityTest extends TestCase
         self::assertFalse($activity->locked);
         self::assertSame(
             $this->clock->now()->modify('+15 minutes')->format('U.u'),
-            $activity->idleExpiresAt(new SessionLockPolicy($this->config))?->format('U.u'),
+            $activity->idleExpiresAt(15)?->format('U.u'),
         );
 
         $this->clock->advance('+14 minutes 59 seconds');
@@ -167,6 +168,42 @@ final class SessionSecurityTest extends TestCase
         self::assertTrue($result->locked);
         self::assertTrue($result->transitioned);
         self::assertSame('manual', $result->reason);
+    }
+
+    public function testUserCanOptInWhenAdminTimeoutIsDisabled(): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE users SET session_lock_after_minutes = 5 WHERE id = ?'
+        )->execute([$this->userId]);
+        $created = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit');
+        $disabledPolicy = new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 0]]));
+        $lock = new SessionLockService(
+            $this->db,
+            $this->sessions,
+            $disabledPolicy,
+            new PsrSecurityClock($this->clock),
+            new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),
+        );
+
+        $this->clock->advance('+4 minutes 59 seconds');
+        self::assertFalse($lock->evaluate($created['token'])->locked);
+
+        $this->clock->advance('+1 second');
+        self::assertTrue($lock->evaluate($created['token'])->locked);
+    }
+
+    public function testUserTimeoutCanOnlyMakeAdminPolicyStricter(): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE users SET session_lock_after_minutes = 5 WHERE id = ?'
+        )->execute([$this->userId]);
+        $created = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit');
+
+        $this->clock->advance('+5 minutes');
+        $locked = $this->lock->evaluate($created['token']);
+
+        self::assertTrue($locked->locked);
+        self::assertSame('idle', $locked->reason);
     }
 
     public function testDestroyRevokesOnlyPresentedSessionFamily(): void
