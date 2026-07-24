@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Auth;
 
 use MyInvoice\Repository\PasskeyCredentialRepository;
+use PDO;
 
 final class MfaStepUpService
 {
@@ -89,6 +90,41 @@ final class MfaStepUpService
         if ($proof->authMethod === 'passkey'
             && ($proof->authCredentialId === null
                 || $this->credentials->findActiveForUserById($userId, $proof->authCredentialId) === null)
+        ) {
+            throw new StepUpOperationException('Passkey pro step-up už není aktivní.');
+        }
+        return $proof;
+    }
+
+    public function consumeInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $proofToken,
+        int $userId,
+        string $sessionToken,
+        string $operation,
+    ): MfaStepUpProof {
+        if (!$pdo->inTransaction()) {
+            throw new \LogicException('Spotřeba step-up proofu vyžaduje aktivní transakci.');
+        }
+
+        $operation = trim($operation);
+        $proof = $this->proofs->consumeInTransaction(
+            $pdo,
+            $cutoff,
+            $proofToken,
+            $userId,
+            $sessionToken,
+            $operation,
+        );
+        $this->assertAllowed($userId, $operation, $proof->authMethod);
+        if ($proof->authMethod === 'passkey'
+            && ($proof->authCredentialId === null
+                || $this->credentials->findActiveForUserByIdForUpdate(
+                    $pdo,
+                    $userId,
+                    $proof->authCredentialId,
+                ) === null)
         ) {
             throw new StepUpOperationException('Passkey pro step-up už není aktivní.');
         }

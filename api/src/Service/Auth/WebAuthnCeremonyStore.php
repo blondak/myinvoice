@@ -6,7 +6,6 @@ namespace MyInvoice\Service\Auth;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
-use Psr\Clock\ClockInterface;
 
 final class WebAuthnCeremonyStore
 {
@@ -24,7 +23,7 @@ final class WebAuthnCeremonyStore
 
     public function __construct(
         private readonly Connection $db,
-        private readonly ClockInterface $clock,
+        private readonly SecurityClock $securityClock,
     ) {}
 
     /**
@@ -43,8 +42,8 @@ final class WebAuthnCeremonyStore
     ): string {
         $operation = $operation !== null ? trim($operation) : null;
         self::validateContext($purpose, $sessionToken, $operation);
-        if (strlen($challenge) < 16 || strlen($challenge) > 64) {
-            throw new \InvalidArgumentException('WebAuthn challenge musí mít 16 až 64 bajtů.');
+        if (strlen($challenge) < 32 || strlen($challenge) > 64) {
+            throw new \InvalidArgumentException('WebAuthn challenge musí mít 32 až 64 bajtů.');
         }
         if ($ttlSeconds < 1 || $ttlSeconds > 300) {
             throw new \InvalidArgumentException('WebAuthn flow může být platné nejvýše 300 sekund.');
@@ -56,29 +55,38 @@ final class WebAuthnCeremonyStore
         }
 
         $token = self::randomToken();
-        $now = $this->clock->now();
-        $expiresAt = $now->modify("+{$ttlSeconds} seconds");
         $optionsJson = json_encode($options, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-        $stmt = $this->db->pdo()->prepare(
-            'INSERT INTO webauthn_ceremonies
-                (flow_token_hash, challenge, purpose, operation, user_id, session_id_hash,
-                 options_json, ip, user_agent, expires_at, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-        $stmt->execute([
-            hash('sha256', $token, true),
-            $challenge,
-            $purpose,
-            $operation,
-            $userId,
-            $sessionToken !== null ? hash('sha256', $sessionToken, true) : null,
-            $optionsJson,
-            $packedIp,
-            mb_substr($userAgent, 0, 255),
-            self::formatTime($expiresAt),
-            self::formatTime($now),
-        ]);
+        $pdo = $this->db->pdo();
+        $pdo->beginTransaction();
+        try {
+            $cutoff = $this->securityClock->capture($pdo);
+            $stmt = $pdo->prepare(
+                'INSERT INTO webauthn_ceremonies
+                    (flow_token_hash, challenge, purpose, operation, user_id, session_id_hash,
+                     options_json, ip, user_agent, expires_at, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                hash('sha256', $token, true),
+                $challenge,
+                $purpose,
+                $operation,
+                $userId,
+                $sessionToken !== null ? hash('sha256', $sessionToken, true) : null,
+                $optionsJson,
+                $packedIp,
+                mb_substr($userAgent, 0, 255),
+                self::formatTime($cutoff->plusSeconds($ttlSeconds)),
+                $cutoff->utcSql,
+            ]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
 
         return $token;
     }
@@ -110,11 +118,33 @@ final class WebAuthnCeremonyStore
         );
     }
 
+    public function peekLoginUserId(string $flowToken): ?int
+    {
+        if (!self::isTokenShapeValid($flowToken)) {
+            return null;
+        }
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT user_id
+               FROM webauthn_ceremonies
+              WHERE flow_token_hash = ? AND purpose = ?
+              LIMIT 1'
+        );
+        $stmt->execute([hash('sha256', $flowToken, true), self::PURPOSE_LOGIN]);
+        $userId = $stmt->fetchColumn();
+        return $userId !== false ? (int) $userId : null;
+    }
+
     /**
      * Zneplatní rozpracovanou registraci a step-up při zamknutí session.
      * Unlock flow se vytváří až nad zamčenou session a zůstává nedotčené.
      */
     public function cancelForSession(string $sessionToken): int
+    {
+        $cutoff = $this->securityClock->capture($this->db->pdo());
+        return $this->cancelForSessionAt($sessionToken, $cutoff->utcSql);
+    }
+
+    public function cancelForSessionAt(string $sessionToken, string $usedAtUtc): int
     {
         if ($sessionToken === '') {
             return 0;
@@ -127,7 +157,7 @@ final class WebAuthnCeremonyStore
                 AND used_at IS NULL'
         );
         $stmt->execute([
-            self::formatTime($this->clock->now()),
+            $usedAtUtc,
             hash('sha256', $sessionToken, true),
             self::PURPOSE_REGISTER,
             self::PURPOSE_STEP_UP,
@@ -142,41 +172,66 @@ final class WebAuthnCeremonyStore
         ?string $expectedSessionToken,
         ?string $expectedOperation,
     ): WebAuthnCeremony {
-        self::validateContext($expectedPurpose, $expectedSessionToken, $expectedOperation);
-        if (!self::isTokenShapeValid($flowToken)) {
-            throw new OneTimeTokenException('Neplatné nebo spotřebované WebAuthn flow.');
-        }
-
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare(
-                'SELECT flow_token_hash, challenge, purpose, operation, user_id, session_id_hash,
-                        options_json, expires_at, used_at
-                   FROM webauthn_ceremonies
-                  WHERE flow_token_hash = ?
-                  FOR UPDATE'
+            $cutoff = $this->securityClock->capture($pdo);
+            $ceremony = $this->consumeInTransaction(
+                $pdo,
+                $cutoff,
+                $flowToken,
+                $expectedPurpose,
+                $expectedUserId,
+                $expectedSessionToken,
+                $expectedOperation,
             );
-            $stmt->execute([hash('sha256', $flowToken, true)]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($row !== false && $row['used_at'] === null) {
-                $markUsed = $pdo->prepare(
-                    'UPDATE webauthn_ceremonies SET used_at = ? WHERE flow_token_hash = ? AND used_at IS NULL'
-                );
-                $markUsed->execute([self::formatTime($this->clock->now()), $row['flow_token_hash']]);
-            }
             $pdo->commit();
+            return $ceremony;
+        } catch (OneTimeTokenException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
+            throw $e;
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             throw $e;
         }
+    }
 
+    public function consumeInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $flowToken,
+        string $expectedPurpose,
+        ?int $expectedUserId,
+        ?string $expectedSessionToken,
+        ?string $expectedOperation,
+    ): WebAuthnCeremony {
+        self::validateContext($expectedPurpose, $expectedSessionToken, $expectedOperation);
+        if (!self::isTokenShapeValid($flowToken)) {
+            throw new OneTimeTokenException('Neplatné nebo spotřebované WebAuthn flow.');
+        }
+        $stmt = $pdo->prepare(
+            'SELECT flow_token_hash, challenge, purpose, operation, user_id, session_id_hash,
+                    options_json, expires_at, used_at
+               FROM webauthn_ceremonies
+              WHERE flow_token_hash = ?
+              FOR UPDATE'
+        );
+        $stmt->execute([hash('sha256', $flowToken, true)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row !== false && $row['used_at'] === null) {
+            $markUsed = $pdo->prepare(
+                'UPDATE webauthn_ceremonies SET used_at = ? WHERE flow_token_hash = ? AND used_at IS NULL'
+            );
+            $markUsed->execute([$cutoff->utcSql, $row['flow_token_hash']]);
+        }
         if ($row === false
             || $row['used_at'] !== null
-            || self::parseTime((string) $row['expires_at']) <= $this->clock->now()
+            || self::parseTime((string) $row['expires_at']) <= $cutoff->utc
             || ($expectedUserId !== null && (int) $row['user_id'] !== $expectedUserId)
             || !hash_equals((string) $row['purpose'], $expectedPurpose)
             || !self::nullableHashMatches($row['session_id_hash'], $expectedSessionToken)

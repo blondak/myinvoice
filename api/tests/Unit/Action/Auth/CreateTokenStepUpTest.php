@@ -12,7 +12,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\ApiTokenService;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\MfaPolicyService;
-use MyInvoice\Service\Auth\MfaStepUpService;
+use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Auth\TotpService;
 use MyInvoice\Service\IpMatcher;
@@ -46,8 +46,8 @@ final class CreateTokenStepUpTest extends TestCase
         $credentials->expects(self::once())->method('countActiveForUser')->with(17)->willReturn(1);
         $tokens = $this->createMock(ApiTokenService::class);
         $tokens->expects(self::never())->method('generate');
-        $stepUp = $this->createMock(MfaStepUpService::class);
-        $stepUp->expects(self::never())->method('consume');
+        $protectedOperations = $this->createMock(MfaProtectedOperationService::class);
+        $protectedOperations->expects(self::never())->method('createApiToken');
 
         $action = new CreateTokenAction(
             $db,
@@ -58,8 +58,8 @@ final class CreateTokenStepUpTest extends TestCase
             $this->createMock(IpMatcher::class),
             $credentials,
             $policy,
-            $stepUp,
             $this->createMock(BruteForceGuard::class),
+            $protectedOperations,
         );
         $request = (new ServerRequestFactory())
             ->createServerRequest('POST', '/api/auth/tokens')

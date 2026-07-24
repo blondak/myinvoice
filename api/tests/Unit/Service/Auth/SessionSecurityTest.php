@@ -8,9 +8,11 @@ use MyInvoice\Infrastructure\Cache\RedisFactory;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Auth\SessionAuthContext;
+use MyInvoice\Service\Auth\DatabaseSecurityClock;
 use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Auth\SessionLockService;
 use MyInvoice\Service\Auth\SessionManager;
+use MyInvoice\Service\Auth\PsrSecurityClock;
 use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -68,13 +70,14 @@ final class SessionSecurityTest extends TestCase
             new RedisFactory($this->config),
             $this->config,
             $this->clock,
+            new PsrSecurityClock($this->clock),
         );
         $this->lock = new SessionLockService(
             $this->db,
             $this->sessions,
             new SessionLockPolicy($this->config),
-            $this->clock,
-            new WebAuthnCeremonyStore($this->db, $this->clock),
+            new PsrSecurityClock($this->clock),
+            new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),
         );
     }
 
@@ -155,8 +158,8 @@ final class SessionSecurityTest extends TestCase
             $this->db,
             $this->sessions,
             $disabledPolicy,
-            $this->clock,
-            new WebAuthnCeremonyStore($this->db, $this->clock),
+            new PsrSecurityClock($this->clock),
+            new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),
         );
 
         self::assertFalse($lock->evaluate($created['token'])->locked);
@@ -191,14 +194,15 @@ final class SessionSecurityTest extends TestCase
 
     public function testUnlockRotationPreservesAbsoluteExpiryAndAuthorizationContext(): void
     {
-        $context = SessionAuthContext::strong('passkey', $this->clock->now(), 42);
+        $credentialId = $this->createCredentialRow();
+        $context = SessionAuthContext::strong('passkey', $this->clock->now(), $credentialId);
         $created = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit', $context);
         $before = $this->sessions->load($created['token']);
         self::assertNotNull($before);
         self::assertTrue($this->lock->lockManually($created['token'])->locked);
 
         $this->clock->advance('+5 minutes');
-        $rotated = $this->sessions->rotateLocked($created['token'], 'passkey', 42);
+        $rotated = $this->sessions->rotateLocked($created['token'], 'passkey', $credentialId);
         $after = $this->sessions->load($rotated['token']);
 
         self::assertNull($this->sessions->load($created['token']));
@@ -210,14 +214,14 @@ final class SessionSecurityTest extends TestCase
         self::assertSame('passkey', $after['auth_method']);
         self::assertSame('strong', $after['assurance_level']);
         self::assertSame($before['mfa_verified_at'], $after['mfa_verified_at']);
-        self::assertSame(42, $after['auth_credential_id']);
+        self::assertSame($credentialId, $after['auth_credential_id']);
         self::assertSame('passkey', $after['last_unlock_method']);
         self::assertNotNull($after['last_unlock_at']);
         self::assertNull($after['locked_at']);
         self::assertSame($rotated['csrf_token'], $after['csrf_token']);
 
         $this->expectException(\DomainException::class);
-        $this->sessions->rotateLocked($created['token'], 'passkey', 42);
+        $this->sessions->rotateLocked($created['token'], 'passkey', $credentialId);
     }
 
     public function testCompletingSetupRevokesEverySetupSessionAndCreatesNewStrongFamily(): void
@@ -273,6 +277,70 @@ final class SessionSecurityTest extends TestCase
             'Replay',
             SessionAuthContext::strong('passkey', $this->clock->now(), 42),
         );
+    }
+
+    public function testSetupCompletionKeepsExactLifetimeWithNonUtcDatabaseTimezone(): void
+    {
+        $this->db->pdo()->exec("SET time_zone = '+09:00'");
+        $setup = $this->sessions->create(
+            $this->userId,
+            '127.0.0.1',
+            'Timezone setup',
+            SessionAuthContext::setup('password'),
+        );
+
+        $this->clock->advance('+5 minutes');
+        $completed = $this->sessions->completeSetup(
+            $this->userId,
+            $setup['token'],
+            '127.0.0.1',
+            'Timezone completion',
+            SessionAuthContext::strong('passkey', $this->clock->now(), 42),
+        );
+        $loaded = $this->sessions->load($completed['token']);
+
+        self::assertNotNull($loaded);
+        self::assertSame($completed['issued_at']->getTimestamp(), $loaded['created_at']);
+        self::assertSame(30 * 86400, $loaded['expires_at'] - $loaded['created_at']);
+        self::assertSame($completed['expires_at'], $loaded['expires_at']);
+    }
+
+    public function testDatabaseSecurityClockReturnsMatchingUtcAndEpochOutsideUtcSession(): void
+    {
+        $this->db->pdo()->exec("SET time_zone = '-07:00'");
+
+        $captured = (new DatabaseSecurityClock())->capture($this->db->pdo());
+
+        self::assertSame('UTC', $captured->utc->getTimezone()->getName());
+        self::assertSame($captured->utc->getTimestamp(), $captured->epochSeconds);
+        self::assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$/',
+            $captured->utcSql,
+        );
+    }
+
+    private function createCredentialRow(): int
+    {
+        $handle = random_bytes(32);
+        $this->db->pdo()->prepare('UPDATE users SET webauthn_user_handle = ? WHERE id = ?')
+            ->execute([$handle, $this->userId]);
+        $credentialId = random_bytes(32);
+        $stmt = $this->db->pdo()->prepare(
+            'INSERT INTO webauthn_credentials
+                (user_id, credential_id, credential_id_hash, public_key, transports_json,
+                 aaguid, label, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))'
+        );
+        $stmt->execute([
+            $this->userId,
+            $credentialId,
+            hash('sha256', $credentialId, true),
+            random_bytes(77),
+            '[]',
+            str_repeat("\0", 16),
+            'Synthetic session key',
+        ]);
+        return (int) $this->db->pdo()->lastInsertId();
     }
 }
 

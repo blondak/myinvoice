@@ -11,6 +11,8 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\OneTimeTokenException;
 use MyInvoice\Service\Auth\PasskeyService;
+use MyInvoice\Service\Auth\PasskeyCounterAnomalyException;
+use MyInvoice\Service\Auth\PasskeySessionTransitionService;
 use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Auth\SessionLockResult;
@@ -38,6 +40,7 @@ final class SessionAction
         private readonly ClockInterface $clock,
         private readonly BruteForceGuard $bruteForce,
         private readonly SessionCookieFactory $sessionCookies,
+        private readonly PasskeySessionTransitionService $sessionTransitions,
     ) {}
 
     public function status(Request $request, Response $response): Response
@@ -111,6 +114,9 @@ final class SessionAction
         if (!$lock->locked) {
             return Json::error($response, 'session_not_locked', 'Session není zamčená.', 409);
         }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
+        }
         $stored = $this->credentials->findAllForUser($context['user_id']);
         if ($stored === []) {
             return Json::error(
@@ -152,6 +158,9 @@ final class SessionAction
         if ($context === null) {
             return $this->expired($response);
         }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
+        }
         $body = (array) ($request->getParsedBody() ?? []);
         $payload = $body['credential'] ?? null;
         if ($this->bruteForce->isPasskeyLocked($context['user_id'])) {
@@ -164,29 +173,19 @@ final class SessionAction
         }
 
         try {
-            $ceremony = $this->ceremonies->consume(
+            $completed = $this->sessionTransitions->completeUnlock(
                 trim((string) ($body['flow_token'] ?? '')),
-                WebAuthnCeremonyStore::PURPOSE_UNLOCK,
+                is_array($payload) ? $payload : [],
                 $context['user_id'],
                 $context['token'],
-                null,
             );
-            if (!is_array($payload)) {
-                throw new PasskeyVerificationException('Chybí WebAuthn credential.');
-            }
-            $rawCredentialId = $this->passkeys->credentialId($payload);
-            $stored = $this->credentials->findActiveByCredentialId($rawCredentialId);
-            if ($stored === null || $stored->userId !== $context['user_id']) {
-                throw new PasskeyVerificationException('Ověření passkey selhalo.');
-            }
-            $verified = $this->passkeys->verifyAssertion($payload, $ceremony->options, $stored->record);
-            if (!$this->credentials->updateAfterAssertion($stored, $verified)) {
-                $this->audit($request, 'auth.passkey_counter_anomaly', $context['user_id'], [
-                    'credential_id' => $stored->id,
-                ]);
-                return $this->unlockFailed($request, $response, $context['user_id']);
-            }
-            $rotated = $this->sessions->rotateLocked($context['token'], 'passkey', $stored->id);
+            $rotated = $completed['session'];
+            $stored = $completed['credential'];
+        } catch (PasskeyCounterAnomalyException $e) {
+            $this->audit($request, 'auth.passkey_counter_anomaly', $context['user_id'], [
+                'credential_id' => $e->credentialId,
+            ]);
+            return $this->unlockFailed($request, $response, $context['user_id']);
         } catch (OneTimeTokenException|PasskeyVerificationException|\DomainException) {
             return $this->unlockFailed($request, $response, $context['user_id']);
         }
@@ -243,13 +242,14 @@ final class SessionAction
      */
     private function state(array $context, SessionLockResult $lock): array
     {
-        $unlockMethods = $this->credentials->countActiveForUser($context['user_id']) > 0
+        $unlockMethods = $this->passkeys->isAvailable()
+            && $this->credentials->countActiveForUser($context['user_id']) > 0
             ? ['passkey']
             : [];
         return [
             'session_state' => $lock->locked ? 'locked' : 'active',
             'csrf_token' => (string) ($context['session']['csrf_token'] ?? ''),
-            'server_time' => $this->isoUtc($this->clock->now()),
+            'server_time' => $this->isoUtc($lock->evaluatedAt ?? $this->clock->now()),
             'idle_expires_at' => ($idle = $lock->idleExpiresAt($this->policy)) !== null
                 ? $this->isoUtc($idle)
                 : null,
@@ -269,6 +269,16 @@ final class SessionAction
     private function expired(Response $response): Response
     {
         return Json::error($response, 'session_expired', 'Session vypršela.', 401);
+    }
+
+    private function passkeysUnavailable(Response $response): Response
+    {
+        return Json::error(
+            $response,
+            'passkeys_unavailable',
+            'Passkeys nejsou kvůli konfiguraci této instalace dostupné.',
+            503,
+        );
     }
 
     private function unlockFailed(Request $request, Response $response, int $userId): Response

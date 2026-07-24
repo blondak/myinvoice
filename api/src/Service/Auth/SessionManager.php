@@ -24,10 +24,11 @@ final class SessionManager
         private readonly RedisFactory $redis,
         private readonly Config $config,
         private readonly ClockInterface $clock,
+        private readonly SecurityClock $securityClock,
     ) {}
 
     /**
-     * @return array{token:string,csrf_token:string,expires_at:int}
+     * @return array{token:string,csrf_token:string,expires_at:int,issued_at:\DateTimeImmutable}
      */
     public function create(
         int $userId,
@@ -36,72 +37,90 @@ final class SessionManager
         ?SessionAuthContext $authContext = null,
     ): array {
         $authContext ??= SessionAuthContext::legacy();
-        $token = bin2hex(random_bytes(32));
-        $csrf = bin2hex(random_bytes(32));
-        $familyId = random_bytes(32);
-        $now = $this->clock->now();
-        $lifetimeDays = (int) $this->config->get('session.lifetime_days', 30);
-        if ($lifetimeDays < 1 || $lifetimeDays > 365) {
-            throw new \InvalidArgumentException('session.lifetime_days musí být 1 až 365.');
+        $pdo = $this->db->pdo();
+        $pdo->beginTransaction();
+        try {
+            $cutoff = $this->securityClock->capture($pdo);
+            $session = $this->createInTransaction(
+                $pdo,
+                $cutoff,
+                $userId,
+                $ip,
+                $userAgent,
+                $authContext,
+            );
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
-        $expiresAt = $now->getTimestamp() + ($lifetimeDays * 86400);
+        $this->deleteCache($session['token']);
+        return $session;
+    }
 
-        $data = [
-            'user_id' => $userId,
-            'csrf_token' => $csrf,
-            'ip' => $ip,
-            'user_agent' => mb_substr($userAgent, 0, 255),
-            'created_at' => $now->getTimestamp(),
-            'last_seen' => $now->getTimestamp(),
-            'expires_at' => $expiresAt,
-            'auth_method' => $authContext->authMethod,
-            'assurance_level' => $authContext->assuranceLevel,
-            'mfa_verified_at' => self::nullableUtc($authContext->mfaVerifiedAt),
-            'auth_credential_id' => $authContext->authCredentialId,
-            'last_user_activity_at' => self::utc($now),
-            'locked_at' => null,
-            'lock_reason' => null,
-            'last_unlock_at' => null,
-            'last_unlock_method' => null,
-            'session_family_id' => bin2hex($familyId),
-            'generation' => 1,
-            'replaced_at' => null,
-            'revoked_at' => null,
-        ];
-
+    /**
+     * Volající vlastní transakci a musí mít zamčeného uživatele, pokud jde
+     * o součást širšího bezpečnostního přechodu.
+     *
+     * @return array{token:string,csrf_token:string,expires_at:int,issued_at:\DateTimeImmutable}
+     */
+    public function createInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        int $userId,
+        string $ip,
+        string $userAgent,
+        SessionAuthContext $authContext,
+    ): array {
+        if (!$pdo->inTransaction() || $userId < 1) {
+            throw new \LogicException('Vydání session vyžaduje aktivní transakci a uživatele.');
+        }
         $packedIp = @inet_pton($ip);
         if ($packedIp === false) {
             throw new \InvalidArgumentException('Neplatná IP adresa session.');
         }
+        $lifetimeDays = (int) $this->config->get('session.lifetime_days', 30);
+        if ($lifetimeDays < 1 || $lifetimeDays > 365) {
+            throw new \InvalidArgumentException('session.lifetime_days musí být 1 až 365.');
+        }
 
-        $stmt = $this->db->pdo()->prepare(
+        $token = bin2hex(random_bytes(32));
+        $csrf = bin2hex(random_bytes(32));
+        $familyId = random_bytes(32);
+        $expiresAt = $cutoff->epochSeconds + ($lifetimeDays * 86400);
+        $stmt = $pdo->prepare(
             'INSERT INTO sessions
-                (id, user_id, csrf_token, ip, user_agent, expires_at,
+                (id, user_id, csrf_token, ip, user_agent, created_at, last_seen, expires_at,
                  auth_method, assurance_level, mfa_verified_at, auth_credential_id,
                  last_user_activity_at, session_family_id, generation)
-             VALUES (?, ?, ?, ?, ?, FROM_UNIXTIME(?), ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), FROM_UNIXTIME(?),
+                     ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $token,
             $userId,
             $csrf,
             $packedIp,
-            $data['user_agent'],
+            mb_substr($userAgent, 0, 255),
+            $cutoff->epochSeconds,
+            $cutoff->epochSeconds,
             $expiresAt,
             $authContext->authMethod,
             $authContext->assuranceLevel,
-            $data['mfa_verified_at'],
+            self::nullableUtc($authContext->mfaVerifiedAt),
             $authContext->authCredentialId,
-            $data['last_user_activity_at'],
+            $cutoff->utcSql,
             $familyId,
             1,
         ]);
-        $this->writeCache($token, $data);
 
         return [
             'token' => $token,
             'csrf_token' => $csrf,
             'expires_at' => $expiresAt,
+            'issued_at' => $cutoff->utc,
         ];
     }
 
@@ -175,6 +194,7 @@ final class SessionManager
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
+            $cutoff = $this->securityClock->capture($pdo);
             $family = $pdo->prepare('SELECT session_family_id FROM sessions WHERE id = ? FOR UPDATE');
             $family->execute([$token]);
             $familyId = $family->fetchColumn();
@@ -190,10 +210,10 @@ final class SessionManager
 
             $revoke = $pdo->prepare(
                 'UPDATE sessions
-                    SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6))
+                    SET revoked_at = COALESCE(revoked_at, ?)
                   WHERE session_family_id = ?'
             );
-            $revoke->execute([$familyId]);
+            $revoke->execute([$cutoff->utcSql, $familyId]);
             $pdo->commit();
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -216,6 +236,7 @@ final class SessionManager
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
+            $cutoff = $this->securityClock->capture($pdo);
             $user = $pdo->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE');
             $user->execute([$userId]);
             if ($user->fetchColumn() === false) {
@@ -246,9 +267,9 @@ final class SessionManager
 
             if ($revokedTokens !== []) {
                 $revoke = $pdo->prepare(
-                    "UPDATE sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE {$where}"
+                    "UPDATE sessions SET revoked_at = ? WHERE {$where}"
                 );
-                $revoke->execute($params);
+                $revoke->execute([$cutoff->utcSql, ...$params]);
             }
             $pdo->commit();
         } catch (\Throwable $e) {
@@ -268,7 +289,7 @@ final class SessionManager
      * Atomicky spotřebuje aktuální setup session, revokuje všechny ostatní
      * setup session uživatele a vydá novou plnou strong session v nové family.
      *
-     * @return array{token:string,csrf_token:string,expires_at:int}
+     * @return array{token:string,csrf_token:string,expires_at:int,issued_at:\DateTimeImmutable}
      */
     public function completeSetup(
         int $userId,
@@ -295,15 +316,13 @@ final class SessionManager
         $token = bin2hex(random_bytes(32));
         $csrf = bin2hex(random_bytes(32));
         $familyId = random_bytes(32);
-        $now = $this->clock->now()->setTimezone(new \DateTimeZone('UTC'));
-        $nowSql = self::utc($now);
-        $expiresAt = $now->getTimestamp() + ($lifetimeDays * 86400);
-        $expiresSql = self::utc($now->modify(sprintf('+%d days', $lifetimeDays)));
         $setupTokens = [];
 
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
+            $cutoff = $this->securityClock->capture($pdo);
+            $expiresAt = $cutoff->epochSeconds + ($lifetimeDays * 86400);
             $user = $pdo->prepare('SELECT id FROM users WHERE id = ? AND is_active = 1 FOR UPDATE');
             $user->execute([$userId]);
             if ($user->fetchColumn() === false) {
@@ -316,12 +335,12 @@ final class SessionManager
                   WHERE id = ?
                     AND user_id = ?
                     AND assurance_level = ?
-                    AND expires_at > UTC_TIMESTAMP(6)
+                    AND expires_at > FROM_UNIXTIME(?)
                     AND replaced_at IS NULL
                     AND revoked_at IS NULL
                   FOR UPDATE'
             );
-            $current->execute([$setupToken, $userId, 'setup']);
+            $current->execute([$setupToken, $userId, 'setup', $cutoff->epochSeconds]);
             if ($current->fetchColumn() === false) {
                 throw new \DomainException('Setup session už není dostupná.');
             }
@@ -340,14 +359,15 @@ final class SessionManager
                     SET revoked_at = ?
                   WHERE user_id = ? AND assurance_level = ? AND revoked_at IS NULL'
             );
-            $revoke->execute([$nowSql, $userId, 'setup']);
+            $revoke->execute([$cutoff->utcSql, $userId, 'setup']);
 
             $insert = $pdo->prepare(
                 'INSERT INTO sessions
                     (id, user_id, csrf_token, ip, user_agent, created_at, last_seen, expires_at,
                      auth_method, assurance_level, mfa_verified_at, auth_credential_id,
                      last_user_activity_at, session_family_id, generation)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+                 VALUES (?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), FROM_UNIXTIME(?),
+                         ?, ?, ?, ?, ?, ?, 1)'
             );
             $insert->execute([
                 $token,
@@ -355,14 +375,14 @@ final class SessionManager
                 $csrf,
                 $packedIp,
                 mb_substr($userAgent, 0, 255),
-                $nowSql,
-                $nowSql,
-                $expiresSql,
+                $cutoff->epochSeconds,
+                $cutoff->epochSeconds,
+                $expiresAt,
                 $authContext->authMethod,
                 $authContext->assuranceLevel,
                 self::nullableUtc($authContext->mfaVerifiedAt),
                 $authContext->authCredentialId,
-                $nowSql,
+                $cutoff->utcSql,
                 $familyId,
             ]);
             if ($insert->rowCount() !== 1) {
@@ -385,6 +405,7 @@ final class SessionManager
             'token' => $token,
             'csrf_token' => $csrf,
             'expires_at' => $expiresAt,
+            'issued_at' => $cutoff->utc,
         ];
     }
 
@@ -392,7 +413,7 @@ final class SessionManager
      * Atomicky nahradí zamčenou generaci novým ID a CSRF bez prodloužení
      * absolutní expirace nebo změny login assurance.
      *
-     * @return array{token:string,csrf_token:string,expires_at:int,user_id:int}
+     * @return array{token:string,csrf_token:string,expires_at:int,user_id:int,issued_at:\DateTimeImmutable}
      */
     public function rotateLocked(
         string $token,
@@ -407,62 +428,30 @@ final class SessionManager
             throw new \InvalidArgumentException('Neplatný požadavek na rotaci zamčené session.');
         }
 
-        $newToken = bin2hex(random_bytes(32));
-        $newCsrf = bin2hex(random_bytes(32));
-        $now = self::utc($this->clock->now());
         $pdo = $this->db->pdo();
+        $owner = $pdo->prepare('SELECT user_id FROM sessions WHERE id = ? LIMIT 1');
+        $owner->execute([$token]);
+        $userId = $owner->fetchColumn();
+        if ($userId === false) {
+            throw new \DomainException('Zamčená session už není dostupná.');
+        }
+
         $pdo->beginTransaction();
         try {
-            $select = $pdo->prepare(
-                'SELECT user_id, UNIX_TIMESTAMP(expires_at) AS expires_at
-                   FROM sessions
-                  WHERE id = ?
-                    AND expires_at > NOW()
-                    AND locked_at IS NOT NULL
-                    AND replaced_at IS NULL
-                    AND revoked_at IS NULL
-                  FOR UPDATE'
-            );
-            $select->execute([$token]);
-            $row = $select->fetch(PDO::FETCH_ASSOC);
-            if ($row === false) {
-                throw new \DomainException('Zamčená session už není dostupná.');
+            $cutoff = $this->securityClock->capture($pdo);
+            $user = $pdo->prepare('SELECT id FROM users WHERE id = ? AND is_active = 1 FOR UPDATE');
+            $user->execute([(int) $userId]);
+            if ($user->fetchColumn() === false) {
+                throw new \DomainException('Uživatel už není aktivní.');
             }
-
-            $insert = $pdo->prepare(
-                'INSERT INTO sessions
-                    (id, user_id, csrf_token, ip, user_agent, created_at, last_seen, expires_at,
-                     auth_method, assurance_level, mfa_verified_at, auth_credential_id,
-                     last_user_activity_at, locked_at, lock_reason, last_unlock_at,
-                     last_unlock_method, session_family_id, generation, replaced_at, revoked_at)
-                 SELECT ?, user_id, ?, ip, user_agent, created_at, ?, expires_at,
-                        auth_method, assurance_level, mfa_verified_at, auth_credential_id,
-                        ?, NULL, NULL, ?, ?, session_family_id, generation + 1, NULL, NULL
-                   FROM sessions
-                  WHERE id = ? AND locked_at IS NOT NULL AND replaced_at IS NULL AND revoked_at IS NULL'
-            );
-            $insert->execute([
-                $newToken,
-                $newCsrf,
-                $now,
-                $now,
-                $now,
-                $unlockMethod,
+            $rotated = $this->rotateLockedInTransaction(
+                $pdo,
+                $cutoff,
                 $token,
-            ]);
-            if ($insert->rowCount() !== 1) {
-                throw new \RuntimeException('Novou generaci session se nepodařilo vytvořit.');
-            }
-
-            $replace = $pdo->prepare(
-                'UPDATE sessions
-                    SET replaced_at = ?
-                  WHERE id = ? AND locked_at IS NOT NULL AND replaced_at IS NULL AND revoked_at IS NULL'
+                (int) $userId,
+                $unlockMethod,
+                $authCredentialId,
             );
-            $replace->execute([$now, $token]);
-            if ($replace->rowCount() !== 1) {
-                throw new \RuntimeException('Původní generaci session se nepodařilo nahradit.');
-            }
             $pdo->commit();
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -472,12 +461,104 @@ final class SessionManager
         }
 
         $this->deleteCache($token);
-        $this->deleteCache($newToken);
+        $this->deleteCache($rotated['token']);
+        return $rotated;
+    }
+
+    /**
+     * @return array{token:string,csrf_token:string,expires_at:int,user_id:int,issued_at:\DateTimeImmutable}
+     */
+    public function rotateLockedInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $token,
+        int $userId,
+        string $unlockMethod,
+        int $authCredentialId,
+    ): array {
+        if (!$pdo->inTransaction()
+            || !self::isTokenShapeValid($token)
+            || $userId < 1
+            || $authCredentialId < 1
+            || !in_array($unlockMethod, ['passkey'], true)
+        ) {
+            throw new \InvalidArgumentException('Neplatný požadavek na rotaci zamčené session.');
+        }
+
+        $select = $pdo->prepare(
+            'SELECT user_id, UNIX_TIMESTAMP(expires_at) AS expires_at
+               FROM sessions
+              WHERE id = ?
+                AND user_id = ?
+                AND expires_at > FROM_UNIXTIME(?)
+                AND locked_at IS NOT NULL
+                AND replaced_at IS NULL
+                AND revoked_at IS NULL
+              FOR UPDATE'
+        );
+        $select->execute([$token, $userId, $cutoff->epochSeconds]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new \DomainException('Zamčená session už není dostupná.');
+        }
+
+        $credential = $pdo->prepare(
+            'SELECT id
+               FROM webauthn_credentials
+              WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+              FOR UPDATE'
+        );
+        $credential->execute([$authCredentialId, $userId]);
+        if ($credential->fetchColumn() === false) {
+            throw new \DomainException('Passkey už není aktivní.');
+        }
+
+        $newToken = bin2hex(random_bytes(32));
+        $newCsrf = bin2hex(random_bytes(32));
+        $insert = $pdo->prepare(
+            'INSERT INTO sessions
+                (id, user_id, csrf_token, ip, user_agent, created_at, last_seen, expires_at,
+                 auth_method, assurance_level, mfa_verified_at, auth_credential_id,
+                 last_user_activity_at, locked_at, lock_reason, last_unlock_at,
+                 last_unlock_method, session_family_id, generation, replaced_at, revoked_at)
+             SELECT ?, user_id, ?, ip, user_agent, created_at, FROM_UNIXTIME(?), expires_at,
+                    auth_method, assurance_level, mfa_verified_at, auth_credential_id,
+                    ?, NULL, NULL, ?, ?, session_family_id, generation + 1, NULL, NULL
+               FROM sessions
+              WHERE id = ? AND user_id = ?
+                AND locked_at IS NOT NULL AND replaced_at IS NULL AND revoked_at IS NULL'
+        );
+        $insert->execute([
+            $newToken,
+            $newCsrf,
+            $cutoff->epochSeconds,
+            $cutoff->utcSql,
+            $cutoff->utcSql,
+            $unlockMethod,
+            $token,
+            $userId,
+        ]);
+        if ($insert->rowCount() !== 1) {
+            throw new \RuntimeException('Novou generaci session se nepodařilo vytvořit.');
+        }
+
+        $replace = $pdo->prepare(
+            'UPDATE sessions
+                SET replaced_at = ?
+              WHERE id = ? AND user_id = ?
+                AND locked_at IS NOT NULL AND replaced_at IS NULL AND revoked_at IS NULL'
+        );
+        $replace->execute([$cutoff->utcSql, $token, $userId]);
+        if ($replace->rowCount() !== 1) {
+            throw new \RuntimeException('Původní generaci session se nepodařilo nahradit.');
+        }
+
         return [
             'token' => $newToken,
             'csrf_token' => $newCsrf,
             'expires_at' => (int) $row['expires_at'],
-            'user_id' => (int) $row['user_id'],
+            'user_id' => $userId,
+            'issued_at' => $cutoff->utc,
         ];
     }
 

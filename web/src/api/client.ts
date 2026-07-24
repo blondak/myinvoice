@@ -117,7 +117,7 @@ export interface HealthResponse {
   version: string
   db: boolean
   redis: boolean
-  warnings: Array<{ code: string; message: string }>
+  warnings?: Array<{ code: string; message: string }>
   time: string
 }
 

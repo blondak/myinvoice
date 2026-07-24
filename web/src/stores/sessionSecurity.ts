@@ -79,7 +79,10 @@ export const useSessionSecurityStore = defineStore('session-security', () => {
   }
 
   async function recordActivity() {
-    if (document.visibilityState !== 'visible' || state.value?.session_state === 'locked') return
+    if (document.visibilityState !== 'visible'
+      || state.value?.session_state === 'locked'
+      || state.value?.lock_after_minutes === 0
+    ) return
     try {
       apply(await authApi.sessionActivity())
     } catch {

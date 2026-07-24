@@ -13,16 +13,20 @@ final readonly class SessionLockResult
         public ?string $reason,
         public ?\DateTimeImmutable $lastUserActivityAt,
         public ?\DateTimeImmutable $lockedAt,
+        public ?\DateTimeImmutable $evaluatedAt,
     ) {}
 
     public static function missing(): self
     {
-        return new self(false, false, false, null, null, null);
+        return new self(false, false, false, null, null, null, null);
     }
 
-    public static function active(\DateTimeImmutable $lastUserActivityAt): self
+    public static function active(
+        \DateTimeImmutable $lastUserActivityAt,
+        ?\DateTimeImmutable $evaluatedAt = null,
+    ): self
     {
-        return new self(true, false, false, null, $lastUserActivityAt, null);
+        return new self(true, false, false, null, $lastUserActivityAt, null, $evaluatedAt);
     }
 
     public static function locked(
@@ -30,8 +34,9 @@ final readonly class SessionLockResult
         \DateTimeImmutable $lockedAt,
         string $reason,
         bool $transitioned,
+        ?\DateTimeImmutable $evaluatedAt = null,
     ): self {
-        return new self(true, true, $transitioned, $reason, $lastUserActivityAt, $lockedAt);
+        return new self(true, true, $transitioned, $reason, $lastUserActivityAt, $lockedAt, $evaluatedAt);
     }
 
     public function idleExpiresAt(SessionLockPolicy $policy): ?\DateTimeImmutable

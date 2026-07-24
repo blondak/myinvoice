@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Repository;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Auth\SecurityTime;
 use MyInvoice\Service\Auth\StoredPasskeyCredential;
 use PDO;
 use Symfony\Component\Uid\Uuid;
@@ -134,6 +135,27 @@ final class PasskeyCredentialRepository
         return self::hydrate($row);
     }
 
+    public function findActiveByCredentialIdForUpdate(
+        PDO $pdo,
+        string $credentialId,
+    ): ?StoredPasskeyCredential {
+        $stmt = $pdo->prepare(
+            'SELECT c.*, u.webauthn_user_handle
+               FROM webauthn_credentials c
+               JOIN users u ON u.id = c.user_id
+              WHERE c.credential_id_hash = ?
+                AND c.revoked_at IS NULL
+              LIMIT 1
+              FOR UPDATE'
+        );
+        $stmt->execute([hash('sha256', $credentialId, true)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false || !hash_equals((string) $row['credential_id'], $credentialId)) {
+            return null;
+        }
+        return self::hydrate($row);
+    }
+
     public function findActiveForUserById(int $userId, int $credentialId): ?StoredPasskeyCredential
     {
         $stmt = $this->db->pdo()->prepare(
@@ -149,6 +171,46 @@ final class PasskeyCredentialRepository
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return $row !== false ? self::hydrate($row) : null;
+    }
+
+    public function findActiveForUserByIdForUpdate(
+        PDO $pdo,
+        int $userId,
+        int $credentialId,
+    ): ?StoredPasskeyCredential {
+        $stmt = $pdo->prepare(
+            'SELECT c.*, u.webauthn_user_handle
+               FROM webauthn_credentials c
+               JOIN users u ON u.id = c.user_id
+              WHERE c.id = ?
+                AND c.user_id = ?
+                AND c.revoked_at IS NULL
+              LIMIT 1
+              FOR UPDATE'
+        );
+        $stmt->execute([$credentialId, $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row !== false ? self::hydrate($row) : null;
+    }
+
+    /**
+     * @return list<StoredPasskeyCredential>
+     */
+    public function lockAllActiveForUser(PDO $pdo, int $userId): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT c.*, u.webauthn_user_handle
+               FROM webauthn_credentials c
+               JOIN users u ON u.id = c.user_id
+              WHERE c.user_id = ? AND c.revoked_at IS NULL
+              ORDER BY c.id
+              FOR UPDATE'
+        );
+        $stmt->execute([$userId]);
+        return array_values(array_map(
+            self::hydrate(...),
+            $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+        ));
     }
 
     /**
@@ -230,6 +292,53 @@ final class PasskeyCredentialRepository
             $stored->id,
             $stored->record->counter,
         ]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function updateAfterAssertionInTransaction(
+        PDO $pdo,
+        StoredPasskeyCredential $stored,
+        CredentialRecord $record,
+        SecurityTime $cutoff,
+    ): bool {
+        if (!hash_equals($stored->record->publicKeyCredentialId, $record->publicKeyCredentialId)
+            || !hash_equals($stored->record->userHandle, $record->userHandle)
+        ) {
+            throw new \InvalidArgumentException('Výsledek assertion nepatří uložené credential.');
+        }
+        $stmt = $pdo->prepare(
+            'UPDATE webauthn_credentials
+                SET sign_count = ?,
+                    backup_eligible = ?,
+                    backup_state = ?,
+                    last_used_at = ?
+              WHERE id = ?
+                AND revoked_at IS NULL
+                AND sign_count = ?'
+        );
+        $stmt->execute([
+            $record->counter,
+            $record->backupEligible === true ? 1 : 0,
+            $record->backupStatus === true ? 1 : 0,
+            $cutoff->utcSql,
+            $stored->id,
+            $stored->record->counter,
+        ]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function revokeInTransaction(
+        PDO $pdo,
+        int $userId,
+        int $credentialId,
+        SecurityTime $cutoff,
+    ): bool {
+        $stmt = $pdo->prepare(
+            'UPDATE webauthn_credentials
+                SET revoked_at = ?
+              WHERE id = ? AND user_id = ? AND revoked_at IS NULL'
+        );
+        $stmt->execute([$cutoff->utcSql, $credentialId, $userId]);
         return $stmt->rowCount() === 1;
     }
 

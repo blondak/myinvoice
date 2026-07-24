@@ -23,6 +23,7 @@ const privateRoute = computed(() => route.matched.some(record => record.meta.req
   && route.name !== 'setup-mfa')
 const visible = computed(() => security.privacyCurtain && privateRoute.value)
 const hasPasskey = computed(() => security.state?.unlock_methods.includes('passkey') === true)
+const automaticLockEnabled = computed(() => (security.state?.lock_after_minutes ?? 0) > 0)
 const canUnlock = computed(() => hasPasskey.value
   && passkeySupported
   && security.error !== 'session_status_failed')
@@ -36,7 +37,11 @@ function sendActivity() {
   void security.recordActivity()
 }
 function realInput(event: Event) {
-  if (!event.isTrusted || !privateRoute.value || security.privacyCurtain) return
+  if (!event.isTrusted
+    || !privateRoute.value
+    || security.privacyCurtain
+    || !automaticLockEnabled.value
+  ) return
   const now = Date.now()
   const remaining = 30_000 - (now - lastActivitySent)
   if (remaining <= 0) {

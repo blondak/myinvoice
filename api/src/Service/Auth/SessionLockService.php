@@ -6,7 +6,6 @@ namespace MyInvoice\Service\Auth;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
-use Psr\Clock\ClockInterface;
 
 final class SessionLockService
 {
@@ -14,7 +13,7 @@ final class SessionLockService
         private readonly Connection $db,
         private readonly SessionManager $sessions,
         private readonly SessionLockPolicy $policy,
-        private readonly ClockInterface $clock,
+        private readonly SecurityClock $clock,
         private readonly WebAuthnCeremonyStore $ceremonies,
     ) {}
 
@@ -48,20 +47,24 @@ final class SessionLockService
         if (!self::isTokenShapeValid($token)) {
             return SessionLockResult::missing();
         }
+        if (!$this->policy->isEnabled() && !$manualLock) {
+            return $this->readWithoutIdleTransition($token);
+        }
 
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
+            $cutoff = $this->clock->capture($pdo);
             $stmt = $pdo->prepare(
                 'SELECT last_user_activity_at, locked_at, lock_reason
                    FROM sessions
                   WHERE id = ?
-                    AND expires_at > NOW()
+                    AND expires_at > FROM_UNIXTIME(?)
                     AND replaced_at IS NULL
                     AND revoked_at IS NULL
                   FOR UPDATE'
             );
-            $stmt->execute([$token]);
+            $stmt->execute([$token, $cutoff->epochSeconds]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row === false) {
                 $pdo->commit();
@@ -77,10 +80,11 @@ final class SessionLockService
                     self::parseUtc((string) $row['locked_at']),
                     (string) $row['lock_reason'],
                     false,
+                    $cutoff->utc,
                 );
             }
 
-            $now = $this->clock->now()->setTimezone(new \DateTimeZone('UTC'));
+            $now = $cutoff->utc;
             $idleExpired = $this->policy->isEnabled()
                 && $lastActivity <= $now->modify(sprintf('-%d seconds', $this->policy->timeoutSeconds()));
 
@@ -91,14 +95,14 @@ final class SessionLockService
                         SET locked_at = ?, lock_reason = ?
                       WHERE id = ? AND locked_at IS NULL AND replaced_at IS NULL AND revoked_at IS NULL'
                 );
-                $update->execute([self::formatUtc($now), $reason, $token]);
+                $update->execute([$cutoff->utcSql, $reason, $token]);
                 if ($update->rowCount() !== 1) {
                     throw new \RuntimeException('Session lock transition se nepodařil.');
                 }
-                $this->ceremonies->cancelForSession($token);
+                $this->ceremonies->cancelForSessionAt($token, $cutoff->utcSql);
                 $pdo->commit();
                 $this->sessions->invalidateCache($token);
-                return SessionLockResult::locked($lastActivity, $now, $reason, true);
+                return SessionLockResult::locked($lastActivity, $now, $reason, true, $now);
             }
 
             if ($recordActivity && $now > $lastActivity) {
@@ -107,7 +111,7 @@ final class SessionLockService
                         SET last_user_activity_at = ?
                       WHERE id = ? AND locked_at IS NULL AND replaced_at IS NULL AND revoked_at IS NULL'
                 );
-                $update->execute([self::formatUtc($now), $token]);
+                $update->execute([$cutoff->utcSql, $token]);
                 if ($update->rowCount() !== 1) {
                     throw new \RuntimeException('Aktivitu session se nepodařilo uložit.');
                 }
@@ -118,7 +122,7 @@ final class SessionLockService
             if ($recordActivity) {
                 $this->sessions->invalidateCache($token);
             }
-            return SessionLockResult::active($lastActivity);
+            return SessionLockResult::active($lastActivity, $now);
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -127,14 +131,47 @@ final class SessionLockService
         }
     }
 
+    /**
+     * Při vypnutém automatickém zámku není co materializovat ani zapisovat.
+     * Autoritativní čtení ale zachovává fail-closed kontrolu zániku session
+     * a respektuje případný ruční zámek.
+     */
+    private function readWithoutIdleTransition(string $token): SessionLockResult
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT last_user_activity_at, locked_at, lock_reason,
+                    UTC_TIMESTAMP(6) AS evaluated_at
+               FROM sessions
+              WHERE id = ?
+                AND expires_at > CURRENT_TIMESTAMP(6)
+                AND replaced_at IS NULL
+                AND revoked_at IS NULL
+              LIMIT 1'
+        );
+        $stmt->execute([$token]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            $this->sessions->invalidateCache($token);
+            return SessionLockResult::missing();
+        }
+
+        $lastActivity = self::parseUtc((string) $row['last_user_activity_at']);
+        $evaluatedAt = self::parseUtc((string) $row['evaluated_at']);
+        if ($row['locked_at'] !== null) {
+            return SessionLockResult::locked(
+                $lastActivity,
+                self::parseUtc((string) $row['locked_at']),
+                (string) $row['lock_reason'],
+                false,
+                $evaluatedAt,
+            );
+        }
+        return SessionLockResult::active($lastActivity, $evaluatedAt);
+    }
+
     private static function isTokenShapeValid(string $token): bool
     {
         return strlen($token) === 64 && ctype_xdigit($token);
-    }
-
-    private static function formatUtc(\DateTimeImmutable $time): string
-    {
-        return $time->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
     }
 
     private static function parseUtc(string $time): \DateTimeImmutable

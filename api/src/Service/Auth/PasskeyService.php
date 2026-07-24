@@ -28,19 +28,41 @@ final class PasskeyService
     private const CEREMONY_TIMEOUT_MS = 120_000;
     private const MAX_CREDENTIAL_ID_BYTES = 1024;
 
-    private readonly SerializerInterface $serializer;
-    private readonly AuthenticatorAttestationResponseValidator $attestationValidator;
-    private readonly AuthenticatorAssertionResponseValidator $assertionValidator;
+    private ?SerializerInterface $serializer = null;
+    private ?AuthenticatorAttestationResponseValidator $attestationValidator = null;
+    private ?AuthenticatorAssertionResponseValidator $assertionValidator = null;
+    private readonly ?WebAuthnConfig $staticConfig;
+    private readonly ?WebAuthnConfigProvider $configProvider;
 
-    public function __construct(private readonly WebAuthnConfig $config)
+    public function __construct(WebAuthnConfig|WebAuthnConfigProvider $config)
     {
+        $this->staticConfig = $config instanceof WebAuthnConfig ? $config : null;
+        $this->configProvider = $config instanceof WebAuthnConfigProvider ? $config : null;
+    }
+
+    public function isAvailable(): bool
+    {
+        return $this->staticConfig !== null || $this->configProvider?->isAvailable() === true;
+    }
+
+    public function configurationError(): ?string
+    {
+        return $this->configProvider?->validationError();
+    }
+
+    private function initialize(): void
+    {
+        if ($this->serializer !== null) {
+            return;
+        }
+        $config = $this->config();
         $attestationManager = AttestationStatementSupportManager::create();
         $attestationManager->add(NoneAttestationStatementSupport::create());
         $this->serializer = (new WebauthnSerializerFactory($attestationManager))->create();
 
         $ceremonyFactory = new CeremonyStepManagerFactory();
         $ceremonyFactory->setAttestationStatementSupportManager($attestationManager);
-        $ceremonyFactory->setAllowedOrigins([$this->config->origin()]);
+        $ceremonyFactory->setAllowedOrigins([$config->origin()]);
 
         $this->attestationValidator = AuthenticatorAttestationResponseValidator::create(
             $ceremonyFactory->creationCeremony(),
@@ -61,6 +83,8 @@ final class PasskeyService
         array $existingCredentials,
         string $challenge,
     ): array {
+        $this->initialize();
+        $config = $this->config();
         if ($userEmail === '' || $displayName === '' || strlen($userHandle) !== 32) {
             throw new \InvalidArgumentException('Neplatná identita pro registraci passkey.');
         }
@@ -72,7 +96,7 @@ final class PasskeyService
         );
 
         $options = PublicKeyCredentialCreationOptions::create(
-            PublicKeyCredentialRpEntity::create('MyInvoice.cz', $this->config->rpId()),
+            PublicKeyCredentialRpEntity::create('MyInvoice.cz', $config->rpId()),
             PublicKeyCredentialUserEntity::create($userEmail, $userHandle, $displayName),
             $challenge,
             [
@@ -98,6 +122,8 @@ final class PasskeyService
      */
     public function assertionOptions(array $credentials, string $challenge): array
     {
+        $this->initialize();
+        $config = $this->config();
         if ($credentials === []) {
             throw new \InvalidArgumentException('Pro WebAuthn assertion není dostupná žádná passkey.');
         }
@@ -109,7 +135,7 @@ final class PasskeyService
         );
         $options = PublicKeyCredentialRequestOptions::create(
             $challenge,
-            $this->config->rpId(),
+            $config->rpId(),
             $allowCredentials,
             PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_REQUIRED,
             self::CEREMONY_TIMEOUT_MS,
@@ -125,6 +151,8 @@ final class PasskeyService
     public function verifyRegistration(array $credentialPayload, array $storedOptions): CredentialRecord
     {
         try {
+            $this->initialize();
+            $config = $this->config();
             $credential = $this->deserializeCredential($credentialPayload);
             if (!$credential->response instanceof AuthenticatorAttestationResponse) {
                 throw new \UnexpectedValueException('Expected an attestation response.');
@@ -136,7 +164,7 @@ final class PasskeyService
             return $this->attestationValidator->check(
                 $credential->response,
                 $options,
-                $this->config->rpId(),
+                $config->rpId(),
             );
         } catch (\Throwable) {
             throw new PasskeyVerificationException('Registraci passkey se nepodařilo ověřit.');
@@ -153,6 +181,8 @@ final class PasskeyService
         CredentialRecord $storedCredential,
     ): CredentialRecord {
         try {
+            $this->initialize();
+            $config = $this->config();
             $credential = $this->deserializeCredential($credentialPayload);
             if (!$credential->response instanceof AuthenticatorAssertionResponse) {
                 throw new \UnexpectedValueException('Expected an assertion response.');
@@ -173,7 +203,7 @@ final class PasskeyService
                 $storedCredential,
                 $credential->response,
                 $options,
-                $this->config->rpId(),
+                $config->rpId(),
                 $storedCredential->userHandle,
             );
         } catch (\Throwable) {
@@ -223,6 +253,12 @@ final class PasskeyService
             throw new \UnexpectedValueException('WebAuthn knihovna vrátila neplatné options.');
         }
         return $data;
+    }
+
+    private function config(): WebAuthnConfig
+    {
+        return $this->staticConfig ?? $this->configProvider?->get()
+            ?? throw new \LogicException('WebAuthn konfigurace není dostupná.');
     }
 
     /**

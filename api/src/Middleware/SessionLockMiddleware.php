@@ -59,7 +59,15 @@ final class SessionLockMiddleware implements MiddlewareInterface
         }
         $token = (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, '');
         $result = $this->locks->evaluate($token);
-        if (!$result->sessionExists || !$result->locked) {
+        if (!$result->sessionExists) {
+            return Json::error(
+                $this->responseFactory->createResponse(401),
+                'session_expired',
+                'Session vypršela.',
+                401,
+            );
+        }
+        if (!$result->locked) {
             return $handler->handle($request);
         }
 

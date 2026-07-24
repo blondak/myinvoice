@@ -11,6 +11,8 @@ use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\PasskeyService;
+use MyInvoice\Service\Auth\PasskeySessionTransitionService;
+use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Auth\SessionLockResult;
 use MyInvoice\Service\Auth\SessionLockService;
@@ -43,18 +45,21 @@ final class SessionActionTest extends TestCase
         $clock->expects(self::once())
             ->method('now')
             ->willReturn(new \DateTimeImmutable('2026-07-24 12:05:00 UTC'));
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->method('isAvailable')->willReturn(true);
         $action = new SessionAction(
             $this->createMock(SessionManager::class),
             $locks,
             new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
             $credentials,
-            $this->createMock(PasskeyService::class),
+            $passkeys,
             $this->createMock(WebAuthnCeremonyStore::class),
             $this->createMock(ActivityLogger::class),
             $this->createMock(IpMatcher::class),
             $clock,
             $this->createMock(BruteForceGuard::class),
             $this->createMock(SessionCookieFactory::class),
+            $this->createMock(PasskeySessionTransitionService::class),
         );
         $request = (new ServerRequestFactory())
             ->createServerRequest('GET', '/api/auth/session/status')
@@ -92,23 +97,16 @@ final class SessionActionTest extends TestCase
 
     public function testMalformedUnlockConsumesCeremonyAndRecordsFailure(): void
     {
-        $ceremonies = $this->createMock(WebAuthnCeremonyStore::class);
-        $ceremonies->expects(self::once())
-            ->method('consume')
+        $transitions = $this->createMock(PasskeySessionTransitionService::class);
+        $transitions->expects(self::once())
+            ->method('completeUnlock')
             ->with(
                 'flow-token',
-                WebAuthnCeremonyStore::PURPOSE_UNLOCK,
+                [],
                 17,
                 str_repeat('a', 64),
-                null,
             )
-            ->willReturn(new WebAuthnCeremony(
-                WebAuthnCeremonyStore::PURPOSE_UNLOCK,
-                17,
-                null,
-                random_bytes(32),
-                ['challenge' => 'synthetic'],
-            ));
+            ->willThrowException(new PasskeyVerificationException('Ověření passkey selhalo.'));
         $bruteForce = $this->createMock(BruteForceGuard::class);
         $bruteForce->expects(self::once())->method('isPasskeyLocked')->with(17)->willReturn(false);
         $bruteForce->expects(self::once())->method('recordPasskeyFailure')->with(17);
@@ -127,18 +125,21 @@ final class SessionActionTest extends TestCase
         $ipMatcher = $this->createMock(IpMatcher::class);
         $ipMatcher->method('clientIpFromRequest')->willReturn('127.0.0.1');
         $clock = $this->createMock(ClockInterface::class);
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->method('isAvailable')->willReturn(true);
         $action = new SessionAction(
             $this->createMock(SessionManager::class),
             $this->createMock(SessionLockService::class),
             new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
             $this->createMock(PasskeyCredentialRepository::class),
-            $this->createMock(PasskeyService::class),
-            $ceremonies,
+            $passkeys,
+            $this->createMock(WebAuthnCeremonyStore::class),
             $logger,
             $ipMatcher,
             $clock,
             $bruteForce,
             $this->createMock(SessionCookieFactory::class),
+            $transitions,
         );
         $request = (new ServerRequestFactory())
             ->createServerRequest('POST', '/api/auth/session/unlock/verify')

@@ -44,7 +44,6 @@ final class LoginSessionIssuer
             throw new \InvalidArgumentException('Login issuer vyžaduje platného uživatele.');
         }
 
-        $this->bruteForce->recordSuccess($email, $ip);
         $session = $this->sessions->create($userId, $ip, $userAgent, $authContext);
 
         $this->db->pdo()->prepare(
@@ -57,6 +56,43 @@ final class LoginSessionIssuer
             $userId,
         ]);
 
+        return $this->issuePrepared(
+            $response,
+            $user,
+            $ip,
+            $userAgent,
+            $authContext,
+            $session,
+            $issueTrustedDevice,
+        );
+    }
+
+    /**
+     * Dokončí HTTP/audit část loginu pro session vytvořenou v širší atomické
+     * transakci (například passkey login).
+     *
+     * @param array<string,mixed> $user
+     * @param array{token:string,csrf_token:string,expires_at:int,issued_at?:\DateTimeImmutable} $session
+     */
+    public function issuePrepared(
+        Response $response,
+        array $user,
+        string $ip,
+        string $userAgent,
+        SessionAuthContext $authContext,
+        array $session,
+        bool $issueTrustedDevice = false,
+    ): Response {
+        $userId = (int) ($user['id'] ?? 0);
+        $email = (string) ($user['email'] ?? '');
+        if ($userId < 1
+            || $email === ''
+            || !isset($session['token'], $session['csrf_token'], $session['expires_at'])
+        ) {
+            throw new \InvalidArgumentException('Login issuer vyžaduje platného uživatele a session.');
+        }
+
+        $this->bruteForce->recordSuccess($email, $ip);
         $this->logger->log(
             'auth.login',
             $userId,
@@ -67,7 +103,9 @@ final class LoginSessionIssuer
             $userAgent,
         );
 
-        $now = $this->clock->now()->setTimezone(new \DateTimeZone('UTC'));
+        $now = ($session['issued_at'] ?? null) instanceof \DateTimeImmutable
+            ? $session['issued_at']
+            : $this->clock->now()->setTimezone(new \DateTimeZone('UTC'));
         $totpEnabled = (int) ($user['totp_enabled'] ?? 0) === 1;
         $passkeyCount = $this->credentials->countActiveForUser($userId);
         $mfaMethods = [];

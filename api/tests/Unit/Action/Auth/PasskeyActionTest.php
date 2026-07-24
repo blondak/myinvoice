@@ -10,10 +10,13 @@ use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
+use MyInvoice\Service\Auth\LastMfaFactorException;
 use MyInvoice\Service\Auth\LoginSessionIssuer;
 use MyInvoice\Service\Auth\MfaPolicyService;
+use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\MfaStepUpService;
 use MyInvoice\Service\Auth\PasskeyService;
+use MyInvoice\Service\Auth\PasskeySessionTransitionService;
 use MyInvoice\Service\Auth\PasswordHasher;
 use MyInvoice\Service\Auth\SessionManager;
 use MyInvoice\Service\Auth\SessionCookieFactory;
@@ -49,12 +52,15 @@ final class PasskeyActionTest extends TestCase
     private ClockInterface&MockObject $clock;
     private SessionCookieFactory&MockObject $sessionCookies;
     private BruteForceGuard&MockObject $bruteForce;
+    private PasskeySessionTransitionService&MockObject $sessionTransitions;
+    private MfaProtectedOperationService&MockObject $protectedOperations;
 
     protected function setUp(): void
     {
         $this->db = $this->createMock(Connection::class);
         $this->credentials = $this->createMock(PasskeyCredentialRepository::class);
         $this->passkeys = $this->createMock(PasskeyService::class);
+        $this->passkeys->method('isAvailable')->willReturn(true);
         $this->ceremonies = $this->createMock(WebAuthnCeremonyStore::class);
         $this->stepUp = $this->createMock(MfaStepUpService::class);
         $this->passwords = $this->createMock(PasswordHasher::class);
@@ -66,6 +72,8 @@ final class PasskeyActionTest extends TestCase
         $this->clock = $this->createMock(ClockInterface::class);
         $this->sessionCookies = $this->createMock(SessionCookieFactory::class);
         $this->bruteForce = $this->createMock(BruteForceGuard::class);
+        $this->sessionTransitions = $this->createMock(PasskeySessionTransitionService::class);
+        $this->protectedOperations = $this->createMock(MfaProtectedOperationService::class);
     }
 
     public function testCredentialListContainsOnlyPublicMetadata(): void
@@ -110,23 +118,10 @@ final class PasskeyActionTest extends TestCase
 
     public function testRequiredMfaPreventsRevokingLastAllowedStrongFactor(): void
     {
-        $stored = $this->storedCredential(42, 17, 'Jediný klíč');
-        $this->credentials->expects(self::once())
-            ->method('findActiveForUserById')
-            ->with(17, 42)
-            ->willReturn($stored);
-        $this->credentials->expects(self::once())
-            ->method('countActiveForUser')
-            ->with(17)
-            ->willReturn(1);
-        $this->credentials->expects(self::never())->method('revoke');
-        $this->stepUp->expects(self::once())
-            ->method('consume')
-            ->with('proof-token', 17, str_repeat('a', 64), 'passkey.revoke:42');
-        $this->policy->expects(self::once())->method('isRequired')->willReturn(true);
-        $this->policy->expects(self::exactly(2))->method('isMethodAllowed')
-            ->willReturnCallback(static fn (string $method): bool => $method === 'passkey');
-        $this->mockFreshUser(['totp_enabled' => 0]);
+        $this->protectedOperations->expects(self::once())
+            ->method('revokePasskey')
+            ->with(17, str_repeat('a', 64), 42, 'proof-token')
+            ->willThrowException(new LastMfaFactorException());
 
         $request = $this->sessionRequest('DELETE', '/api/auth/webauthn/credentials/42')
             ->withParsedBody(['step_up_token' => 'proof-token']);
@@ -144,54 +139,54 @@ final class PasskeyActionTest extends TestCase
     {
         $stored = $this->storedCredential(42, 17, 'Pixel 9');
         $payload = ['rawId' => 'synthetic-base64url', 'response' => []];
-        $ceremony = new WebAuthnCeremony(
-            WebAuthnCeremonyStore::PURPOSE_LOGIN,
-            17,
-            null,
-            random_bytes(32),
-            ['challenge' => 'synthetic'],
-        );
         $this->ceremonies->expects(self::once())
-            ->method('consumeLogin')
+            ->method('peekLoginUserId')
             ->with('flow-token')
-            ->willReturn($ceremony);
+            ->willReturn(17);
         $this->bruteForce->expects(self::once())
             ->method('isPasskeyLocked')
             ->with(17)
             ->willReturn(false);
-        $this->passkeys->expects(self::once())
-            ->method('credentialId')
-            ->with($payload)
-            ->willReturn($stored->record->publicKeyCredentialId);
-        $this->credentials->expects(self::once())
-            ->method('findActiveByCredentialId')
-            ->with($stored->record->publicKeyCredentialId)
-            ->willReturn($stored);
-        $this->passkeys->expects(self::once())
-            ->method('verifyAssertion')
-            ->with($payload, $ceremony->options, $stored->record)
-            ->willReturn($stored->record);
-        $this->credentials->expects(self::once())
-            ->method('updateAfterAssertion')
-            ->with($stored, $stored->record)
-            ->willReturn(true);
+        $now = new \DateTimeImmutable('2026-07-24 12:00:00 UTC');
+        $context = \MyInvoice\Service\Auth\SessionAuthContext::strong('passkey', $now, 42);
+        $session = [
+            'token' => str_repeat('c', 64),
+            'csrf_token' => str_repeat('d', 64),
+            'expires_at' => 1_800_000_000,
+            'issued_at' => $now,
+        ];
+        $user = [
+            'id' => 17,
+            'email' => 'synthetic@example.invalid',
+            'name' => 'Synthetic User',
+            'role' => 'admin',
+            'locale' => 'cs',
+            'totp_enabled' => 0,
+        ];
+        $this->sessionTransitions->expects(self::once())
+            ->method('completeLogin')
+            ->with('flow-token', $payload, '127.0.0.1', 'PHPUnit', 17)
+            ->willReturn([
+                'session' => $session,
+                'credential' => $stored,
+                'user' => $user,
+                'auth_context' => $context,
+            ]);
         $this->bruteForce->expects(self::once())
             ->method('recordPasskeySuccess')
             ->with(17);
-        $now = new \DateTimeImmutable('2026-07-24 12:00:00 UTC');
-        $this->clock->expects(self::once())->method('now')->willReturn($now);
-        $this->ipMatcher->expects(self::once())
+        $this->ipMatcher->expects(self::exactly(2))
             ->method('clientIpFromRequest')
             ->willReturn('127.0.0.1');
-        $this->mockFreshUser();
         $this->loginIssuer->expects(self::once())
-            ->method('issue')
+            ->method('issuePrepared')
             ->willReturnCallback(static function (
                 \Psr\Http\Message\ResponseInterface $response,
                 array $user,
                 string $ip,
                 string $userAgent,
                 \MyInvoice\Service\Auth\SessionAuthContext $context,
+                array $issuedSession,
             ): \Psr\Http\Message\ResponseInterface {
                 self::assertSame(17, $user['id']);
                 self::assertSame('127.0.0.1', $ip);
@@ -199,6 +194,7 @@ final class PasskeyActionTest extends TestCase
                 self::assertSame('passkey', $context->authMethod);
                 self::assertSame('strong', $context->assuranceLevel);
                 self::assertSame(42, $context->authCredentialId);
+                self::assertSame(str_repeat('c', 64), $issuedSession['token']);
                 return $response->withStatus(204);
             });
 
@@ -219,25 +215,24 @@ final class PasskeyActionTest extends TestCase
 
     public function testLoginVerifyConsumesMalformedAttemptAndRecordsUserFailure(): void
     {
-        $ceremony = new WebAuthnCeremony(
-            WebAuthnCeremonyStore::PURPOSE_LOGIN,
-            17,
-            null,
-            random_bytes(32),
-            ['challenge' => 'synthetic'],
-        );
         $this->ceremonies->expects(self::once())
-            ->method('consumeLogin')
+            ->method('peekLoginUserId')
             ->with('flow-token')
-            ->willReturn($ceremony);
+            ->willReturn(17);
         $this->bruteForce->expects(self::once())
             ->method('isPasskeyLocked')
             ->with(17)
             ->willReturn(false);
+        $this->sessionTransitions->expects(self::once())
+            ->method('completeLogin')
+            ->with('flow-token', [], '127.0.0.1', 'PHPUnit', 17)
+            ->willThrowException(new \MyInvoice\Service\Auth\PasskeyVerificationException(
+                'Ověření passkey selhalo.',
+            ));
         $this->bruteForce->expects(self::once())
             ->method('recordPasskeyFailure')
             ->with(17);
-        $this->loginIssuer->expects(self::never())->method('issue');
+        $this->loginIssuer->expects(self::never())->method('issuePrepared');
         $this->ipMatcher->method('clientIpFromRequest')->willReturn('127.0.0.1');
 
         $request = (new ServerRequestFactory())
@@ -251,6 +246,23 @@ final class PasskeyActionTest extends TestCase
 
         self::assertSame(401, $response->getStatusCode());
         self::assertSame('passkey_verification_failed', $this->errorCode($response));
+    }
+
+    public function testLoginVerifyReportsUnavailableConfigurationWithoutConsumingFlow(): void
+    {
+        $this->passkeys = $this->createMock(PasskeyService::class);
+        $this->passkeys->expects(self::once())->method('isAvailable')->willReturn(false);
+        $this->ceremonies->expects(self::never())->method('consumeLogin');
+
+        $response = $this->action()->loginVerify(
+            (new ServerRequestFactory())
+                ->createServerRequest('POST', '/api/auth/webauthn/login/verify')
+                ->withParsedBody(['flow_token' => 'flow-token']),
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(503, $response->getStatusCode());
+        self::assertSame('passkeys_unavailable', $this->errorCode($response));
     }
 
     public function testSetupRegistrationRevokesSetupSessionsAndReturnsRotatedCookie(): void
@@ -370,6 +382,8 @@ final class PasskeyActionTest extends TestCase
             $this->stepUp,
             $this->sessionCookies,
             $this->bruteForce,
+            $this->sessionTransitions,
+            $this->protectedOperations,
         );
     }
 

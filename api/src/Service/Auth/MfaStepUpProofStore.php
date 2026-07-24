@@ -6,7 +6,6 @@ namespace MyInvoice\Service\Auth;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
-use Psr\Clock\ClockInterface;
 
 final class MfaStepUpProofStore
 {
@@ -14,10 +13,85 @@ final class MfaStepUpProofStore
 
     public function __construct(
         private readonly Connection $db,
-        private readonly ClockInterface $clock,
+        private readonly SecurityClock $securityClock,
     ) {}
 
     public function issue(
+        int $userId,
+        string $sessionToken,
+        string $operation,
+        string $authMethod,
+        ?int $authCredentialId = null,
+        int $ttlSeconds = 300,
+    ): string {
+        $pdo = $this->db->pdo();
+        $pdo->beginTransaction();
+        try {
+            $cutoff = $this->securityClock->capture($pdo);
+            $token = $this->issueInTransaction(
+                $pdo,
+                $cutoff,
+                $userId,
+                $sessionToken,
+                $operation,
+                $authMethod,
+                $authCredentialId,
+                $ttlSeconds,
+            );
+            $pdo->commit();
+            return $token;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public function consume(
+        string $proofToken,
+        int $expectedUserId,
+        string $expectedSessionToken,
+        string $expectedOperation,
+    ): MfaStepUpProof {
+        $expectedOperation = trim($expectedOperation);
+        if (!self::isTokenShapeValid($proofToken)
+            || $expectedSessionToken === ''
+            || $expectedOperation === ''
+        ) {
+            throw new OneTimeTokenException('Neplatný nebo spotřebovaný step-up proof.');
+        }
+
+        $pdo = $this->db->pdo();
+        $pdo->beginTransaction();
+        try {
+            $cutoff = $this->securityClock->capture($pdo);
+            $proof = $this->consumeInTransaction(
+                $pdo,
+                $cutoff,
+                $proofToken,
+                $expectedUserId,
+                $expectedSessionToken,
+                $expectedOperation,
+            );
+            $pdo->commit();
+            return $proof;
+        } catch (OneTimeTokenException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
+            throw $e;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public function issueInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
         int $userId,
         string $sessionToken,
         string $operation,
@@ -40,9 +114,7 @@ final class MfaStepUpProofStore
         }
 
         $token = self::randomToken();
-        $now = $this->clock->now();
-        $expiresAt = $now->modify("+{$ttlSeconds} seconds");
-        $stmt = $this->db->pdo()->prepare(
+        $stmt = $pdo->prepare(
             'INSERT INTO mfa_step_up_proofs
                 (token_hash, user_id, session_id_hash, operation, auth_method,
                  auth_credential_id, expires_at, created_at)
@@ -55,14 +127,15 @@ final class MfaStepUpProofStore
             $operation,
             $authMethod,
             $authCredentialId,
-            self::formatTime($expiresAt),
-            self::formatTime($now),
+            self::formatTime($cutoff->plusSeconds($ttlSeconds)),
+            $cutoff->utcSql,
         ]);
-
         return $token;
     }
 
-    public function consume(
+    public function consumeInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
         string $proofToken,
         int $expectedUserId,
         string $expectedSessionToken,
@@ -75,37 +148,25 @@ final class MfaStepUpProofStore
         ) {
             throw new OneTimeTokenException('Neplatný nebo spotřebovaný step-up proof.');
         }
+        $stmt = $pdo->prepare(
+            'SELECT token_hash, user_id, session_id_hash, operation, auth_method,
+                    auth_credential_id, expires_at, used_at
+               FROM mfa_step_up_proofs
+              WHERE token_hash = ?
+              FOR UPDATE'
+        );
+        $stmt->execute([hash('sha256', $proofToken, true)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $pdo = $this->db->pdo();
-        $pdo->beginTransaction();
-        try {
-            $stmt = $pdo->prepare(
-                'SELECT token_hash, user_id, session_id_hash, operation, auth_method,
-                        auth_credential_id, expires_at, used_at
-                   FROM mfa_step_up_proofs
-                  WHERE token_hash = ?
-                  FOR UPDATE'
+        if ($row !== false && $row['used_at'] === null) {
+            $markUsed = $pdo->prepare(
+                'UPDATE mfa_step_up_proofs SET used_at = ? WHERE token_hash = ? AND used_at IS NULL'
             );
-            $stmt->execute([hash('sha256', $proofToken, true)]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($row !== false && $row['used_at'] === null) {
-                $markUsed = $pdo->prepare(
-                    'UPDATE mfa_step_up_proofs SET used_at = ? WHERE token_hash = ? AND used_at IS NULL'
-                );
-                $markUsed->execute([self::formatTime($this->clock->now()), $row['token_hash']]);
-            }
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
+            $markUsed->execute([$cutoff->utcSql, $row['token_hash']]);
         }
-
         if ($row === false
             || $row['used_at'] !== null
-            || self::parseTime((string) $row['expires_at']) <= $this->clock->now()
+            || self::parseTime((string) $row['expires_at']) <= $cutoff->utc
             || (int) $row['user_id'] !== $expectedUserId
             || !hash_equals((string) $row['session_id_hash'], hash('sha256', $expectedSessionToken, true))
             || !hash_equals((string) $row['operation'], $expectedOperation)

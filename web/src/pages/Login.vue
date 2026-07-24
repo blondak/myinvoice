@@ -107,6 +107,7 @@ async function submit() {
     const msg  = e?.response?.data?.error?.message
     const data = e?.response?.data?.error
     if (code === 'totp_required') {
+      passkeyFlow.value = null
       totpRequired.value = true
       error.value = ''
       // Token byl spotřebovaný 1. pokusem (heslo OK, čekáme na TOTP).
@@ -154,14 +155,20 @@ async function submit() {
 
 async function verifyPasskey() {
   if (!passkeyFlow.value || !passkeySupported) return
+  const flow = passkeyFlow.value
   passkeyBusy.value = true
   error.value = ''
   try {
-    const credential = await getCredential(passkeyFlow.value.publicKey)
-    await authApi.passkeyLoginVerify(passkeyFlow.value.flowToken, credential)
+    const credential = await getCredential(flow.publicKey)
+    await authApi.passkeyLoginVerify(flow.flowToken, credential)
     await auth.refresh()
     router.push('/')
   } catch (e: any) {
+    // Verify endpoint spotřebuje flow už při prvním pokusu. Po browser cancelu
+    // jej také zahodíme, protože klient bezpečně nepozná, zda request odešel.
+    // Další submit hesla proto vždy získá novou ceremony.
+    passkeyFlow.value = null
+    turnstile.reset()
     error.value = e?.response?.data?.error?.message || t('auth.passkey_failed')
   } finally {
     passkeyBusy.value = false
@@ -169,7 +176,11 @@ async function verifyPasskey() {
 }
 
 function useTotpFallback() {
+  // TOTP dokončuje původní heslový login request. Aktivní passkey flow nesmí
+  // držet submit disabled; nevyužitá ceremony pouze krátce expiruje na serveru.
+  passkeyFlow.value = null
   totpRequired.value = true
+  error.value = ''
 }
 
 // Poslat e-mailový kód znovu. Re-submitne heslo s resend_otp=1; backend pošle

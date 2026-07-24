@@ -4,6 +4,6 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Auth;
 
-class PasskeyVerificationException extends \RuntimeException
+final class LastMfaFactorException extends \DomainException
 {
 }

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace MyInvoice\Tests\Unit\Service\Auth;
 
 use MyInvoice\Infrastructure\Config\Config;
+use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\WebAuthnConfig;
+use MyInvoice\Service\Auth\WebAuthnConfigProvider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -64,5 +66,22 @@ final class WebAuthnConfigTest extends TestCase
         yield 'unicode hostname' => ['https://faktura.česko'];
         yield 'invalid label' => ['https://bad_host.example'];
         yield 'trailing dot' => ['https://invoice.example.cz.'];
+    }
+
+    public function testLazyProviderKeepsApplicationAvailableWithInvalidCanonicalUrl(): void
+    {
+        $provider = new WebAuthnConfigProvider(new Config([
+            'app' => ['url' => 'http://invoice.example.cz'],
+        ]));
+        $passkeys = new PasskeyService($provider);
+
+        self::assertFalse($passkeys->isAvailable());
+        self::assertSame(
+            'WebAuthn vyžaduje HTTPS; HTTP je povolené pouze pro localhost.',
+            $passkeys->configurationError(),
+        );
+
+        $this->expectException(\DomainException::class);
+        $passkeys->assertionOptions([], random_bytes(32));
     }
 }

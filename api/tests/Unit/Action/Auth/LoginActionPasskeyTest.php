@@ -20,6 +20,7 @@ use MyInvoice\Service\Auth\StoredPasskeyCredential;
 use MyInvoice\Service\Auth\TotpService;
 use MyInvoice\Service\Auth\TrustedDeviceService;
 use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
+use MyInvoice\Service\Auth\WebAuthnConfigProvider;
 use MyInvoice\Service\Captcha\TurnstileVerifier;
 use MyInvoice\Service\IpMatcher;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
@@ -69,6 +70,7 @@ final class LoginActionPasskeyTest extends TestCase
         $credentials = $this->createMock(PasskeyCredentialRepository::class);
         $credentials->expects(self::once())->method('findAllForUser')->with(17)->willReturn([$stored]);
         $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->method('isAvailable')->willReturn(true);
         $passkeys->expects(self::once())
             ->method('assertionOptions')
             ->willReturn(['challenge' => 'encoded', 'userVerification' => 'required']);
@@ -127,6 +129,94 @@ final class LoginActionPasskeyTest extends TestCase
         self::assertSame(['passkey', 'totp'], $body['error']['methods']);
         self::assertSame('required', $body['error']['public_key']['userVerification']);
         self::assertFalse($response->hasHeader('Set-Cookie'));
+    }
+
+    public function testInvalidWebAuthnConfigurationDoesNotBreakPasswordOnlyLogin(): void
+    {
+        $db = $this->createMock(Connection::class);
+        $statement = $this->createMock(\PDOStatement::class);
+        $statement->expects(self::once())->method('execute')->with(['user@example.invalid'])->willReturn(true);
+        $statement->expects(self::once())->method('fetch')->with(\PDO::FETCH_ASSOC)->willReturn([
+            'id' => 17,
+            'email' => 'user@example.invalid',
+            'name' => 'Synthetic User',
+            'role' => 'admin',
+            'locale' => 'cs',
+            'password_hash' => 'synthetic-hash',
+            'is_active' => 1,
+            'totp_secret' => null,
+            'totp_enabled' => 0,
+        ]);
+        $pdo = $this->createMock(\PDO::class);
+        $pdo->expects(self::once())->method('prepare')->willReturn($statement);
+        $db->expects(self::once())->method('pdo')->willReturn($pdo);
+
+        $hasher = $this->createMock(PasswordHasher::class);
+        $hasher->expects(self::once())->method('verify')->willReturn(true);
+        $hasher->expects(self::once())->method('needsRehash')->willReturn(false);
+        $bruteForce = $this->createMock(BruteForceGuard::class);
+        $bruteForce->expects(self::once())->method('check')->willReturn(BruteForceGuard::STATE_OK);
+        $turnstile = $this->createMock(TurnstileVerifier::class);
+        $turnstile->expects(self::once())->method('verify')->willReturn(true);
+        $ipMatcher = $this->createMock(IpMatcher::class);
+        $ipMatcher->expects(self::once())->method('clientIpFromRequest')->willReturn('127.0.0.1');
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->expects(self::once())->method('findAllForUser')->with(17)->willReturn([]);
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::exactly(2))
+            ->method('isMethodAllowed')
+            ->willReturnCallback(static fn (string $method): bool => in_array($method, ['passkey', 'totp'], true));
+        $policy->expects(self::once())->method('isRequired')->willReturn(false);
+        $issuer = $this->createMock(LoginSessionIssuer::class);
+        $issuer->expects(self::once())
+            ->method('issue')
+            ->willReturnCallback(static function (
+                \Psr\Http\Message\ResponseInterface $response,
+                array $user,
+                string $ip,
+                string $userAgent,
+                \MyInvoice\Service\Auth\SessionAuthContext $context,
+            ): \Psr\Http\Message\ResponseInterface {
+                self::assertSame(17, $user['id']);
+                self::assertSame('password', $context->authMethod);
+                self::assertSame('basic', $context->assuranceLevel);
+                return $response->withStatus(204);
+            });
+        $passkeys = new PasskeyService(new WebAuthnConfigProvider(new Config([
+            'app' => ['url' => 'http://invoice.example.cz'],
+        ])));
+
+        $action = new LoginAction(
+            $db,
+            $hasher,
+            $bruteForce,
+            $turnstile,
+            $this->createMock(ActivityLogger::class),
+            $ipMatcher,
+            new Config(['auth' => ['email_otp' => ['enabled' => false]]]),
+            $this->createMock(TotpService::class),
+            $this->createMock(SecretEncryption::class),
+            $this->createMock(EmailOtpService::class),
+            $this->createMock(TrustedDeviceService::class),
+            $credentials,
+            $passkeys,
+            $this->createMock(WebAuthnCeremonyStore::class),
+            $policy,
+            $issuer,
+            $this->createMock(ClockInterface::class),
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/login')
+            ->withHeader('User-Agent', 'PHPUnit')
+            ->withParsedBody([
+                'email' => 'user@example.invalid',
+                'password' => 'Synthetic-password-42',
+            ]);
+
+        self::assertSame(204, $action(
+            $request,
+            (new ResponseFactory())->createResponse(),
+        )->getStatusCode());
     }
 
     private function storedCredential(): StoredPasskeyCredential

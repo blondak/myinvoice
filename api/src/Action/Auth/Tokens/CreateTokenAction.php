@@ -12,7 +12,7 @@ use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\ApiTokenService;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\MfaPolicyService;
-use MyInvoice\Service\Auth\MfaStepUpService;
+use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\OneTimeTokenException;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Auth\StepUpOperationException;
@@ -43,8 +43,8 @@ final class CreateTokenAction
         private readonly IpMatcher $ipMatcher,
         private readonly PasskeyCredentialRepository $credentials,
         private readonly MfaPolicyService $mfaPolicy,
-        private readonly MfaStepUpService $stepUp,
         private readonly BruteForceGuard $bruteForce,
+        private readonly MfaProtectedOperationService $protectedOperations,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -78,6 +78,28 @@ final class CreateTokenAction
             return Json::error($response, 'validation_failed', 'Neplatný scope.', 400);
         }
 
+        // Validace supplier_id musí předcházet spotřebě jednorázového proofu.
+        if ($supplierId !== null) {
+            $check = $this->db->pdo()->prepare('SELECT id FROM supplier WHERE id = ?');
+            $check->execute([$supplierId]);
+            if ($check->fetchColumn() === false) {
+                return Json::error($response, 'validation_failed', 'Supplier nenalezen.', 400);
+            }
+        }
+
+        // Parse expires_at — akceptuj ISO-8601 nebo YYYY-MM-DD.
+        $expiresAt = null;
+        if ($expiresRaw !== '') {
+            try {
+                $expiresAt = new \DateTimeImmutable($expiresRaw);
+            } catch (\Exception) {
+                return Json::error($response, 'validation_failed', 'Neplatný formát expires_at.', 400);
+            }
+            if ($expiresAt <= new \DateTimeImmutable()) {
+                return Json::error($response, 'validation_failed', 'expires_at musí být v budoucnu.', 400);
+            }
+        }
+
         // Účelový step-up: jednorázový passkey/TOTP proof, nebo kompatibilní
         // přímé TOTP ověření v tomto requestu.
         $stmt = $this->db->pdo()->prepare('SELECT totp_secret, totp_enabled FROM users WHERE id = ?');
@@ -89,13 +111,17 @@ final class CreateTokenAction
         $passkeyAvailable = $this->mfaPolicy->isMethodAllowed('passkey')
             && $this->credentials->countActiveForUser($userId) > 0;
 
+        $out = null;
         if ($stepUpToken !== '') {
             try {
-                $this->stepUp->consume(
-                    $stepUpToken,
+                $out = $this->protectedOperations->createApiToken(
                     $userId,
                     (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, ''),
-                    MfaStepUpService::OPERATION_API_TOKEN_CREATE,
+                    $stepUpToken,
+                    $supplierId,
+                    $name,
+                    $scope,
+                    $expiresAt,
                 );
             } catch (OneTimeTokenException|StepUpOperationException) {
                 return Json::error(
@@ -104,6 +130,8 @@ final class CreateTokenAction
                     'Step-up ověření je neplatné nebo již bylo použito.',
                     403,
                 );
+            } catch (\DomainException) {
+                return Json::error($response, 'session_expired', 'Session vypršela.', 401);
             }
         } elseif ($totpAvailable) {
             if ($totpCode === '') {
@@ -143,29 +171,7 @@ final class CreateTokenAction
             );
         }
 
-        // Validace supplier_id — musí existovat (FK + neumožnit zatuhle hodnotu od klienta)
-        if ($supplierId !== null) {
-            $check = $this->db->pdo()->prepare('SELECT id FROM supplier WHERE id = ?');
-            $check->execute([$supplierId]);
-            if ($check->fetchColumn() === false) {
-                return Json::error($response, 'validation_failed', 'Supplier nenalezen.', 400);
-            }
-        }
-
-        // Parse expires_at — akceptuj ISO-8601 nebo YYYY-MM-DD
-        $expiresAt = null;
-        if ($expiresRaw !== '') {
-            try {
-                $expiresAt = new \DateTimeImmutable($expiresRaw);
-            } catch (\Exception) {
-                return Json::error($response, 'validation_failed', 'Neplatný formát expires_at.', 400);
-            }
-            if ($expiresAt <= new \DateTimeImmutable()) {
-                return Json::error($response, 'validation_failed', 'expires_at musí být v budoucnu.', 400);
-            }
-        }
-
-        $out = $this->tokens->generate($userId, $supplierId, $name, $scope, $expiresAt);
+        $out ??= $this->tokens->generate($userId, $supplierId, $name, $scope, $expiresAt);
 
         $ip = $this->ipMatcher->clientIp(
             $request->getServerParams(),

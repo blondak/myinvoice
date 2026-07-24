@@ -224,11 +224,13 @@ const healthWarnings = computed(() => health.value?.warnings ?? [])
 
 function warningTitle(code: string): string {
   if (code === 'secret_encryption_key') return t('updates.warning_secret_key_title')
+  if (code === 'webauthn_configuration') return t('updates.warning_webauthn_title')
   return t('updates.warning_generic_title')
 }
 
 function warningText(code: string): string {
   if (code === 'secret_encryption_key') return t('updates.warning_secret_key_text')
+  if (code === 'webauthn_configuration') return t('updates.warning_webauthn_text')
   return t('updates.warning_generic_text')
 }
 

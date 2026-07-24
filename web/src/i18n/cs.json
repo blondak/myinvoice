@@ -1064,6 +1064,8 @@
     "warnings_title": "Provozní upozornění",
     "warning_secret_key_title": "Konfigurace šifrovacího klíče (TOTP)",
     "warning_secret_key_text": "Nastav `cfg.app.secret_encryption_key` jako 32B base64, aby TOTP setup neselhával při špatné konfiguraci.",
+    "warning_webauthn_title": "Konfigurace passkeys (WebAuthn)",
+    "warning_webauthn_text": "Zkontroluj `cfg.app.url`: musí přesně odpovídat používanému originu a mimo localhost používat HTTPS.",
     "warning_generic_title": "Upozornění systému",
     "warning_generic_text": "Zkontroluj konfiguraci aplikace.",
     "how_it_works": "Jak upgrade funguje",

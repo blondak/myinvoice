@@ -59,6 +59,10 @@ Přihlas se pomocí TOTP nebo jiné passkey dostupné pro původní origin a
 zaregistruj nový klíč. Pokud žádná recovery cesta nezůstala, použij CLI rescue
 níže.
 
+Přihlášený správce uvidí neplatnou WebAuthn konfiguraci také jako provozní
+upozornění na stránce **Administrace → Aktualizace**. Běžný login heslem a TOTP
+zůstává dostupný, dokud se `app.url` neopraví.
+
 ### Odemčení PWA selže nebo je zařízení offline
 
 Odemčení vyžaduje spojení se serverem pro vydání a ověření jednorázové

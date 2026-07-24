@@ -45,6 +45,28 @@ final class SessionLockMiddlewareTest extends TestCase
         );
     }
 
+    public function testSessionMissingDuringLockEvaluationFailsClosed(): void
+    {
+        $locks = $this->createMock(SessionLockService::class);
+        $locks->expects(self::once())
+            ->method('evaluate')
+            ->with(str_repeat('a', 64))
+            ->willReturn(SessionLockResult::missing());
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+
+        $response = $this->middleware($locks)->process(
+            $this->sessionRequest('/api/invoices'),
+            $handler,
+        );
+
+        self::assertSame(401, $response->getStatusCode());
+        self::assertSame(
+            'session_expired',
+            json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR)['error']['code'],
+        );
+    }
+
     public function testLockedStatusAndUnlockRoutesPassThrough(): void
     {
         foreach ([

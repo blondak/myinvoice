@@ -116,13 +116,26 @@ final class LoginAction
             return Json::error($response, 'invalid_credentials', 'Neplatné přihlašovací údaje.', 401);
         }
 
-        $totpActive     = (int) $user['totp_enabled'] === 1 && !empty($user['totp_secret']);
+        $totpActive = (int) $user['totp_enabled'] === 1 && !empty($user['totp_secret']);
         $totpAllowed = $this->mfaPolicy->isMethodAllowed('totp');
         $storedPasskeys = $this->mfaPolicy->isMethodAllowed('passkey')
             ? $this->credentials->findAllForUser((int) $user['id'])
             : [];
-        if ($storedPasskeys !== [] && $totpCode === '') {
+        if ($storedPasskeys !== []
+            && !($totpCode !== '' && $totpActive && $totpAllowed)
+        ) {
             $this->rehashPasswordIfNeeded($user, $password);
+            if (!$this->passkeys->isAvailable()) {
+                if ($totpActive && $totpAllowed) {
+                    return Json::error($response, 'totp_required', 'TOTP kód požadován.', 401);
+                }
+                return Json::error(
+                    $response,
+                    'passkeys_unavailable',
+                    'Passkeys nejsou kvůli konfiguraci této instalace dostupné.',
+                    503,
+                );
+            }
             $challenge = random_bytes(32);
             $options = $this->passkeys->assertionOptions(
                 array_map(

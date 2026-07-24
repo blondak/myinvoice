@@ -23,6 +23,10 @@ use MyInvoice\Middleware\SessionLockMiddleware;
 use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Middleware\WebAuthnBodyLimitMiddleware;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Auth\PasskeyService;
+use MyInvoice\Service\Auth\DatabaseSecurityClock;
+use MyInvoice\Service\Auth\SecurityClock;
+use MyInvoice\Service\Auth\WebAuthnConfigProvider;
 use Monolog\Handler\RotatingFileHandler;
 use Monolog\Logger;
 use Psr\Clock\ClockInterface;
@@ -77,6 +81,7 @@ final class Bootstrap
         $builder->addDefinitions([
             Config::class => $config,
             ClockInterface::class => fn () => new UtcClock(),
+            SecurityClock::class => fn () => new DatabaseSecurityClock(),
 
             LoggerInterface::class => function (ContainerInterface $c) use ($config): LoggerInterface {
                 $logger = new Logger('myinvoice');
@@ -94,6 +99,9 @@ final class Bootstrap
             Connection::class      => fn (ContainerInterface $c) => new Connection($c->get(Config::class), $c->get(LoggerInterface::class)),
             RedisProbe::class      => fn (ContainerInterface $c) => new RedisProbe($c->get(Config::class)),
             RedisFactory::class    => fn (ContainerInterface $c) => new RedisFactory($c->get(Config::class)),
+            PasskeyService::class  => fn (ContainerInterface $c) => new PasskeyService(
+                $c->get(WebAuthnConfigProvider::class),
+            ),
             \MyInvoice\Service\Signing\SigningPassphraseProviderInterface::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Signing\SigningPassphraseProvider(
                 $c->get(Config::class),
                 $c->get(\MyInvoice\Service\Auth\SecretEncryption::class),

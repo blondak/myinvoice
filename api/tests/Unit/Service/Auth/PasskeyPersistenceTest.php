@@ -9,6 +9,7 @@ use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\Auth\MfaStepUpProofStore;
 use MyInvoice\Service\Auth\OneTimeTokenException;
+use MyInvoice\Service\Auth\PsrSecurityClock;
 use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -131,7 +132,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testCeremonyCanBeConsumedOnlyOnce(): void
     {
-        $store = new WebAuthnCeremonyStore($this->db, $this->clock);
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
         $challenge = random_bytes(32);
         $token = $store->create(
             WebAuthnCeremonyStore::PURPOSE_REGISTER,
@@ -166,7 +167,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testCeremonyContextMismatchConsumesToken(): void
     {
-        $store = new WebAuthnCeremonyStore($this->db, $this->clock);
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
         $token = $store->create(
             WebAuthnCeremonyStore::PURPOSE_STEP_UP,
             $this->userId,
@@ -202,7 +203,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testSessionLockCancellationConsumesRegisterAndStepUpFlowsOnly(): void
     {
-        $store = new WebAuthnCeremonyStore($this->db, $this->clock);
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
         $register = $store->create(
             WebAuthnCeremonyStore::PURPOSE_REGISTER,
             $this->userId,
@@ -250,7 +251,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testExpiredCeremonyIsRejected(): void
     {
-        $store = new WebAuthnCeremonyStore($this->db, $this->clock);
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
         $token = $store->create(
             WebAuthnCeremonyStore::PURPOSE_LOGIN,
             $this->userId,
@@ -276,7 +277,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testAnonymousLoginCeremonyResolvesBoundUserAndIsOneTime(): void
     {
-        $store = new WebAuthnCeremonyStore($this->db, $this->clock);
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
         $token = $store->create(
             WebAuthnCeremonyStore::PURPOSE_LOGIN,
             $this->userId,
@@ -300,7 +301,7 @@ final class PasskeyPersistenceTest extends TestCase
     {
         $record = $this->credentialRecord($this->credentials->userHandle($this->userId));
         $credentialId = $this->credentials->save($this->userId, $record, 'Test key');
-        $store = new MfaStepUpProofStore($this->db, $this->clock);
+        $store = new MfaStepUpProofStore($this->db, new PsrSecurityClock($this->clock));
         $token = $store->issue(
             $this->userId,
             'session-token',
@@ -321,7 +322,7 @@ final class PasskeyPersistenceTest extends TestCase
 
     public function testStepUpSessionMismatchConsumesProof(): void
     {
-        $store = new MfaStepUpProofStore($this->db, $this->clock);
+        $store = new MfaStepUpProofStore($this->db, new PsrSecurityClock($this->clock));
         $token = $store->issue($this->userId, 'session-a', 'api-token.create', 'totp');
 
         try {

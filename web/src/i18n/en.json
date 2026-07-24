@@ -1064,6 +1064,8 @@
     "warnings_title": "Operational warnings",
     "warning_secret_key_title": "Encryption key configuration (TOTP)",
     "warning_secret_key_text": "Set `cfg.app.secret_encryption_key` to a 32B base64 value to avoid TOTP setup failures due to misconfiguration.",
+    "warning_webauthn_title": "Passkey configuration (WebAuthn)",
+    "warning_webauthn_text": "Check `cfg.app.url`: it must exactly match the origin in use and use HTTPS outside localhost.",
     "warning_generic_title": "System warning",
     "warning_generic_text": "Check the application configuration.",
     "how_it_works": "How upgrades work",

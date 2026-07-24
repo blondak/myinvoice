@@ -11,10 +11,14 @@ use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\LoginSessionIssuer;
+use MyInvoice\Service\Auth\LastMfaFactorException;
 use MyInvoice\Service\Auth\MfaPolicyService;
+use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\MfaStepUpService;
 use MyInvoice\Service\Auth\OneTimeTokenException;
 use MyInvoice\Service\Auth\PasskeyService;
+use MyInvoice\Service\Auth\PasskeyCounterAnomalyException;
+use MyInvoice\Service\Auth\PasskeySessionTransitionService;
 use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\PasswordHasher;
 use MyInvoice\Service\Auth\SessionManager;
@@ -45,6 +49,8 @@ final class PasskeyAction
         private readonly MfaStepUpService $stepUp,
         private readonly SessionCookieFactory $sessionCookies,
         private readonly BruteForceGuard $bruteForce,
+        private readonly PasskeySessionTransitionService $sessionTransitions,
+        private readonly MfaProtectedOperationService $protectedOperations,
     ) {}
 
     public function credentials(Request $request, Response $response): Response
@@ -74,6 +80,9 @@ final class PasskeyAction
         $context = $this->sessionContext($request);
         if ($context === null) {
             return $this->sessionRequired($response);
+        }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
         }
         if (!$this->mfaPolicy->isMethodAllowed('passkey')) {
             return Json::error(
@@ -154,6 +163,9 @@ final class PasskeyAction
         $context = $this->sessionContext($request);
         if ($context === null) {
             return $this->sessionRequired($response);
+        }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
         }
         if (!$this->mfaPolicy->isMethodAllowed('passkey')) {
             return Json::error(
@@ -238,57 +250,45 @@ final class PasskeyAction
 
     public function loginVerify(Request $request, Response $response): Response
     {
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
+        }
         $body = (array) ($request->getParsedBody() ?? []);
         $credentialPayload = $body['credential'] ?? null;
-
-        $ceremonyUserId = null;
+        $flowToken = trim((string) ($body['flow_token'] ?? ''));
+        $ceremonyUserId = $this->ceremonies->peekLoginUserId($flowToken);
+        if ($ceremonyUserId !== null && $this->bruteForce->isPasskeyLocked($ceremonyUserId)) {
+            return $this->passkeyRateLimited($response);
+        }
         try {
-            $ceremony = $this->ceremonies->consumeLogin(
-                trim((string) ($body['flow_token'] ?? '')),
+            $completed = $this->sessionTransitions->completeLogin(
+                $flowToken,
+                is_array($credentialPayload) ? $credentialPayload : [],
+                $this->clientIp($request),
+                $request->getHeaderLine('User-Agent'),
+                $ceremonyUserId ?? 0,
             );
-            $ceremonyUserId = $ceremony->userId;
-            if ($this->bruteForce->isPasskeyLocked($ceremony->userId)) {
-                return $this->passkeyRateLimited($response);
-            }
-            if (!is_array($credentialPayload)) {
-                throw new PasskeyVerificationException('Chybí WebAuthn credential.');
-            }
-            $user = $this->freshUser($ceremony->userId);
-            if ($user === null) {
-                throw new PasskeyVerificationException('Ověření passkey selhalo.');
-            }
-
-            $rawCredentialId = $this->passkeys->credentialId($credentialPayload);
-            $stored = $this->credentials->findActiveByCredentialId($rawCredentialId);
-            if ($stored === null || $stored->userId !== $ceremony->userId) {
-                throw new PasskeyVerificationException('Ověření passkey selhalo.');
-            }
-
-            $verified = $this->passkeys->verifyAssertion(
-                $credentialPayload,
-                $ceremony->options,
-                $stored->record,
+            $this->bruteForce->recordPasskeySuccess($ceremonyUserId);
+            return $this->loginIssuer->issuePrepared(
+                $response,
+                $completed['user'],
+                $this->clientIp($request),
+                $request->getHeaderLine('User-Agent'),
+                $completed['auth_context'],
+                $completed['session'],
             );
-            if (!$this->credentials->updateAfterAssertion($stored, $verified)) {
+        } catch (PasskeyCounterAnomalyException $e) {
+            if ($ceremonyUserId !== null) {
                 $this->log(
                     $request,
                     'auth.passkey_counter_anomaly',
-                    $ceremony->userId,
-                    $stored->id,
-                    ['credential_id' => $stored->id],
+                    $ceremonyUserId,
+                    $e->credentialId,
+                    ['credential_id' => $e->credentialId],
                 );
-                $this->bruteForce->recordPasskeyFailure($ceremony->userId);
-                return $this->loginVerificationFailed($response);
+                $this->bruteForce->recordPasskeyFailure($ceremonyUserId);
             }
-
-            $this->bruteForce->recordPasskeySuccess($ceremony->userId);
-            return $this->loginIssuer->issue(
-                $response,
-                $user,
-                $this->clientIp($request),
-                $request->getHeaderLine('User-Agent'),
-                SessionAuthContext::strong('passkey', $this->clock->now(), $stored->id),
-            );
+            return $this->loginVerificationFailed($response);
         } catch (OneTimeTokenException|PasskeyVerificationException) {
             if ($ceremonyUserId !== null) {
                 $this->bruteForce->recordPasskeyFailure($ceremonyUserId);
@@ -361,18 +361,13 @@ final class PasskeyAction
         }
 
         $credentialId = (int) ($args['id'] ?? 0);
-        $credential = $this->credentials->findActiveForUserById($context['user_id'], $credentialId);
-        if ($credential === null) {
-            return $this->credentialOperationFailed($response);
-        }
-
         $body = (array) ($request->getParsedBody() ?? []);
         try {
-            $this->stepUp->consume(
-                trim((string) ($body['step_up_token'] ?? '')),
+            $credential = $this->protectedOperations->revokePasskey(
                 $context['user_id'],
                 $context['session_token'],
-                'passkey.revoke:' . $credentialId,
+                $credentialId,
+                trim((string) ($body['step_up_token'] ?? '')),
             );
         } catch (OneTimeTokenException|StepUpOperationException) {
             return Json::error(
@@ -381,31 +376,17 @@ final class PasskeyAction
                 'Je vyžadováno nové ověření silným faktorem.',
                 403,
             );
-        }
-
-        $user = $this->freshUser($context['user_id']);
-        if ($user === null) {
-            return Json::error($response, 'unauthenticated', 'Nepřihlášený uživatel.', 401);
-        }
-        $remainingPasskeys = $this->credentials->countActiveForUser($context['user_id']) - 1;
-        $hasAllowedFactor = (
-            $this->mfaPolicy->isMethodAllowed('passkey') && $remainingPasskeys > 0
-        ) || (
-            $this->mfaPolicy->isMethodAllowed('totp') && (int) $user['totp_enabled'] === 1
-        );
-        if ($this->mfaPolicy->isRequired() && !$hasAllowedFactor) {
+        } catch (LastMfaFactorException) {
             return Json::error(
                 $response,
                 'last_mfa_factor',
                 'Při povinném MFA nelze odebrat poslední povolený silný faktor.',
                 409,
             );
-        }
-
-        if (!$this->credentials->revoke($context['user_id'], $credentialId)) {
+        } catch (\DomainException) {
             return $this->credentialOperationFailed($response);
         }
-        $this->sessions->destroyAllForUser($context['user_id'], $context['session_token']);
+
         $this->log(
             $request,
             'auth.passkey_revoked',
@@ -422,6 +403,9 @@ final class PasskeyAction
         $context = $this->sessionContext($request);
         if ($context === null) {
             return $this->sessionRequired($response);
+        }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
         }
         $body = (array) ($request->getParsedBody() ?? []);
         try {
@@ -469,6 +453,9 @@ final class PasskeyAction
         if ($context === null) {
             return $this->sessionRequired($response);
         }
+        if (!$this->passkeys->isAvailable()) {
+            return $this->passkeysUnavailable($response);
+        }
         $body = (array) ($request->getParsedBody() ?? []);
         $credentialPayload = $body['credential'] ?? null;
         $operation = trim((string) ($body['operation'] ?? ''));
@@ -477,53 +464,27 @@ final class PasskeyAction
         }
 
         try {
-            $operation = $this->stepUp->assertAllowed(
-                $context['user_id'],
-                $operation,
-                'passkey',
-            );
-            $ceremony = $this->ceremonies->consume(
+            $completed = $this->sessionTransitions->completeStepUp(
                 trim((string) ($body['flow_token'] ?? '')),
-                WebAuthnCeremonyStore::PURPOSE_STEP_UP,
+                is_array($credentialPayload) ? $credentialPayload : [],
                 $context['user_id'],
                 $context['session_token'],
                 $operation,
             );
-            if (!is_array($credentialPayload)) {
-                throw new PasskeyVerificationException('Chybí WebAuthn credential.');
-            }
-            if ($this->freshUser($context['user_id']) === null) {
-                return Json::error($response, 'unauthenticated', 'Nepřihlášený uživatel.', 401);
-            }
-            $rawCredentialId = $this->passkeys->credentialId($credentialPayload);
-            $stored = $this->credentials->findActiveByCredentialId($rawCredentialId);
-            if ($stored === null || $stored->userId !== $context['user_id']) {
-                throw new PasskeyVerificationException('Ověření passkey selhalo.');
-            }
-            $verified = $this->passkeys->verifyAssertion(
-                $credentialPayload,
-                $ceremony->options,
-                $stored->record,
-            );
-            if (!$this->credentials->updateAfterAssertion($stored, $verified)) {
-                $this->log(
-                    $request,
-                    'auth.passkey_counter_anomaly',
-                    $context['user_id'],
-                    $stored->id,
-                    ['credential_id' => $stored->id],
-                );
-                $this->bruteForce->recordPasskeyFailure($context['user_id']);
-                return $this->stepUpVerificationFailed($response);
-            }
+            $stored = $completed['credential'];
+            $operation = $completed['operation'];
+            $proofToken = $completed['proof_token'];
             $this->bruteForce->recordPasskeySuccess($context['user_id']);
-            $proofToken = $this->stepUp->issue(
+        } catch (PasskeyCounterAnomalyException $e) {
+            $this->log(
+                $request,
+                'auth.passkey_counter_anomaly',
                 $context['user_id'],
-                $context['session_token'],
-                $operation,
-                'passkey',
-                $stored->id,
+                $e->credentialId,
+                ['credential_id' => $e->credentialId],
             );
+            $this->bruteForce->recordPasskeyFailure($context['user_id']);
+            return $this->stepUpVerificationFailed($response);
         } catch (OneTimeTokenException|PasskeyVerificationException|StepUpOperationException) {
             $this->bruteForce->recordPasskeyFailure($context['user_id']);
             return $this->stepUpVerificationFailed($response);
@@ -603,6 +564,16 @@ final class PasskeyAction
             'session_required',
             'Tento endpoint je dostupný pouze z přihlášené webové session.',
             403,
+        );
+    }
+
+    private function passkeysUnavailable(Response $response): Response
+    {
+        return Json::error(
+            $response,
+            'passkeys_unavailable',
+            'Passkeys nejsou kvůli konfiguraci této instalace dostupné.',
+            503,
         );
     }
 

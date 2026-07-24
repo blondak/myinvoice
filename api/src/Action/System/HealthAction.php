@@ -8,6 +8,8 @@ use MyInvoice\Http\Json;
 use MyInvoice\Infrastructure\Cache\RedisProbe;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Service\Auth\MfaPolicyService;
+use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Update\VersionService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -20,6 +22,8 @@ final class HealthAction
         private readonly RedisProbe $redis,
         private readonly SecretEncryption $crypto,
         private readonly VersionService $version,
+        private readonly PasskeyService $passkeys,
+        private readonly MfaPolicyService $mfaPolicy,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -42,6 +46,15 @@ final class HealthAction
                 $warnings[] = [
                     'code' => 'secret_encryption_key',
                     'message' => $keyWarning,
+                ];
+            }
+            if ($this->mfaPolicy->isMethodAllowed('passkey')
+                && !$this->passkeys->isAvailable()
+            ) {
+                $warnings[] = [
+                    'code' => 'webauthn_configuration',
+                    'message' => $this->passkeys->configurationError()
+                        ?? 'Konfigurace WebAuthn není platná.',
                 ];
             }
             $payload['warnings'] = $warnings;
