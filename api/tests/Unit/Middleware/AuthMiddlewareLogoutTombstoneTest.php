@@ -1,0 +1,82 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Tests\Unit\Middleware;
+
+use MyInvoice\Infrastructure\Config\Config;
+use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Service\Auth\ApiTokenService;
+use MyInvoice\Service\Auth\SessionManager;
+use MyInvoice\Service\IpMatcher;
+use PDO;
+use PDOStatement;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Slim\Psr7\Factory\ResponseFactory;
+use Slim\Psr7\Factory\ServerRequestFactory;
+
+#[AllowMockObjectsWithoutExpectations]
+final class AuthMiddlewareLogoutTombstoneTest extends TestCase
+{
+    public function testPostLogoutLoadsTombstoneWithoutTouchingIt(): void
+    {
+        $token = str_repeat('a', 64);
+        $session = [
+            'user_id' => 17,
+            'csrf_token' => str_repeat('b', 64),
+            'assurance_level' => 'strong',
+        ];
+        $sessions = $this->createMock(SessionManager::class);
+        $sessions->expects(self::once())->method('load')->with($token)->willReturn(null);
+        $sessions->expects(self::once())
+            ->method('loadTombstoneForLogout')
+            ->with($token)
+            ->willReturn($session);
+        $sessions->expects(self::never())->method('touch');
+
+        $statement = $this->createMock(PDOStatement::class);
+        $statement->expects(self::once())->method('execute')->with([17]);
+        $statement->expects(self::once())->method('fetch')->with(PDO::FETCH_ASSOC)->willReturn([
+            'id' => 17,
+            'email' => 'synthetic@example.invalid',
+            'name' => 'Synthetic User',
+            'role' => 'admin',
+            'locale' => 'cs',
+            'is_active' => 1,
+            'totp_enabled' => 0,
+        ]);
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects(self::once())->method('prepare')->willReturn($statement);
+        $db = $this->createMock(Connection::class);
+        $db->method('pdo')->willReturn($pdo);
+
+        $middleware = new AuthMiddleware(
+            new Config(['session' => ['cookie_name' => '__Host-myinvoice_session']]),
+            $sessions,
+            $db,
+            new ResponseFactory(),
+            $this->createMock(ApiTokenService::class),
+            $this->createMock(IpMatcher::class),
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/logout')
+            ->withCookieParams(['__Host-myinvoice_session' => $token]);
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                TestCase::assertTrue($request->getAttribute(AuthMiddleware::ATTR_LOGOUT_TOMBSTONE));
+                TestCase::assertSame('session', $request->getAttribute(AuthMiddleware::ATTR_METHOD));
+                TestCase::assertSame(str_repeat('a', 64), $request->getAttribute(AuthMiddleware::ATTR_TOKEN));
+                TestCase::assertSame(17, $request->getAttribute(AuthMiddleware::ATTR_USER)['id'] ?? null);
+                return (new ResponseFactory())->createResponse(204);
+            }
+        };
+
+        self::assertSame(204, $middleware->process($request, $handler)->getStatusCode());
+    }
+}

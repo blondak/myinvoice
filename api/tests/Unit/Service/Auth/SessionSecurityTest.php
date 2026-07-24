@@ -224,6 +224,32 @@ final class SessionSecurityTest extends TestCase
         $this->sessions->rotateLocked($created['token'], 'passkey', $credentialId);
     }
 
+    public function testLogoutCanResolveReplacedGenerationAndRevokeRotatedFamily(): void
+    {
+        $credentialId = $this->createCredentialRow();
+        $created = $this->sessions->create(
+            $this->userId,
+            '127.0.0.1',
+            'PHPUnit',
+            SessionAuthContext::strong('passkey', $this->clock->now(), $credentialId),
+        );
+        self::assertTrue($this->lock->lockManually($created['token'])->locked);
+        $rotated = $this->sessions->rotateLocked($created['token'], 'passkey', $credentialId);
+
+        self::assertNull($this->sessions->load($created['token']));
+        $tombstone = $this->sessions->loadTombstoneForLogout($created['token']);
+        self::assertNotNull($tombstone);
+        self::assertSame($created['csrf_token'], $tombstone['csrf_token']);
+        self::assertSame($this->userId, $tombstone['user_id']);
+        self::assertSame(1, $tombstone['generation']);
+
+        $this->sessions->destroy($created['token']);
+
+        self::assertNull($this->sessions->load($rotated['token']));
+        self::assertNotNull($this->sessions->loadTombstoneForLogout($created['token']));
+        self::assertNotNull($this->sessions->loadTombstoneForLogout($rotated['token']));
+    }
+
     public function testCompletingSetupRevokesEverySetupSessionAndCreatesNewStrongFamily(): void
     {
         $first = $this->sessions->create(

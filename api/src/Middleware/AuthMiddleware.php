@@ -30,6 +30,7 @@ final class AuthMiddleware implements MiddlewareInterface
     public const ATTR_TOKEN      = 'auth.token';
     public const ATTR_API_TOKEN  = 'auth.api_token';
     public const ATTR_METHOD     = 'auth.method'; // 'session' | 'bearer'
+    public const ATTR_LOGOUT_TOMBSTONE = 'auth.logout_tombstone';
 
     private const PUBLIC_PATHS = [
         '/api/health',
@@ -103,8 +104,16 @@ final class AuthMiddleware implements MiddlewareInterface
         $cookieName = (string) $this->config->get('session.cookie_name', '__Host-myinvoice_session');
         $cookies    = $request->getCookieParams();
         $token      = (string) ($cookies[$cookieName] ?? '');
+        $path       = $request->getUri()->getPath();
+        $isLogout   = strtoupper($request->getMethod()) === 'POST'
+            && $path === '/api/auth/logout';
 
         $session = $token !== '' ? $this->sessions->load($token) : null;
+        $logoutTombstone = false;
+        if ($session === null && $token !== '' && $isLogout) {
+            $session = $this->sessions->loadTombstoneForLogout($token);
+            $logoutTombstone = $session !== null;
+        }
 
         if ($session !== null) {
             // Načti aktivního usera
@@ -122,8 +131,13 @@ final class AuthMiddleware implements MiddlewareInterface
                     ->withAttribute(self::ATTR_SESSION, $session)
                     ->withAttribute(self::ATTR_TOKEN, $token)
                     ->withAttribute(self::ATTR_METHOD, 'session');
+                if ($logoutTombstone) {
+                    $request = $request->withAttribute(self::ATTR_LOGOUT_TOMBSTONE, true);
+                }
 
-                $this->sessions->touch($token);
+                if (!$logoutTombstone) {
+                    $this->sessions->touch($token);
+                }
             } else {
                 // User smazán/deaktivován — invaliduj session
                 $this->sessions->destroy($token);
@@ -131,7 +145,6 @@ final class AuthMiddleware implements MiddlewareInterface
             }
         }
 
-        $path = $request->getUri()->getPath();
         if (in_array($path, self::PUBLIC_PATHS, true)
             || str_starts_with($path, '/api/public/')
         ) {

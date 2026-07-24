@@ -26,6 +26,10 @@ const allowed = computed<Array<'passkey' | 'totp'>>(() => auth.allowedMfaMethods
 const passkeyAllowed = computed(() => allowed.value.includes('passkey'))
 const totpAllowed = computed(() => allowed.value.includes('totp'))
 const passkeySupported = isWebAuthnAvailable()
+const passkeyRequiresTotpStepUp = computed(() => auth.user?.totp_enabled === true)
+const passkeyAuthorizationReady = computed(() => passkeyRequiresTotpStepUp.value
+  ? /^\d{6}$/.test(totpCode.value)
+  : currentPassword.value.length > 0)
 
 async function selectMethod(next: 'passkey' | 'totp') {
   if (!allowed.value.includes(next)) return
@@ -37,14 +41,26 @@ async function selectMethod(next: 'passkey' | 'totp') {
 }
 
 async function completePasskey() {
-  if (!currentPassword.value) {
-    error.value = t('mfa_setup.password_required')
-    return
+  const authorization: { current_password?: string; step_up_token?: string } = {}
+  if (passkeyRequiresTotpStepUp.value) {
+    if (!/^\d{6}$/.test(totpCode.value)) {
+      error.value = t('mfa_setup.transition_totp_required')
+      return
+    }
+  } else {
+    if (!currentPassword.value) {
+      error.value = t('mfa_setup.password_required')
+      return
+    }
+    authorization.current_password = currentPassword.value
   }
   busy.value = true
   error.value = ''
   try {
-    const flow = await authApi.passkeyRegisterOptions({ current_password: currentPassword.value })
+    if (passkeyRequiresTotpStepUp.value) {
+      authorization.step_up_token = await authApi.totpStepUp('passkey.register', totpCode.value)
+    }
+    const flow = await authApi.passkeyRegisterOptions(authorization)
     const credential = await createCredential(flow.public_key)
     const result = await authApi.passkeyRegisterVerify(
       flow.flow_token,
@@ -138,10 +154,18 @@ onMounted(async () => {
             <input v-model="passkeyLabel" maxlength="100"
               :placeholder="t('mfa_setup.passkey_label')"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
-            <input v-model="currentPassword" type="password" autocomplete="current-password"
+            <template v-if="passkeyRequiresTotpStepUp">
+              <p class="text-sm text-neutral-600">{{ t('mfa_setup.transition_totp_hint') }}</p>
+              <input v-model="totpCode" inputmode="numeric" autocomplete="one-time-code"
+                maxlength="6" pattern="\d{6}" :placeholder="t('auth.totp_code')"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono text-lg tracking-widest text-center"
+                @keydown.enter="completePasskey" />
+            </template>
+            <input v-else v-model="currentPassword" type="password" autocomplete="current-password"
               :placeholder="t('auth.current_password')"
-              class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
-            <button type="button" @click="completePasskey" :disabled="busy || !currentPassword"
+              class="w-full h-10 px-3 border border-neutral-300 rounded-md"
+              @keydown.enter="completePasskey" />
+            <button type="button" @click="completePasskey" :disabled="busy || !passkeyAuthorizationReady"
               class="w-full h-10 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
               {{ busy ? t('auth.passkey_verifying') : t('mfa_setup.create_passkey') }}
             </button>

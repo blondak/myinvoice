@@ -62,6 +62,7 @@ final class RequireMfaMiddlewareTest extends TestCase
             ['POST', '/api/auth/totp/enable'],
             ['POST', '/api/auth/webauthn/register/options'],
             ['POST', '/api/auth/webauthn/register/verify'],
+            ['POST', '/api/auth/mfa/step-up/totp'],
             ['POST', '/api/auth/logout'],
         ];
 

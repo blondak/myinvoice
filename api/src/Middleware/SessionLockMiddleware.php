@@ -16,29 +16,52 @@ use Slim\Psr7\Factory\ResponseFactory;
 
 final class SessionLockMiddleware implements MiddlewareInterface
 {
+    /** @var array<string,list<string>> */
     private const LOCKED_ALLOWED = [
-        '/api/auth/logout',
-        '/api/auth/session/status',
-        '/api/auth/session/unlock/options',
-        '/api/auth/session/unlock/verify',
+        'GET' => [
+            '/api/auth/session/status',
+        ],
+        'POST' => [
+            '/api/auth/logout',
+            '/api/auth/session/unlock/options',
+            '/api/auth/session/unlock/verify',
+        ],
     ];
 
+    /** @var array<string,list<string>> */
     private const PUBLIC_PATHS = [
-        '/api/health',
-        '/api/version',
-        '/api/openapi.yaml',
-        '/api/docs',
-        '/api/reference',
-        '/api/scalar',
-        '/api/auth/setup-status',
-        '/api/auth/setup',
-        '/api/auth/setup-ares-lookup',
-        '/api/auth/setup-crpdph-lookup',
-        '/api/auth/setup-sample',
-        '/api/auth/login',
-        '/api/auth/webauthn/login/verify',
-        '/api/auth/forgot',
-        '/api/auth/reset',
+        'GET' => [
+            '/api/health',
+            '/api/version',
+            '/api/openapi.yaml',
+            '/api/docs',
+            '/api/reference',
+            '/api/scalar',
+            '/api/auth/setup-status',
+        ],
+        'POST' => [
+            '/api/auth/setup',
+            '/api/auth/setup-ares-lookup',
+            '/api/auth/setup-crpdph-lookup',
+            '/api/auth/forgot',
+            '/api/auth/reset',
+        ],
+    ];
+
+    /** @var array<string,list<string>> */
+    private const PUBLIC_PATH_PATTERNS = [
+        'GET' => [
+            '#^/api/public/approval/[a-f0-9]{32,128}$#D',
+            '#^/api/public/invoice/[a-f0-9]{32,128}$#D',
+            '#^/api/public/invoice/[a-f0-9]{32,128}/pdf$#D',
+            '#^/api/public/invoice/[a-f0-9]{32,128}/attachment/[0-9]+$#D',
+            '#^/api/public/work-report/[a-f0-9]{32,128}$#D',
+        ],
+        'POST' => [
+            '#^/api/public/approval/[a-f0-9]{32,128}/decide$#D',
+            '#^/api/public/work-report/[a-f0-9]{32,128}/request-code$#D',
+            '#^/api/public/work-report/[a-f0-9]{32,128}/verify$#D',
+        ],
     ];
 
     public function __construct(
@@ -56,6 +79,21 @@ final class SessionLockMiddleware implements MiddlewareInterface
         $session = $request->getAttribute(AuthMiddleware::ATTR_SESSION);
         if (is_array($session) && ($session['assurance_level'] ?? 'legacy') === 'setup') {
             return $handler->handle($request);
+        }
+        $method = strtoupper($request->getMethod());
+        $path = $request->getUri()->getPath();
+        if ($request->getAttribute(AuthMiddleware::ATTR_LOGOUT_TOMBSTONE) === true) {
+            if (self::isAllowed($method, $path, self::LOCKED_ALLOWED)
+                && $path === '/api/auth/logout'
+            ) {
+                return $handler->handle($request);
+            }
+            return Json::error(
+                $this->responseFactory->createResponse(401),
+                'session_expired',
+                'Session vypršela.',
+                401,
+            );
         }
         $token = (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, '');
         $result = $this->locks->evaluate($token);
@@ -85,11 +123,12 @@ final class SessionLockMiddleware implements MiddlewareInterface
             );
         }
 
-        $path = $request->getUri()->getPath();
-        if (in_array($path, self::LOCKED_ALLOWED, true)) {
+        if (self::isAllowed($method, $path, self::LOCKED_ALLOWED)) {
             return $handler->handle($request);
         }
-        if (in_array($path, self::PUBLIC_PATHS, true) || str_starts_with($path, '/api/public/')) {
+        if (self::isAllowed($method, $path, self::PUBLIC_PATHS)
+            || self::isPublicSharePath($method, $path)
+        ) {
             return $handler->handle(
                 $request
                     ->withoutAttribute(AuthMiddleware::ATTR_USER)
@@ -105,5 +144,23 @@ final class SessionLockMiddleware implements MiddlewareInterface
             'Session je zamčená a musí se znovu odemknout.',
             423,
         );
+    }
+
+    /**
+     * @param array<string,list<string>> $allowlist
+     */
+    private static function isAllowed(string $method, string $path, array $allowlist): bool
+    {
+        return in_array($path, $allowlist[$method] ?? [], true);
+    }
+
+    private static function isPublicSharePath(string $method, string $path): bool
+    {
+        foreach (self::PUBLIC_PATH_PATTERNS[$method] ?? [] as $pattern) {
+            if (preg_match($pattern, $path) === 1) {
+                return true;
+            }
+        }
+        return false;
     }
 }

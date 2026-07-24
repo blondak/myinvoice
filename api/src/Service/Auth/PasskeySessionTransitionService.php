@@ -14,6 +14,8 @@ use PDO;
  */
 final class PasskeySessionTransitionService
 {
+    private const CEREMONY_SAVEPOINT = 'webauthn_ceremony_consumed';
+
     public function __construct(
         private readonly Connection $db,
         private readonly SecurityClock $clock,
@@ -37,7 +39,7 @@ final class PasskeySessionTransitionService
     ): array {
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
-        $counterUpdated = false;
+        $ceremonyConsumed = false;
         try {
             $cutoff = $this->clock->capture($pdo);
             $this->lockActiveUser($pdo, $userId);
@@ -51,6 +53,8 @@ final class PasskeySessionTransitionService
                 $sessionToken,
                 null,
             );
+            $ceremonyConsumed = true;
+            $this->saveCeremonyConsumption($pdo);
             $stored = $this->lockCredential($pdo, $credentialPayload, $userId);
             $verified = $this->passkeys->verifyAssertion(
                 $credentialPayload,
@@ -65,7 +69,6 @@ final class PasskeySessionTransitionService
             )) {
                 throw new PasskeyCounterAnomalyException($stored->id);
             }
-            $counterUpdated = true;
             $session = $this->sessions->rotateLockedInTransaction(
                 $pdo,
                 $cutoff,
@@ -77,7 +80,12 @@ final class PasskeySessionTransitionService
             $pdo->commit();
         } catch (OneTimeTokenException|PasskeyVerificationException|\DomainException $e) {
             if ($pdo->inTransaction()) {
-                $counterUpdated ? $pdo->rollBack() : $pdo->commit();
+                $this->commitFailedAttempt(
+                    $pdo,
+                    $cutoff,
+                    $flowToken,
+                    $ceremonyConsumed,
+                );
             }
             throw $e;
         } catch (\Throwable $e) {
@@ -114,7 +122,7 @@ final class PasskeySessionTransitionService
 
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
-        $counterUpdated = false;
+        $ceremonyConsumed = false;
         try {
             $cutoff = $this->clock->capture($pdo);
             $user = $this->lockActiveUser($pdo, $userId);
@@ -127,6 +135,8 @@ final class PasskeySessionTransitionService
                 null,
                 null,
             );
+            $ceremonyConsumed = true;
+            $this->saveCeremonyConsumption($pdo);
             $stored = $this->lockCredential($pdo, $credentialPayload, $userId);
             $verified = $this->passkeys->verifyAssertion(
                 $credentialPayload,
@@ -141,7 +151,6 @@ final class PasskeySessionTransitionService
             )) {
                 throw new PasskeyCounterAnomalyException($stored->id);
             }
-            $counterUpdated = true;
             $authContext = SessionAuthContext::strong('passkey', $cutoff->utc, $stored->id);
             $session = $this->sessions->createInTransaction(
                 $pdo,
@@ -168,7 +177,12 @@ final class PasskeySessionTransitionService
             $pdo->commit();
         } catch (OneTimeTokenException|PasskeyVerificationException|\DomainException $e) {
             if ($pdo->inTransaction()) {
-                $counterUpdated ? $pdo->rollBack() : $pdo->commit();
+                $this->commitFailedAttempt(
+                    $pdo,
+                    $cutoff,
+                    $flowToken,
+                    $ceremonyConsumed,
+                );
             }
             throw $e;
         } catch (\Throwable $e) {
@@ -200,7 +214,7 @@ final class PasskeySessionTransitionService
     ): array {
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
-        $counterUpdated = false;
+        $ceremonyConsumed = false;
         try {
             $cutoff = $this->clock->capture($pdo);
             $this->lockActiveUser($pdo, $userId);
@@ -215,6 +229,8 @@ final class PasskeySessionTransitionService
                 $sessionToken,
                 $operation,
             );
+            $ceremonyConsumed = true;
+            $this->saveCeremonyConsumption($pdo);
             $stored = $this->lockCredential($pdo, $credentialPayload, $userId);
             $verified = $this->passkeys->verifyAssertion(
                 $credentialPayload,
@@ -229,7 +245,6 @@ final class PasskeySessionTransitionService
             )) {
                 throw new PasskeyCounterAnomalyException($stored->id);
             }
-            $counterUpdated = true;
             $proofToken = $this->proofs->issueInTransaction(
                 $pdo,
                 $cutoff,
@@ -247,7 +262,12 @@ final class PasskeySessionTransitionService
             | \DomainException $e
         ) {
             if ($pdo->inTransaction()) {
-                $counterUpdated ? $pdo->rollBack() : $pdo->commit();
+                $this->commitFailedAttempt(
+                    $pdo,
+                    $cutoff,
+                    $flowToken,
+                    $ceremonyConsumed,
+                );
             }
             throw $e;
         } catch (\Throwable $e) {
@@ -262,6 +282,32 @@ final class PasskeySessionTransitionService
             'credential' => $stored,
             'operation' => $operation,
         ];
+    }
+
+    private function saveCeremonyConsumption(PDO $pdo): void
+    {
+        $pdo->exec('SAVEPOINT ' . self::CEREMONY_SAVEPOINT);
+    }
+
+    private function commitFailedAttempt(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $flowToken,
+        bool $ceremonyConsumed,
+    ): void {
+        try {
+            if ($ceremonyConsumed) {
+                $pdo->exec('ROLLBACK TO SAVEPOINT ' . self::CEREMONY_SAVEPOINT);
+            } else {
+                $this->ceremonies->markAttemptUsedInTransaction($pdo, $cutoff, $flowToken);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     /**

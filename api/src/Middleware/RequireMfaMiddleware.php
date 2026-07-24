@@ -47,6 +47,7 @@ final class RequireMfaMiddleware implements MiddlewareInterface
             '/api/auth/totp/enable',
             '/api/auth/webauthn/register/options',
             '/api/auth/webauthn/register/verify',
+            '/api/auth/mfa/step-up/totp',
             '/api/auth/logout',
         ],
     ];

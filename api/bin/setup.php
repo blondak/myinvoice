@@ -55,6 +55,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Ares\AresClient;
 use MyInvoice\Service\Auth\PasswordHasher;
+use MyInvoice\Service\Auth\WebAuthnConfig;
 use MyInvoice\Service\Config\CfgLocalWriter;
 use Monolog\Logger;
 
@@ -172,6 +173,15 @@ if ($requireMfa) {
         if ($allowedMfaMethods !== []
             && array_diff($allowedMfaMethods, ['passkey', 'totp']) === []
         ) {
+            if ($allowedMfaMethods === ['passkey']) {
+                try {
+                    new WebAuthnConfig($config);
+                } catch (\InvalidArgumentException $e) {
+                    echo "    ⚠  Passkey-only MFA nelze s aktuální app.url použít: {$e->getMessage()}\n";
+                    echo "       Uprav app.url, ukonči setup, nebo zvol také TOTP jako dostupnou metodu.\n";
+                    continue;
+                }
+            }
             break;
         }
         echo "    ⚠  Zadej neprázdnou kombinaci: passkey, totp nebo passkey,totp.\n";

@@ -15,13 +15,16 @@ use MyInvoice\Service\Auth\MfaProtectedOperationService;
 use MyInvoice\Service\Auth\MfaStepUpProofStore;
 use MyInvoice\Service\Auth\MfaStepUpService;
 use MyInvoice\Service\Auth\OneTimeTokenException;
+use MyInvoice\Service\Auth\PasskeyCounterAnomalyException;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasskeySessionTransitionService;
+use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\PsrSecurityClock;
 use MyInvoice\Service\Auth\SessionAuthContext;
 use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Auth\SessionLockService;
 use MyInvoice\Service\Auth\SessionManager;
+use MyInvoice\Service\Auth\StepUpOperationException;
 use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\Group;
@@ -268,6 +271,151 @@ final class AtomicAuthTransitionTest extends TestCase
             $session['token'],
             MfaStepUpService::OPERATION_API_TOKEN_CREATE,
         );
+    }
+
+    public function testInactiveUserConsumesLoginCeremonyBeforeFailure(): void
+    {
+        [, $record] = $this->createCredential(0, 'Inactive user key');
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_LOGIN,
+            $this->userId,
+            null,
+            null,
+            random_bytes(32),
+            ['challenge' => 'synthetic-inactive-login'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+        $this->db->pdo()->prepare('UPDATE users SET is_active = 0 WHERE id = ?')
+            ->execute([$this->userId]);
+
+        try {
+            $this->transitionFor($record->publicKeyCredentialId)->completeLogin(
+                $flowToken,
+                ['rawId' => 'synthetic'],
+                '127.0.0.1',
+                'PHPUnit',
+                $this->userId,
+            );
+            self::fail('Neaktivní uživatel nesmí dokončit passkey login.');
+        } catch (PasskeyVerificationException) {
+        }
+
+        $this->assertCeremonyUsed($flowToken);
+    }
+
+    public function testUnavailableLockedSessionConsumesUnlockCeremonyBeforeFailure(): void
+    {
+        [$credentialId, $record] = $this->createCredential(0, 'Unavailable unlock key');
+        $session = $this->sessions->create(
+            $this->userId,
+            '127.0.0.1',
+            'PHPUnit',
+            SessionAuthContext::strong('passkey', $this->clock->now(), $credentialId),
+        );
+        $locks = new SessionLockService(
+            $this->db,
+            $this->sessions,
+            new SessionLockPolicy($this->config),
+            $this->securityClock,
+            $this->ceremonies,
+        );
+        self::assertTrue($locks->lockManually($session['token'])->locked);
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_UNLOCK,
+            $this->userId,
+            $session['token'],
+            null,
+            random_bytes(32),
+            ['challenge' => 'synthetic-unavailable-unlock'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+        $this->sessions->destroy($session['token']);
+
+        try {
+            $this->transitionFor($record->publicKeyCredentialId)->completeUnlock(
+                $flowToken,
+                ['rawId' => 'synthetic'],
+                $this->userId,
+                $session['token'],
+            );
+            self::fail('Revokovaná session se nesmí odemknout.');
+        } catch (\DomainException) {
+        }
+
+        $this->assertCeremonyUsed($flowToken);
+    }
+
+    public function testInvalidStepUpOperationConsumesCeremonyBeforeFailure(): void
+    {
+        [, $record] = $this->createCredential(0, 'Invalid operation key');
+        $session = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit');
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_STEP_UP,
+            $this->userId,
+            $session['token'],
+            MfaStepUpService::OPERATION_API_TOKEN_CREATE,
+            random_bytes(32),
+            ['challenge' => 'synthetic-invalid-operation'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+
+        try {
+            $this->transitionFor($record->publicKeyCredentialId)->completeStepUp(
+                $flowToken,
+                ['rawId' => 'synthetic'],
+                $this->userId,
+                $session['token'],
+                'admin.anything',
+            );
+            self::fail('Neplatná step-up operace musí selhat.');
+        } catch (StepUpOperationException) {
+        }
+
+        $this->assertCeremonyUsed($flowToken);
+    }
+
+    public function testFailureAfterCounterMutationKeepsCeremonyUsedAndRollsBackCredential(): void
+    {
+        [$credentialId, $record] = $this->createCredential(4, 'Counter race key');
+        $flowToken = $this->ceremonies->create(
+            WebAuthnCeremonyStore::PURPOSE_LOGIN,
+            $this->userId,
+            null,
+            null,
+            random_bytes(32),
+            ['challenge' => 'synthetic-counter-race'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+        $transition = $this->transitionFor(
+            $record->publicKeyCredentialId,
+            function () use ($credentialId): void {
+                $this->db->pdo()->prepare(
+                    'UPDATE webauthn_credentials SET sign_count = sign_count + 100 WHERE id = ?'
+                )->execute([$credentialId]);
+            },
+        );
+
+        try {
+            $transition->completeLogin(
+                $flowToken,
+                ['rawId' => 'synthetic'],
+                '127.0.0.1',
+                'PHPUnit',
+                $this->userId,
+            );
+            self::fail('Souběžná změna counteru musí assertion odmítnout.');
+        } catch (PasskeyCounterAnomalyException) {
+        }
+
+        self::assertSame(
+            4,
+            $this->credentials->findActiveForUserById($this->userId, $credentialId)?->record->counter,
+        );
+        $this->assertCeremonyUsed($flowToken);
     }
 
     public function testApiTokenFailureRollsBackProofAndSuccessfulRetryConsumesIt(): void
@@ -678,7 +826,10 @@ final class AtomicAuthTransitionTest extends TestCase
         return [$this->credentials->save($this->userId, $record, $label), $record];
     }
 
-    private function transitionFor(string $credentialId): PasskeySessionTransitionService
+    private function transitionFor(
+        string $credentialId,
+        ?\Closure $beforeCounterUpdate = null,
+    ): PasskeySessionTransitionService
     {
         $passkeys = $this->createMock(PasskeyService::class);
         $passkeys->method('credentialId')->willReturn($credentialId);
@@ -687,7 +838,8 @@ final class AtomicAuthTransitionTest extends TestCase
                 array $payload,
                 array $options,
                 CredentialRecord $stored,
-            ): CredentialRecord {
+            ) use ($beforeCounterUpdate): CredentialRecord {
+                $beforeCounterUpdate?->__invoke();
                 $verified = clone $stored;
                 $verified->counter++;
                 return $verified;
@@ -703,6 +855,15 @@ final class AtomicAuthTransitionTest extends TestCase
             $this->stepUp,
             $this->proofs,
         );
+    }
+
+    private function assertCeremonyUsed(string $flowToken): void
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT used_at FROM webauthn_ceremonies WHERE flow_token_hash = ?'
+        );
+        $stmt->execute([hash('sha256', $flowToken, true)]);
+        self::assertNotNull($stmt->fetchColumn());
     }
 }
 

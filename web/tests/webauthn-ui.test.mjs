@@ -46,3 +46,12 @@ test('passkey management renders inside the shared profile tabs', async () => {
   assert.match(profile, /<Passkeys v-else \/>/)
   assert.match(router, /profile\/passkeys[\s\S]+tab: 'passkeys'/)
 })
+
+test('forced passkey setup uses existing TOTP as transition step-up', async () => {
+  const setup = await readFile(new URL('pages/ForcedMfaSetup.vue', root), 'utf8')
+
+  assert.match(setup, /auth\.user\?\.totp_enabled/)
+  assert.match(setup, /totpStepUp\('passkey\.register'/)
+  assert.match(setup, /authorization\.step_up_token/)
+  assert.match(setup, /authorization\.current_password/)
+})

@@ -4144,6 +4144,8 @@
     "default_passkey_label": "Můj přístupový klíč",
     "create_passkey": "Vytvořit přístupový klíč",
     "password_required": "Pro registraci první bezpečnostní metody zadej znovu své heslo.",
+    "transition_totp_hint": "Účet už má aktivní TOTP. Potvrď jeho aktuálním kódem bezpečný přechod na přístupový klíč.",
+    "transition_totp_required": "Pro registraci přístupového klíče zadej platný 6místný TOTP kód.",
     "logout_hint": "Bez dokončení MFA lze účet pouze odhlásit."
   },
   "validation": {

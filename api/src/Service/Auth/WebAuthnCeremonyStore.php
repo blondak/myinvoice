@@ -254,6 +254,44 @@ final class WebAuthnCeremonyStore
         );
     }
 
+    /**
+     * Spotřebuje první verify pokus i tehdy, když navazující kontrola uživatele,
+     * session nebo účelu selhala dřív, než šlo načíst vázaná ceremony data.
+     */
+    public function markAttemptUsedInTransaction(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $flowToken,
+    ): bool {
+        if (!$pdo->inTransaction()) {
+            throw new \LogicException('Spotřeba WebAuthn pokusu vyžaduje aktivní transakci.');
+        }
+        if (!self::isTokenShapeValid($flowToken)) {
+            return false;
+        }
+
+        $flowTokenHash = hash('sha256', $flowToken, true);
+        $stmt = $pdo->prepare(
+            'SELECT used_at
+               FROM webauthn_ceremonies
+              WHERE flow_token_hash = ?
+              FOR UPDATE'
+        );
+        $stmt->execute([$flowTokenHash]);
+        $usedAt = $stmt->fetchColumn();
+        if ($usedAt === false || $usedAt !== null) {
+            return false;
+        }
+
+        $markUsed = $pdo->prepare(
+            'UPDATE webauthn_ceremonies
+                SET used_at = ?
+              WHERE flow_token_hash = ? AND used_at IS NULL'
+        );
+        $markUsed->execute([$cutoff->utcSql, $flowTokenHash]);
+        return $markUsed->rowCount() === 1;
+    }
+
     private static function validateContext(string $purpose, ?string $sessionToken, ?string $operation): void
     {
         if (!in_array($purpose, self::PURPOSES, true)) {

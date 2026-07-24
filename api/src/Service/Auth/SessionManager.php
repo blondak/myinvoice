@@ -166,6 +166,39 @@ final class SessionManager
     }
 
     /**
+     * Načte nahrazenou nebo revokovanou generaci výhradně pro idempotentní
+     * logout celé session family. Volající ji nesmí použít k jiné autorizaci.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function loadTombstoneForLogout(string $token): ?array
+    {
+        if (!self::isTokenShapeValid($token)) {
+            return null;
+        }
+
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id, user_id, csrf_token, ip, user_agent,
+                    UNIX_TIMESTAMP(created_at) AS created_at,
+                    UNIX_TIMESTAMP(last_seen) AS last_seen,
+                    UNIX_TIMESTAMP(expires_at) AS expires_at,
+                    auth_method, assurance_level, mfa_verified_at, auth_credential_id,
+                    last_user_activity_at, locked_at, lock_reason,
+                    last_unlock_at, last_unlock_method,
+                    HEX(session_family_id) AS session_family_id,
+                    generation, replaced_at, revoked_at
+               FROM sessions
+              WHERE id = ?
+                AND expires_at > NOW()
+                AND (replaced_at IS NOT NULL OR revoked_at IS NOT NULL)
+              LIMIT 1'
+        );
+        $stmt->execute([$token]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row !== false ? self::hydrate($row) : null;
+    }
+
+    /**
      * Provozní touch nesmí měnit lidskou aktivitu ani absolutní expiraci.
      */
     public function touch(string $token): void
