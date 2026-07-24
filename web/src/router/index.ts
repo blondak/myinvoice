@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSupplierStore } from '@/stores/supplier'
+import { useSessionSecurityStore } from '@/stores/sessionSecurity'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -85,17 +86,19 @@ const routes: RouteRecordRaw[] = [
       { path: 'recurring/:id(\\d+)',    name: 'recurring-detail', component: () => import('@/pages/recurring/RecurringDetail.vue') },
       { path: 'recurring/:id(\\d+)/edit', name: 'recurring-edit', component: () => import('@/pages/recurring/RecurringForm.vue'), meta: { requiresWrite: true, requiresSupplier: true } },
       { path: 'admin/update',           name: 'admin-update',    component: () => import('@/pages/admin/Update.vue'),    meta: { adminOnly: true } },
-      // /profile/totp je zachován pro BC (staré bookmarks, force-TOTP middleware redirect),
-      // ale UI ho merge-uje do /profile/password (tabs). Redirect zachovává query stringy.
+      // Staré profilové URL zůstávají funkční, ale UI je zobrazuje jako záložky
+      // na /profile/password. Redirecty zachovávají ostatní query stringy.
       { path: 'profile/totp',           name: 'profile-totp',          redirect: (to) => ({ path: '/profile/password', query: { ...to.query, tab: 'totp' } }) },
       { path: 'profile/password',       name: 'profile-password',      component: () => import('@/pages/PasswordChange.vue') },
       { path: 'profile/api-tokens',     name: 'profile-api-tokens',    component: () => import('@/pages/ApiTokens.vue') },
+      { path: 'profile/passkeys',       name: 'profile-passkeys',      redirect: (to) => ({ path: '/profile/password', query: { ...to.query, tab: 'passkeys' } }) },
       { path: 'profile/signing-profiles', name: 'profile-signing-profiles', redirect: '/admin/electronic-signatures' },
     ],
   },
   { path: '/login',  name: 'login',  component: () => import('@/pages/Login.vue'),          meta: { public: true } },
   { path: '/setup',  name: 'setup',  component: () => import('@/pages/Setup.vue'),          meta: { public: true } },
-  { path: '/setup-totp', name: 'setup-totp', component: () => import('@/pages/ForcedTotpSetup.vue'), meta: { requiresAuth: true, totpSetupOnly: true } },
+  { path: '/setup-mfa', name: 'setup-mfa', component: () => import('@/pages/ForcedMfaSetup.vue'), meta: { requiresAuth: true, mfaSetupOnly: true } },
+  { path: '/setup-totp', name: 'setup-totp', redirect: { path: '/setup-mfa', query: { method: 'totp' } } },
   { path: '/forgot', name: 'forgot', component: () => import('@/pages/ForgotPassword.vue'), meta: { public: true } },
   { path: '/reset',  name: 'reset',  component: () => import('@/pages/ResetPassword.vue'),  meta: { public: true } },
   { path: '/approval/:token([a-f0-9]{32,128})', name: 'approval',
@@ -146,14 +149,23 @@ router.beforeEach(async (to) => {
     const ok = await auth.refresh()
     if (!ok) return { name: 'login' }
   }
-
-  // Vynucení 2FA: pokud cfg.auth.require_totp = true a uživatel nemá TOTP,
-  // přesměruj všechny privátní routes na /setup-totp (kromě samotné /setup-totp).
-  if (auth.isAuthenticated && auth.mustSetupTotp && to.name !== 'setup-totp' && requiresAuth) {
-    return { name: 'setup-totp' }
+  if (requiresAuth && auth.lockedSession) {
+    useSessionSecurityStore().apply(auth.lockedSession)
+    return true
   }
-  // Naopak když TOTP aktivovaný, /setup-totp už nedává smysl.
-  if (auth.isAuthenticated && !auth.mustSetupTotp && to.name === 'setup-totp') {
+  if (requiresAuth) {
+    const sessionSecurity = useSessionSecurityStore()
+    if (sessionSecurity.state === null) {
+      await sessionSecurity.refresh()
+    }
+  }
+
+  // Setup session nemá přístup k business routám, dokud uživatel nedokončí MFA.
+  const mustSetupMfa = auth.mustSetupMfa || auth.mustSetupTotp
+  if (auth.isAuthenticated && mustSetupMfa && to.name !== 'setup-mfa' && requiresAuth) {
+    return { name: 'setup-mfa' }
+  }
+  if (auth.isAuthenticated && !mustSetupMfa && to.name === 'setup-mfa') {
     return { name: 'home' }
   }
 

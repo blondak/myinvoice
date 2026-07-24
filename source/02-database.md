@@ -109,7 +109,27 @@ CREATE TABLE sessions (
   CONSTRAINT fk_sess_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 ```
-> Použito jen jako fallback, primárně Redis. Cron každou hodinu maže expirované.
+Migrace `0145_webauthn_passkeys_foundation.sql` rozšiřuje session o autoritativní
+auth/lock kontext: `auth_method`, `assurance_level`, `mfa_verified_at`,
+`auth_credential_id`, `last_user_activity_at`, `locked_at`, `lock_reason`,
+`last_unlock_at`, `last_unlock_method`, `session_family_id`, `generation`,
+`replaced_at` a `revoked_at`. MariaDB je bezpečnostní autorita i při zapnutém
+Redis; cache nesmí obnovit zamčenou, nahrazenou ani odvolanou generaci.
+
+## 2a. WebAuthn a MFA step-up
+
+Migrace `0145_webauthn_passkeys_foundation.sql` přidává:
+
+- `users.webauthn_user_handle` — náhodný stabilní user handle bez PII,
+- `webauthn_credentials` — credential ID, veřejný klíč, counter, transporty,
+  backup metadata, název a čas vytvoření/použití/odvolání,
+- `webauthn_ceremonies` — hash opaque flow tokenu, challenge, účel, operation,
+  vazba na user/session, options a jednorázové `used_at`,
+- `mfa_step_up_proofs` — hash proof tokenu vázaný na user, session, operation,
+  metodu a nejvýše jednu credential.
+
+Raw flow/proof tokeny se do DB neukládají. Expiraci a staré spotřebované řádky
+odstraňuje `api/bin/cron-cleanup.php`.
 
 ## 3. `password_resets`
 

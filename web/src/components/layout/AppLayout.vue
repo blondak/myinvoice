@@ -9,6 +9,7 @@ import { settingsApi } from '@/api/settings'
 import SupplierSwitcher from './SupplierSwitcher.vue'
 import GlobalSearch from './GlobalSearch.vue'
 import ThemeToggle from './ThemeToggle.vue'
+import { useSessionSecurityStore } from '@/stores/sessionSecurity'
 
 const { t, locale } = useI18n()
 function setLocale(l: 'cs' | 'en') {
@@ -20,6 +21,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const supplierStore = useSupplierStore()
+const sessionSecurity = useSessionSecurityStore()
 
 const mobileOpen = ref(false)
 const quickOpen = ref(false)
@@ -429,6 +431,10 @@ onMounted(async () => {
 
           <!-- Odhlásit (desktop) -->
           <button
+            @click="sessionSecurity.lock"
+            class="cursor-pointer hidden sm:inline-flex px-3 h-8 items-center text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50"
+          >{{ t('session_lock.lock_now') }}</button>
+          <button
             @click="logout"
             class="cursor-pointer hidden sm:inline-flex px-3 h-8 items-center text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50"
           >{{ t('nav.logout') }}</button>
@@ -622,6 +628,10 @@ onMounted(async () => {
                 </svg>
               </button>
             </div>
+            <button
+              @click="sessionSecurity.lock"
+              class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
+            >{{ t('session_lock.lock_now') }}</button>
             <button
               @click="logout"
               class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"

@@ -204,6 +204,13 @@ final class Config
     private static function baselineDefaults(): array
     {
         return [
+            'session' => [
+                'lock_after_minutes' => 0,
+            ],
+            'auth' => [
+                'require_mfa'         => null,
+                'allowed_mfa_methods' => ['passkey', 'totp'],
+            ],
             'ares' => [
                 'api'       => 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty',
                 'cache_ttl' => 86400,
@@ -281,9 +288,12 @@ final class Config
             // jinak se přihlašovací cookie neuloží. Default je `__Host-myinvoice_session`.
             'MYINVOICE_SESSION_COOKIE_NAME'  => ['session.cookie_name', 'string'],
             'MYINVOICE_SESSION_SAMESITE'     => ['session.cookie_samesite', 'string'],
+            'MYINVOICE_SESSION_LOCK_AFTER_MINUTES' => ['session.lock_after_minutes', 'strict_int'],
 
             // Auth
             'MYINVOICE_AUTH_REQUIRE_TOTP'    => ['auth.require_totp', 'bool'],
+            'MYINVOICE_AUTH_REQUIRE_MFA'     => ['auth.require_mfa', 'bool'],
+            'MYINVOICE_AUTH_MFA_METHODS'     => ['auth.allowed_mfa_methods', 'csv'],
 
             // SMTP
             'MYINVOICE_SMTP_HOST'       => ['smtp.host', 'string'],
@@ -373,11 +383,34 @@ final class Config
     private static function castEnv(string $raw, string $type): mixed
     {
         return match ($type) {
-            'bool'   => filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $raw,
-            'int'    => (int) $raw,
-            'float'  => (float) $raw,
-            default  => $raw,
+            'bool'       => filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $raw,
+            'int'        => (int) $raw,
+            'strict_int' => self::castStrictIntEnv($raw),
+            'csv'        => self::castCsvEnv($raw),
+            'float'      => (float) $raw,
+            default      => $raw,
         };
+    }
+
+    private static function castStrictIntEnv(string $raw): int
+    {
+        $value = filter_var(trim($raw), FILTER_VALIDATE_INT);
+        if ($value === false) {
+            throw new \RuntimeException('Neplatná celočíselná hodnota v environment konfiguraci.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function castCsvEnv(string $raw): array
+    {
+        return array_values(array_filter(
+            array_map(static fn (string $value): string => trim($value), explode(',', $raw)),
+            static fn (string $value): bool => $value !== '',
+        ));
     }
 
     /**

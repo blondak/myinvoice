@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Denní cleanup — login_attempts (>24h), expirované sessions, použité password_resets,
- * login_otps + trusted_devices (e-mailové 2FA), log files >90 dní.
+ * login_otps + trusted_devices, WebAuthn flow/proofy a log files >90 dní.
  *
  * POZN: PDF se NEMAŽE. Aktivní cache může pominout (renderer ji znovu vytvoří),
  * ale archivovaná historie (storage/invoices/sup-N/_archive) obsahuje verze
@@ -35,8 +35,22 @@ $n = $pdo->exec("DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL 
 $report['login_attempts'] = (int) $n;
 
 // 2) sessions — expirované
-$n = $pdo->exec("DELETE FROM sessions WHERE expires_at < NOW()");
+$n = $pdo->exec('DELETE FROM sessions WHERE expires_at < UTC_TIMESTAMP(6)');
 $report['expired_sessions'] = (int) $n;
+
+// 2b) WebAuthn ceremonies a MFA proofy — po expiraci/spotřebování drž nejvýše 1 den.
+$n = $pdo->exec(
+    'DELETE FROM webauthn_ceremonies
+      WHERE expires_at < UTC_TIMESTAMP(6) - INTERVAL 1 DAY
+         OR used_at < UTC_TIMESTAMP(6) - INTERVAL 1 DAY'
+);
+$report['webauthn_ceremonies'] = (int) $n;
+$n = $pdo->exec(
+    'DELETE FROM mfa_step_up_proofs
+      WHERE expires_at < UTC_TIMESTAMP(6) - INTERVAL 1 DAY
+         OR used_at < UTC_TIMESTAMP(6) - INTERVAL 1 DAY'
+);
+$report['mfa_step_up_proofs'] = (int) $n;
 
 // 3) password_resets — použité nebo expirované >7 dní
 $n = $pdo->exec("DELETE FROM password_resets WHERE used_at IS NOT NULL OR expires_at < NOW() - INTERVAL 7 DAY");

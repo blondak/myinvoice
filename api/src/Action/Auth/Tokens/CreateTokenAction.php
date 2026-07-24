@@ -7,9 +7,15 @@ namespace MyInvoice\Action\Auth\Tokens;
 use MyInvoice\Http\Json;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\ApiTokenService;
+use MyInvoice\Service\Auth\BruteForceGuard;
+use MyInvoice\Service\Auth\MfaPolicyService;
+use MyInvoice\Service\Auth\MfaStepUpService;
+use MyInvoice\Service\Auth\OneTimeTokenException;
 use MyInvoice\Service\Auth\SecretEncryption;
+use MyInvoice\Service\Auth\StepUpOperationException;
 use MyInvoice\Service\Auth\TotpService;
 use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -35,6 +41,10 @@ final class CreateTokenAction
         private readonly SecretEncryption $crypto,
         private readonly ActivityLogger $activity,
         private readonly IpMatcher $ipMatcher,
+        private readonly PasskeyCredentialRepository $credentials,
+        private readonly MfaPolicyService $mfaPolicy,
+        private readonly MfaStepUpService $stepUp,
+        private readonly BruteForceGuard $bruteForce,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -59,6 +69,7 @@ final class CreateTokenAction
         $scope = (string) ($body['scope'] ?? 'read');
         $expiresRaw = trim((string) ($body['expires_at'] ?? ''));
         $totpCode = trim((string) ($body['totp_code'] ?? ''));
+        $stepUpToken = trim((string) ($body['step_up_token'] ?? ''));
 
         if ($name === '' || mb_strlen($name) > 100) {
             return Json::error($response, 'validation_failed', 'Název tokenu musí mít 1–100 znaků.', 400);
@@ -67,14 +78,50 @@ final class CreateTokenAction
             return Json::error($response, 'validation_failed', 'Neplatný scope.', 400);
         }
 
-        // Step-up: pokud má user TOTP, vyžaduj kód
+        // Účelový step-up: jednorázový passkey/TOTP proof, nebo kompatibilní
+        // přímé TOTP ověření v tomto requestu.
         $stmt = $this->db->pdo()->prepare('SELECT totp_secret, totp_enabled FROM users WHERE id = ?');
         $stmt->execute([$userId]);
         $u = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $totpAvailable = (int) ($u['totp_enabled'] ?? 0) === 1
+            && !empty($u['totp_secret'])
+            && $this->mfaPolicy->isMethodAllowed('totp');
+        $passkeyAvailable = $this->mfaPolicy->isMethodAllowed('passkey')
+            && $this->credentials->countActiveForUser($userId) > 0;
 
-        if ((int) ($u['totp_enabled'] ?? 0) === 1) {
+        if ($stepUpToken !== '') {
+            try {
+                $this->stepUp->consume(
+                    $stepUpToken,
+                    $userId,
+                    (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, ''),
+                    MfaStepUpService::OPERATION_API_TOKEN_CREATE,
+                );
+            } catch (OneTimeTokenException|StepUpOperationException) {
+                return Json::error(
+                    $response,
+                    'step_up_proof_invalid',
+                    'Step-up ověření je neplatné nebo již bylo použito.',
+                    403,
+                );
+            }
+        } elseif ($totpAvailable) {
             if ($totpCode === '') {
-                return Json::error($response, 'totp_required', 'Pro vytvoření tokenu zadej kód z autentikátoru.', 401);
+                return Json::error(
+                    $response,
+                    $passkeyAvailable ? 'step_up_required' : 'totp_required',
+                    'Pro vytvoření tokenu je vyžadováno nové ověření.',
+                    401,
+                    ['methods' => $passkeyAvailable ? ['passkey', 'totp'] : ['totp']],
+                );
+            }
+            if ($this->bruteForce->isTotpLocked($userId)) {
+                return Json::error(
+                    $response,
+                    'too_many_attempts',
+                    'Příliš mnoho TOTP pokusů. Zkus to později.',
+                    429,
+                );
             }
             try {
                 $secret = $this->crypto->decrypt((string) $u['totp_secret']);
@@ -82,8 +129,18 @@ final class CreateTokenAction
                 return Json::error($response, 'server_error', 'Chyba konfigurace serveru.', 500);
             }
             if (!$this->totp->verify($secret, $totpCode)) {
+                $this->bruteForce->recordTotpFailure($userId);
                 return Json::error($response, 'invalid_code', 'Neplatný TOTP kód.', 401);
             }
+            $this->bruteForce->recordTotpSuccess($userId);
+        } elseif ($passkeyAvailable) {
+            return Json::error(
+                $response,
+                'step_up_required',
+                'Pro vytvoření tokenu je vyžadováno nové ověření.',
+                401,
+                ['methods' => ['passkey']],
+            );
         }
 
         // Validace supplier_id — musí existovat (FK + neumožnit zatuhle hodnotu od klienta)

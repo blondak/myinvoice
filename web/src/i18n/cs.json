@@ -997,6 +997,12 @@
     "name_placeholder": "např. Make integrace",
     "name_required": "Pojmenuj token, ať pak víš, k čemu byl vytvořen.",
     "totp_hint": "Pro vytvoření tokenu zadej aktuální kód z autentikační aplikace (step-up bezpečnost).",
+    "step_up_hint": "Před vytvořením tokenu znovu ověř svou totožnost.",
+    "step_up_required": "Ověř se přístupovým klíčem nebo zadej platný TOTP kód.",
+    "verify_passkey": "Ověřit přístupovým klíčem",
+    "passkey_verified": "Přístupový klíč ověřen",
+    "passkey_failed": "Ověření přístupovým klíčem se nepodařilo.",
+    "passkey_unsupported": "Tento prohlížeč přístupové klíče nepodporuje. Použijte TOTP, pokud je pro účet nastavené; passkey-only účet musí použít podporovaný prohlížeč nebo správce.",
     "supplier_all": "Všichni dodavatelé (token přepíná přes hlavičku X-Supplier-Id)",
     "supplier_hint": "Token bound na konkrétního dodavatele nemůže přistupovat k datům jiných firem. Doporučeno.",
     "scope_read": "read",
@@ -1068,6 +1074,36 @@
     "how_native_desc": "Pro nativní deployment (sdílený hosting / VPS bez Dockeru) UI v této verzi nepouští download tarballu automaticky — místo toho ti po kliku na 'Aktualizovat' ukáže přesné copy-paste příkazy. Vyžaduje na hostu PHP CLI + Composer + Node + pnpm. Pokud nejsou k dispozici, použij production bundle z release page (kompletní deployable tar.gz):",
     "manual_link": "Detaily v manuálu — § 19 Aktualizace"
   },
+  "session_lock": {
+    "title": "Aplikace je zamčená",
+    "message": "Kvůli nečinnosti je potřeba znovu ověřit vaši totožnost.",
+    "unlock": "Odemknout přístupovým klíčem",
+    "unlocking": "Odemknutí…",
+    "failed": "Odemčení se nepodařilo. Zkuste to znovu.",
+    "no_passkey": "Tuto session nelze odemknout přístupovým klíčem. Odhlaste se a přihlaste znovu.",
+    "unsupported": "Tento prohlížeč přístupové klíče nepodporuje. Použijte podporované zařízení nebo prohlížeč, jinou nastavenou metodu obnovení, případně požádejte správce o obnovení MFA.",
+    "status_failed": "Stav session se nepodařilo bezpečně ověřit. Aplikace zůstává zamčená; zkontrolujte připojení a zkuste to znovu.",
+    "retry_status": "Zkusit znovu ověřit session",
+    "logout_failed": "Odhlášení se nepodařilo potvrdit. Aplikace zůstává bezpečně zamčená; zkontrolujte připojení a zkuste to znovu.",
+    "lock_now": "Zamknout"
+  },
+  "passkeys": {
+    "title": "Přístupové klíče",
+    "subtitle": "Přihlášení a odemknutí pomocí otisku prstu, obličeje, zámku zařízení nebo bezpečnostního klíče.",
+    "unsupported": "Tento prohlížeč přístupové klíče nepodporuje. Klíče zde nelze přidávat; jejich odebrání je možné pomocí TOTP, pokud je pro účet aktivní.",
+    "add": "Přidat přístupový klíč",
+    "label_placeholder": "Název, např. Pixel 9",
+    "fresh_auth_hint": "Přidání a odebrání vyžaduje nové ověření existujícím silným faktorem; u prvního faktoru aktuální heslo.",
+    "totp_optional": "6místný TOTP kód (volitelná alternativa)",
+    "empty": "Zatím nemáte uložený žádný přístupový klíč.",
+    "created": "Vytvořeno:",
+    "last_used": "Naposledy použito:",
+    "rename": "Přejmenovat",
+    "rename_prompt": "Nový název přístupového klíče",
+    "revoke": "Odebrat",
+    "revoke_confirm": "Opravdu odebrat přístupový klíč „{label}“?",
+    "operation_failed": "Operace s přístupovým klíčem se nepodařila."
+  },
   "auth": {
     "login": "Přihlásit", "login_title": "Přihlášení", "login_subtitle": "Přihlaste se ke svému účtu",
     "email": "E-mail", "password": "Heslo", "forgot": "Zapomenuté heslo?",
@@ -1123,7 +1159,12 @@
     "captcha_loading": "Počkej prosím, dokud se nenačte CAPTCHA…",
     "captcha_failed": "CAPTCHA selhala, zkuste znovu.",
     "too_many_attempts": "Příliš mnoho pokusů. Zkuste to později.",
-    "login_failed": "Přihlášení selhalo."
+    "login_failed": "Přihlášení selhalo.",
+    "passkey_login": "Ověřit přístupovým klíčem",
+    "passkey_verifying": "Ověřování…",
+    "passkey_failed": "Ověření přístupovým klíčem se nepodařilo.",
+    "passkey_unsupported_recovery": "Tento prohlížeč přístupové klíče nepodporuje. Použijte dostupný TOTP kód, podporované zařízení nebo prohlížeč, případně požádejte správce o obnovení MFA.",
+    "use_totp_instead": "Použít kód z autentikátoru"
   },
   "approval_inbox": {
     "title": "Schvalování výkazů",
@@ -4082,7 +4123,26 @@
     "sample_hint": "5 klientů, 8 zakázek, 20 faktur, 4 dobropisy a kniha jízd (1 auto, 15 jízd, 6 tankování) za poslední 2 měsíce. Pro vyzkoušení aplikace. Lze později smazat přes admin/reset.",
     "sample_done": "Vygenerováno: {clients} klientů, {projects} zakázek, {invoices} faktur, {credit_notes} dobropisů, {cars} auto, {trips} jízd, {fuelings} tankování.",
     "require_totp_label": "Vynutit dvoufaktorové ověření (2FA) pro všechny uživatele",
-    "require_totp_hint": "Po přihlášení bude každý uživatel přesměrován na nastavení TOTP, dokud 2FA neaktivuje. Volbu lze později změnit v cfg.local.php (auth.require_totp)."
+    "require_totp_hint": "Po přihlášení bude každý uživatel přesměrován na nastavení TOTP, dokud 2FA neaktivuje.",
+    "require_mfa_label": "Vynutit vícefaktorové ověření (MFA) pro všechny uživatele",
+    "require_mfa_hint": "Uživatel musí po zadání hesla použít přístupový klíč nebo TOTP podle povolených metod.",
+    "mfa_passkey": "Přístupový klíč (doporučeno)",
+    "mfa_totp": "TOTP z autentikační aplikace",
+    "mfa_method_required": "Vyber alespoň jednu metodu.",
+    "mfa_setup_next": "Vynucení MFA je aktivní. Po pokračování dokončíš nastavení zvolené metody."
+  },
+  "mfa_setup": {
+    "title": "Nastavení vícefaktorového ověření",
+    "intro": "Než budeš pokračovat do aplikace, aktivuj jednu z povolených bezpečnostních metod.",
+    "passkey": "Přístupový klíč",
+    "totp": "TOTP",
+    "passkey_hint": "Přístupový klíč využije bezpečné odemknutí telefonu nebo počítače. MyInvoice biometrická data nedostává ani neukládá.",
+    "passkey_unsupported": "Tento prohlížeč nebo připojení přístupové klíče nepodporuje. Zvolte TOTP, pokud je povolené, použijte podporované zařízení nebo požádejte správce o obnovení MFA.",
+    "passkey_label": "Název, např. Telefon",
+    "default_passkey_label": "Můj přístupový klíč",
+    "create_passkey": "Vytvořit přístupový klíč",
+    "password_required": "Pro registraci první bezpečnostní metody zadej znovu své heslo.",
+    "logout_hint": "Bez dokončení MFA lze účet pouze odhlásit."
   },
   "validation": {
     "required": "Povinné pole",

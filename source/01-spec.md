@@ -804,17 +804,24 @@ Server identification:
 - **Žádné `pepper` v aktivním logu** — nikdy nelogovat hash, plain hash, ani pokus o login s heslem.
 
 #### 9.3.2 Session
-- **Cookie:** `myinvoice_session=<128-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+- **Cookie:** `__Host-myinvoice_session=<256-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=<zbývající absolutní platnost>`
 - `SameSite=Lax` (nejen Strict) — Strict by rozbil link z emailů (reset hesla). Pro mutating requesty máme CSRF token jako další vrstvu.
 - **Server-side store:** Redis (primární) nebo MariaDB `sessions` tabulka. Klient nemá žádná data v cookie, jen opaque ID.
 - **Session ID rotace:** `regenerateId()` při:
   - úspěšném login
   - elevation privilegií (změna hesla, přechod readonly → admin)
   - každých 24h aktivity
-- **Idle timeout:** 4 hodiny bez aktivity → vyžadovat re-login pro citlivé akce (vystavení faktury, smazání klienta, změna nastavení dodavatele). Běžné GET requesty fungují dokud platí session.
+- **Idle app-lock:** `session.lock_after_minutes` (výchozí `0`, automatický
+  zámek zapne až explicitní kladná hodnota) se počítá z heartbeatů skutečného vstupu
+  uživatele. Po timeoutu je session serverově `locked` a business API vrací
+  `423 session_locked`; passkey unlock rotuje session ID a CSRF bez prodloužení
+  absolutní platnosti.
 - **Absolute timeout:** 30 dní od prvního přihlášení → force re-login.
-- **Concurrent sessions:** povolené (uživatel může být na desktopu i mobilu), v UI seznam aktivních sessions s tlačítkem „odhlásit zde".
+- **Concurrent sessions:** povolené (uživatel může být na desktopu i mobilu).
 - **Logout invaliduje session na serveru** (smaže z Redis/DB), ne jen cookie.
+- **MFA:** passkey/WebAuthn a TOTP jsou silné faktory. E-mailové OTP není silný
+  faktor pro povinnou MFA. Passkey se používá po hesle, pro účelový step-up a
+  k odemčení; passwordless login není součástí aktuálního stavu.
 
 #### 9.3.3 First-run setup
 Viz kapitola 2.0. Setup endpoint pracuje pod IP allowlist (pokud aktivní s `apply_to=all`) a má rate-limit 5/hod/IP. Po vytvoření prvního admina je trvale uzamčen.

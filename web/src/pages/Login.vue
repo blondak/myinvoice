@@ -7,6 +7,8 @@ const { t } = useI18n()
 import AppShell from '@/components/layout/AppShell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTurnstile } from '@/composables/useTurnstile'
+import { authApi } from '@/api/auth'
+import { getCredential, isWebAuthnAvailable } from '@/security/webauthn'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -19,6 +21,9 @@ const email = ref('')
 const password = ref('')
 const totp = ref('')
 const totpRequired = ref(false)
+const passkeyFlow = ref<{ flowToken: string; publicKey: Record<string, any>; methods: string[] } | null>(null)
+const passkeyBusy = ref(false)
+const passkeySupported = isWebAuthnAvailable()
 const error = ref<string>('')
 const captchaRequired = ref(false)
 const captchaSiteKey = ref('')
@@ -64,7 +69,7 @@ onMounted(async () => {
   // formuláře probíhal v rozjetém stavu a UX by byl matoucí.
   const stillAuthed = await auth.refresh()
   if (stillAuthed) {
-    router.replace(auth.mustSetupTotp ? '/setup-totp' : '/')
+    router.replace((auth.mustSetupMfa || auth.mustSetupTotp) ? '/setup-mfa' : '/')
     return
   }
   if (auth.setupStatus?.captcha.provider === 'turnstile') {
@@ -108,6 +113,15 @@ async function submit() {
       // Reset → fresh token pro další pokus s TOTP kódem (jinak by 2. submit
       // šel s already-consumed tokenem → captcha_failed → user musí submit 2x).
       turnstile.reset()
+    } else if (code === 'mfa_required') {
+      passkeyFlow.value = {
+        flowToken: data.flow_token,
+        publicKey: data.public_key,
+        methods: Array.isArray(data.methods) ? data.methods : ['passkey'],
+      }
+      totpRequired.value = false
+      error.value = ''
+      turnstile.reset()
     } else if (code === 'email_otp_required') {
       // Heslo OK, user nemá TOTP → backend poslal kód na e-mail.
       emailOtpRequired.value = true
@@ -136,6 +150,26 @@ async function submit() {
       turnstile.reset()
     }
   }
+}
+
+async function verifyPasskey() {
+  if (!passkeyFlow.value || !passkeySupported) return
+  passkeyBusy.value = true
+  error.value = ''
+  try {
+    const credential = await getCredential(passkeyFlow.value.publicKey)
+    await authApi.passkeyLoginVerify(passkeyFlow.value.flowToken, credential)
+    await auth.refresh()
+    router.push('/')
+  } catch (e: any) {
+    error.value = e?.response?.data?.error?.message || t('auth.passkey_failed')
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+function useTotpFallback() {
+  totpRequired.value = true
 }
 
 // Poslat e-mailový kód znovu. Re-submitne heslo s resend_otp=1; backend pošle
@@ -211,6 +245,20 @@ async function resendCode() {
             <p class="text-xs text-neutral-500 mt-1">{{ t('auth.totp_hint') }}</p>
           </div>
 
+          <div v-if="passkeyFlow" class="rounded-md border border-primary-200 bg-primary-50 p-3 space-y-2">
+            <button v-if="passkeySupported" type="button" @click="verifyPasskey" :disabled="passkeyBusy"
+                    class="w-full h-10 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
+              {{ passkeyBusy ? t('auth.passkey_verifying') : t('auth.passkey_login') }}
+            </button>
+            <p v-else class="text-sm text-warning-700">
+              {{ t('auth.passkey_unsupported_recovery') }}
+            </p>
+            <button v-if="passkeyFlow.methods.includes('totp')" type="button" @click="useTotpFallback"
+                    class="w-full text-sm text-primary-700 hover:underline">
+              {{ t('auth.use_totp_instead') }}
+            </button>
+          </div>
+
           <div v-if="emailOtpRequired">
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('auth.email_otp_code') }}</label>
             <input
@@ -257,7 +305,7 @@ async function resendCode() {
 
           <button
             type="submit"
-            :disabled="auth.loading || (captchaRequired && !turnstile.token.value)"
+            :disabled="auth.loading || !!passkeyFlow || (captchaRequired && !turnstile.token.value)"
             class="w-full h-10 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white font-medium rounded-md transition"
           >
             {{ auth.loading ? '…' : t('auth.login') }}

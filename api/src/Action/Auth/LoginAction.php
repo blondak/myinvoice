@@ -7,16 +7,23 @@ namespace MyInvoice\Action\Auth;
 use MyInvoice\Http\Json;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
 use MyInvoice\Service\Auth\EmailOtpService;
+use MyInvoice\Service\Auth\LoginSessionIssuer;
+use MyInvoice\Service\Auth\MfaPolicyService;
+use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasswordHasher;
 use MyInvoice\Service\Auth\SecretEncryption;
-use MyInvoice\Service\Auth\SessionManager;
+use MyInvoice\Service\Auth\SessionAuthContext;
+use MyInvoice\Service\Auth\StoredPasskeyCredential;
 use MyInvoice\Service\Auth\TotpService;
 use MyInvoice\Service\Auth\TrustedDeviceService;
+use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
 use MyInvoice\Service\Captcha\TurnstileVerifier;
 use MyInvoice\Service\IpMatcher;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -25,7 +32,6 @@ final class LoginAction
     public function __construct(
         private readonly Connection $db,
         private readonly PasswordHasher $hasher,
-        private readonly SessionManager $sessions,
         private readonly BruteForceGuard $bf,
         private readonly TurnstileVerifier $turnstile,
         private readonly ActivityLogger $logger,
@@ -35,6 +41,12 @@ final class LoginAction
         private readonly SecretEncryption $crypto,
         private readonly EmailOtpService $emailOtp,
         private readonly TrustedDeviceService $trustedDevices,
+        private readonly PasskeyCredentialRepository $credentials,
+        private readonly PasskeyService $passkeys,
+        private readonly WebAuthnCeremonyStore $ceremonies,
+        private readonly MfaPolicyService $mfaPolicy,
+        private readonly LoginSessionIssuer $loginIssuer,
+        private readonly ClockInterface $clock,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -104,17 +116,56 @@ final class LoginAction
             return Json::error($response, 'invalid_credentials', 'Neplatné přihlašovací údaje.', 401);
         }
 
-        // Druhý faktor. Dvě vzájemně výlučné větve:
-        //   A) user má aktivní TOTP → vyžaduj TOTP kód (authenticator app)
-        //   B) user nemá TOTP → e-mailové OTP (povinné, pokud cfg.auth.email_otp.enabled)
-        //      přeskočí se na „důvěryhodném zařízení" (remember-device cookie).
         $totpActive     = (int) $user['totp_enabled'] === 1 && !empty($user['totp_secret']);
+        $totpAllowed = $this->mfaPolicy->isMethodAllowed('totp');
+        $storedPasskeys = $this->mfaPolicy->isMethodAllowed('passkey')
+            ? $this->credentials->findAllForUser((int) $user['id'])
+            : [];
+        if ($storedPasskeys !== [] && $totpCode === '') {
+            $this->rehashPasswordIfNeeded($user, $password);
+            $challenge = random_bytes(32);
+            $options = $this->passkeys->assertionOptions(
+                array_map(
+                    static fn (StoredPasskeyCredential $credential) => $credential->record,
+                    $storedPasskeys,
+                ),
+                $challenge,
+            );
+            $flowToken = $this->ceremonies->create(
+                WebAuthnCeremonyStore::PURPOSE_LOGIN,
+                (int) $user['id'],
+                null,
+                null,
+                $challenge,
+                $options,
+                $ip,
+                $userAgent,
+            );
+            $methods = ['passkey'];
+            if ($totpActive && $totpAllowed) {
+                $methods[] = 'totp';
+            }
+
+            return Json::error(
+                $response,
+                'mfa_required',
+                'Je vyžadováno ověření silným faktorem.',
+                401,
+                [
+                    'flow_token' => $flowToken,
+                    'methods' => $methods,
+                    'public_key' => $options,
+                ],
+            );
+        }
+
         // Default OFF — opt-in feature, ať to není breaking change pro existující
         // instalace (jinak by se uživatelům bez TOTP náhle vyžadoval e-mailový kód).
         $emailOtpOn     = (bool) $this->config->get('auth.email_otp.enabled', false);
         $issueTrustedTd = false;  // vystavit trusted-device cookie po úspěšném loginu?
+        $authContext = SessionAuthContext::basic('password');
 
-        if ($totpActive) {
+        if ($totpActive && $totpAllowed) {
             if ($totpCode === '') {
                 // Nepočítej jako fail — uživatel zadal heslo OK, jen čekáme na 2FA
                 return Json::error($response, 'totp_required', 'TOTP kód požadován.', 401);
@@ -136,6 +187,7 @@ final class LoginAction
                 return Json::error($response, 'invalid_totp', 'Neplatný TOTP kód.', 401);
             }
             $this->bf->recordTotpSuccess((int) $user['id']);
+            $authContext = SessionAuthContext::strong('totp', $this->clock->now());
         } elseif ($emailOtpOn) {
             $tdCookieName = $this->trustedDevices->cookieName();
             $tdToken = $request->getCookieParams()[$tdCookieName] ?? null;
@@ -171,77 +223,40 @@ final class LoginAction
                 }
                 $this->bf->recordEmailOtpSuccess((int) $user['id']);
                 $issueTrustedTd = $rememberDevice;
+                $authContext = SessionAuthContext::basic('email_otp');
+            } else {
+                $authContext = SessionAuthContext::basic('trusted_device');
             }
         }
 
-        // Rehash pokud zastaral cost
-        if ($this->hasher->needsRehash((string) $user['password_hash'])) {
-            $newHash = $this->hasher->hash($password);
-            $this->db->pdo()->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-                ->execute([$newHash, (int) $user['id']]);
+        if ($this->mfaPolicy->isRequired()
+            && $authContext->assuranceLevel !== 'strong'
+        ) {
+            $authContext = SessionAuthContext::setup($authContext->authMethod);
         }
 
-        $this->bf->recordSuccess($email, $ip);
-
-        // Vytvoř session
-        $session = $this->sessions->create((int) $user['id'], $ip, $userAgent);
-
-        // Update last_login_at + last_login_ip + last_login_ua
-        $this->db->pdo()->prepare('UPDATE users SET last_login_at = NOW(), last_login_ip = ?, last_login_ua = ? WHERE id = ?')
-            ->execute([@inet_pton($ip) ?: null, substr($userAgent, 0, 255), (int) $user['id']]);
-
-        $this->logger->log('auth.login', (int) $user['id'], 'user', (int) $user['id'], [
-            'email' => $email,
-        ], $ip, $userAgent);
-
-        // Session cookie
-        $cookieName    = (string) $this->config->get('session.cookie_name', '__Host-myinvoice_session');
-        $cookieSecure  = (bool) $this->config->get('session.cookie_secure', true);
-        $cookieSameSite = (string) $this->config->get('session.cookie_samesite', 'Lax');
-        $maxAge = max(0, $session['expires_at'] - time());
-
-        $cookie = sprintf(
-            '%s=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=%s%s',
-            $cookieName,
-            $session['token'],
-            $maxAge,
-            $cookieSameSite,
-            $cookieSecure ? '; Secure' : '',
+        $this->rehashPasswordIfNeeded($user, $password);
+        return $this->loginIssuer->issue(
+            $response,
+            $user,
+            $ip,
+            $userAgent,
+            $authContext,
+            $issueTrustedTd,
         );
+    }
 
-        $totpEnabled   = (int) $user['totp_enabled'] === 1;
-        $requireTotp   = (bool) $this->config->get('auth.require_totp', false);
-        $mustSetupTotp = $requireTotp && !$totpEnabled;
-
-        $result = Json::ok($response, [
-            'user' => [
-                'id'              => (int) $user['id'],
-                'email'           => $user['email'],
-                'name'            => $user['name'],
-                'role'            => $user['role'],
-                'locale'          => $user['locale'],
-                'totp_enabled'    => $totpEnabled,
-                'must_setup_totp' => $mustSetupTotp,
-            ],
-            'csrf_token' => $session['csrf_token'],
-        ])->withHeader('Set-Cookie', $cookie);
-
-        // „Zapamatovat zařízení" — vystav trusted-device cookie, ať se příště
-        // email OTP nevyžaduje (platí jen pro email-OTP fallback, ne pro TOTP).
-        if ($issueTrustedTd) {
-            $tdToken = $this->trustedDevices->issue((int) $user['id'], $ip, $userAgent);
-            $tdCookie = sprintf(
-                '%s=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=%s%s',
-                $this->trustedDevices->cookieName(),
-                $tdToken,
-                $this->trustedDevices->days() * 86400,
-                $cookieSameSite,
-                $cookieSecure ? '; Secure' : '',
-            );
-            $result = $result->withAddedHeader('Set-Cookie', $tdCookie);
+    /**
+     * @param array<string,mixed> $user
+     */
+    private function rehashPasswordIfNeeded(array $user, string $password): void
+    {
+        if (!$this->hasher->needsRehash((string) $user['password_hash'])) {
+            return;
         }
-
-        return $result;
+        $newHash = $this->hasher->hash($password);
+        $this->db->pdo()->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+            ->execute([$newHash, (int) $user['id']]);
     }
 
     /** r***@hulan.cz — náznak adresy pro UI, bez prozrazení celého e-mailu. */

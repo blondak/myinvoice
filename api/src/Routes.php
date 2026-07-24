@@ -151,7 +151,10 @@ use MyInvoice\Action\Auth\ForgotPasswordAction;
 use MyInvoice\Action\Auth\LoginAction;
 use MyInvoice\Action\Auth\LogoutAction;
 use MyInvoice\Action\Auth\MeAction;
+use MyInvoice\Action\Auth\MfaStepUpAction;
+use MyInvoice\Action\Auth\PasskeyAction;
 use MyInvoice\Action\Auth\ResetPasswordAction;
+use MyInvoice\Action\Auth\SessionAction;
 use MyInvoice\Action\Auth\SetupAction;
 use MyInvoice\Action\Auth\SetupAresLookupAction;
 use MyInvoice\Action\Auth\SetupCrpDphLookupAction;
@@ -213,6 +216,21 @@ final class Routes
             $g->get ('/totp/status',     [TotpAction::class, 'status']);
             $g->post('/totp/setup',      [TotpAction::class, 'setup']);
             $g->post('/totp/enable',     [TotpAction::class, 'enable']);
+            // WebAuthn/passkeys — interní session-only self-service API
+            $g->get   ('/webauthn/credentials',              [PasskeyAction::class, 'credentials']);
+            $g->post  ('/webauthn/register/options',          [PasskeyAction::class, 'registerOptions']);
+            $g->post  ('/webauthn/register/verify',           [PasskeyAction::class, 'registerVerify']);
+            $g->post  ('/webauthn/login/verify',              [PasskeyAction::class, 'loginVerify']);
+            $g->post  ('/webauthn/step-up/options',           [PasskeyAction::class, 'stepUpOptions']);
+            $g->post  ('/webauthn/step-up/verify',            [PasskeyAction::class, 'stepUpVerify']);
+            $g->patch ('/webauthn/credentials/{id:[0-9]+}',   [PasskeyAction::class, 'rename']);
+            $g->delete('/webauthn/credentials/{id:[0-9]+}',   [PasskeyAction::class, 'revoke']);
+            $g->post  ('/mfa/step-up/totp',                   [MfaStepUpAction::class, 'totp']);
+            $g->get   ('/session/status',                     [SessionAction::class, 'status']);
+            $g->post  ('/session/activity',                   [SessionAction::class, 'activity']);
+            $g->post  ('/session/lock',                       [SessionAction::class, 'lock']);
+            $g->post  ('/session/unlock/options',             [SessionAction::class, 'unlockOptions']);
+            $g->post  ('/session/unlock/verify',              [SessionAction::class, 'unlockVerify']);
             // API tokeny (Personal Access Tokens) — správa jen ze session auth
             $g->get   ('/tokens',                  ListTokensAction::class);
             $g->post  ('/tokens',                  CreateTokenAction::class);

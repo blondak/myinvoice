@@ -1,12 +1,13 @@
-# 39. Bezpečnost (2FA, IP allowlist, role, activity log)
+# 39. Bezpečnost (MFA, passkeys, zámek session, role)
 
-Bezpečnost MyInvoice stojí na 4 vrstvách:
+Bezpečnost MyInvoice stojí na několika navazujících vrstvách:
 
 1. **Autentizace** — bcrypt hesla + peppered + brute-force ochrana + CAPTCHA
-2. **2FA** — volitelné druhé ověření: TOTP (mobilní aplikace) nebo e-mailový kód
+2. **Silné MFA** — passkey nebo TOTP
 3. **Síťová izolace** — IP allowlist (volitelný, doporučeno v produkci)
 4. **Autorizace** — role-based access (admin / accountant / readonly)
 5. **Audit** — activity log všech mutací
+6. **Zámek session** — serverové uzamčení PWA po nečinnosti
 
 ## 39.1 Hesla
 
@@ -22,11 +23,48 @@ Bezpečnost MyInvoice stojí na 4 vrstvách:
 > 💡 **Passphrase je bezpečnější než krátké složité heslo.** „korelace medvědí
 > dýně přístav 2026" má 49 znaků a je odolnější vůči brute-force než „Hu1@n!22".
 
-## 39.2 Dvoufaktorové ověření (TOTP)
+## 39.2 Vícefaktorové ověření
 
-TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA.
+MyInvoice podporuje dva silné faktory:
 
-### 39.2.1 Aktivace
+- **passkey (WebAuthn)** — kryptografický přístupový klíč chráněný zařízením,
+- **TOTP** — šestimístný časový kód z autentikátoru.
+
+E-mailové OTP je kompatibilní druhý krok pro účet bez silného faktoru, ale
+nesplňuje povinnou silnou MFA politiku. Důvěryhodné zařízení se týká pouze
+e-mailového OTP.
+
+### 39.2.1 Passkeys
+
+Passkey zaregistruješ v **Můj profil → Zabezpečení → Passkeys**. Každý klíč má
+vlastní název, datum vytvoření a posledního použití. Lze jej přejmenovat nebo
+odvolat. Aplikace podporuje více klíčů; doporučené jsou dvě passkeys nebo jedna
+passkey spolu s TOTP.
+
+Passkey se používá:
+
+- po správném e-mailu a hesle místo TOTP,
+- k odemčení zamčené browserové/PWA session,
+- jako čerstvé potvrzení citlivé operace, například vytvoření API tokenu.
+
+Systémový dialog může podle zařízení použít otisk, obličej, PIN, gesto, heslo
+zařízení nebo externí bezpečnostní klíč. MyInvoice konkrétní metodu nezjišťuje,
+biometrická data neopouštějí zařízení a server ukládá pouze veřejný klíč.
+Poskytovatel platformy nebo password manager může passkey end-to-end šifrovaně
+synchronizovat mezi zařízeními.
+
+Passkeys vyžadují stabilní veřejnou URL. V produkci musí `app.url` obsahovat
+přesný HTTPS origin, například `https://faktury.example.cz`. Klíč je svázaný
+s hostname; po změně domény jej na nové doméně nelze použít. Pro lokální vývoj
+je podporované `http://localhost`, nikoli běžný HTTP přístup přes LAN IP.
+
+Přidání a odvolání passkey vyžaduje nové ověření passkey nebo TOTP. U účtu bez
+dosavadního silného faktoru první registrace vyžádá aktuální heslo. Při povinném
+MFA nelze odvolat poslední povolený silný faktor.
+
+TOTP = time-based one-time password (RFC 6238).
+
+### 39.2.2 Aktivace TOTP
 
 **Můj profil → 2FA → Aktivovat**.
 
@@ -39,92 +77,83 @@ TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA
 4. Zadej aktuální kód do MyInvoice → **Potvrdit aktivaci**.
 
 > ⚠️ MyInvoice **nepoužívá záložní jednorázové kódy** (recovery codes).
-> Při ztrátě autentikátoru použij CLI rescue:
-> `php api/bin/reset-2fa.php <email>` —
-> viz [§ 39.2.3](#3923-ztrata-telefonu-deaktivace).
+> Při ztrátě autentikátoru použij jinou passkey, nebo CLI rescue:
+> `php api/bin/reset-mfa.php <email>` — viz [§ 39.2.4](#3924-obnova-pristupu).
 
-### 39.2.2 Přihlášení s 2FA
+### 39.2.3 Přihlášení s MFA
 
-Po zadání e-mailu + hesla aplikace vyzve k 6-cifernému kódu z autentikátoru.
+Po zadání e-mailu a hesla nabídne aplikace passkey, pokud ji účet má. Je-li
+aktivní také TOTP, lze explicitně přepnout na šestimístný kód z autentikátoru.
 
 ![2FA výzva](img/04_2fa.webp)
 
-Pokud autentikátor nemáš po ruce, nezbývá než provést rescue reset
-(následující sekce).
+Účet s passkey nedostane automatický fallback na e-mailový kód. Pokud passkey
+na aktuálním zařízení není dostupná, použij jinou passkey, TOTP nebo rescue.
 
-### 39.2.3 Ztráta telefonu / deaktivace
+### 39.2.4 Obnova přístupu
 
-Aplikace nemá UI pro deaktivaci 2FA — doporučený postup je CLI rescue tool:
+Nejprve použij jinou zaregistrovanou passkey nebo TOTP. Pokud není dostupný
+žádný silný faktor, správce může na serveru spustit:
 
 ```bash
-php api/bin/reset-2fa.php tvuj@email.cz
+php api/bin/reset-mfa.php tvuj@email.cz
 ```
 
-Skript nastaví `totp_enabled = 0` a `totp_secret = NULL` pro zadaný účet.
-Pak se přihlásíš jen s heslem a 2FA si můžeš znovu aktivovat na novém telefonu
-(Můj profil → 2FA → Aktivovat).
+Skript vypne TOTP, odvolá všechny passkeys, zruší důvěryhodná zařízení,
+čekající OTP, WebAuthn flow a step-up proofy a invaliduje všechny session
+uživatele. Původní název `reset-2fa.php` zůstává kompatibilním aliasem.
 
-Pokud **nemáš shell přístup ke kontejneru/serveru**, použij SQL fallback:
+> ⚠️ Rescue používej jen z důvěryhodného shellu serveru. Přímý SQL zásah není
+> ekvivalentní: snadno ponechá aktivní session nebo rozpracované ověřovací flow.
 
-```sql
-UPDATE users
-SET totp_enabled = 0, totp_secret = NULL
-WHERE email = 'tvuj@email.cz';
-```
+### 39.2.5 Vynucení silného MFA
 
-> ⚠️ Pro produkční nasazení doporučujeme mít k DB přístup přes admin
-> (phpMyAdmin / Adminer / mysql CLI) připravený předem. Při ztrátě telefonu
-> by jinak nikdo nešel do aplikace.
-
-### 39.2.4 Vynucení 2FA pro všechny uživatele
-
-Pokud chceš, aby **každý** uživatel po přihlášení musel mít aktivní TOTP,
+Pokud chceš, aby **každý** uživatel měl passkey nebo TOTP,
 nastav v `cfg.php` (nebo `cfg.local.php`):
 
 ```php
 'auth' => [
-    'require_totp' => true,
+    'require_mfa' => true,
+    'allowed_mfa_methods' => ['passkey', 'totp'],
 ],
 ```
 
 Stejné lze přepnout přes ENV (Docker / PaaS):
 
 ```bash
-MYINVOICE_AUTH_REQUIRE_TOTP=true
+MYINVOICE_AUTH_REQUIRE_MFA=true
+MYINVOICE_AUTH_MFA_METHODS=passkey,totp
 ```
 
 Chování:
 
-- Po loginu (s heslem, bez TOTP) je uživatel přesměrován na `/setup-totp`,
-  kde naskenuje QR a aktivuje 2FA. Před aktivací není přístup do žádné
-  jiné části aplikace.
-- Backend tvrdě blokuje volání všech endpointů kromě
-  `/api/auth/me`, `/api/auth/logout` a `/api/auth/totp/*`. Frontend bypass
-  není možný.
-- Jediná „escape route" je odhlášení (tlačítko na `/setup-totp`).
+- Uživatel bez povoleného silného faktoru dostane omezenou setup session a
+  stránku `/setup-mfa`, kde zaregistruje passkey nebo zapne TOTP.
+- Setup session smí pouze dokončit povolené MFA nastavení nebo se odhlásit.
+  Business API zůstává serverově blokované.
+- Po dokončení se setup session zneplatní a vydá se nové session ID i CSRF.
 
-> 💡 Volbu lze zapnout i v instalačních skriptech:
-> - **CLI**: `php api/bin/setup.php` se ptá *„Vynutit 2FA?"* a v případě
->   souhlasu zapíše `auth.require_totp = true` do `cfg.local.php`.
-> - **Web wizard** (`/setup`): checkbox v kroku „Admin účet" má stejný
->   efekt; po dokončení je admin rovnou přesměrován na `/setup-totp`.
+Starší `auth.require_totp = true` a `MYINVOICE_AUTH_REQUIRE_TOTP=true` zůstávají
+podporované jako TOTP-only politika. Pro nové instalace používej obecné MFA
+nastavení.
 
-> ⚠️ Vyžaduje validní `app.secret_encryption_key` (32B base64). Při špatné
-> konfiguraci by uživatelé skončili v silent-500 — health endpoint vrací
-> warning, viz [§ 99 Řešení problémů](99_Reseni_problemu.md).
+> ⚠️ Povolení TOTP vyžaduje validní `app.secret_encryption_key` (32B base64).
+> Health endpoint na chybnou konfiguraci upozorní; viz
+> [§ 99 Řešení problémů](99_Reseni_problemu.md).
 
-### 39.2.5 E-mailové ověření (pro uživatele bez authenticator app)
+### 39.2.6 E-mailové ověření pro účet bez silného faktoru
 
 Pro uživatele, kteří nechtějí (nebo neumí) authenticator aplikaci — typicky
 externí účetní — lze zapnout **e-mailové OTP** jako druhý faktor. Kdo nemá
-aktivní TOTP, dostane po zadání hesla 6místný kód na e-mail a musí ho opsat.
+aktivní passkey ani TOTP, dostane po zadání hesla 6místný kód na e-mail a musí
+ho opsat.
 
 Zapnutí v `cfg.php` (výchozí stav je **vypnuto** — nejde o breaking change):
 
 ```php
 'auth' => [
     'email_otp' => [
-        'enabled'                 => true,  // vyžadovat e-mailový kód u uživatelů bez TOTP
+        'enabled'                 => true,  // kód jen pro účet bez passkey i TOTP
         'code_ttl_minutes'        => 10,    // platnost kódu
         'max_attempts'            => 5,     // pokusů na jeden kód, pak je nutný nový
         'resend_cooldown_seconds' => 60,    // min. prodleva mezi odesláním nového kódu
@@ -136,8 +165,8 @@ Zapnutí v `cfg.php` (výchozí stav je **vypnuto** — nejde o breaking change)
 
 Chování:
 
-- **Priorita TOTP.** Má-li uživatel aktivní authenticator app, vyžaduje se
-  TOTP a e-mailové OTP se neuplatní. E-mailový kód je pouze fallback.
+- **Priorita silného faktoru.** Má-li uživatel passkey nebo TOTP, e-mailové OTP
+  se neuplatní.
 - **Po heslu** se zobrazí pole pro kód z e-mailu + tlačítko *„Kód nedorazil?
   Odeslat znovu"* s odpočtem (cooldown). Kód je jednorázový a hashovaný v DB
   (sloupec `login_otps.code_hash`, nikdy plaintext).
@@ -150,8 +179,32 @@ Chování:
 > ⚠️ Vyžaduje funkční **SMTP**. Když e-maily nechodí, uživatelé bez TOTP se
 > nepřihlásí — buď oprav SMTP, nebo nastav `enabled => false`. Nouzově lze
 > uživateli zrušit i důvěryhodná zařízení a čekající kódy:
-> `php api/bin/reset-2fa.php <email>` (vedle vypnutí TOTP smaže i
-> `trusted_devices` a `login_otps` daného účtu).
+> `php api/bin/reset-mfa.php <email>`.
+
+### 39.2.7 Serverový zámek session
+
+Automatický zámek browserové a PWA session je ve výchozím stavu vypnutý, aby se
+po aktualizaci nezměnilo chování existujících instalací. Správce jej explicitně
+zapne kladným timeoutem pomocí `session.lock_after_minutes` nebo
+`MYINVOICE_SESSION_LOCK_AFTER_MINUTES`. Výchozí hodnota `0` automatický zámek
+vypíná; ruční **Zamknout** v uživatelském menu zůstává dostupné.
+
+Aktivitu posouvají pouze skutečné vstupy do viditelné soukromé stránky, například
+kliknutí, dotyk nebo klávesa. Polling, běžné API requesty, focus okna ani service
+worker timeout neposouvají. Po dosažení limitu backend označí session jako
+zamčenou a odmítne business API i v případě, že někdo odstraní frontendový
+overlay.
+
+Odemčení vyžaduje passkey a rotuje session ID i CSRF token, přičemž zachová
+původní absolutní expiraci. TOTP existující zamčenou session přímo neodemkne;
+volba **Přihlásit se znovu** provede bezpečný logout a celý login.
+
+Zámek omezuje náhodný přístup k odloženému odemčenému zařízení. Nechrání data,
+která už přečetl malware nebo XSS během aktivní session. Webová PWA negarantuje
+zákaz screenshotu ani skrytí Android Recents. Rozpracovaný formulář zůstane
+zachovaný jen dokud prohlížeč stránku drží v paměti; po ukončení stránky
+Androidem se neuložená data ztratí. Offline odemčení není možné, protože server
+musí vydat a ověřit jednorázovou challenge.
 
 ## 39.3 Brute-force ochrana
 

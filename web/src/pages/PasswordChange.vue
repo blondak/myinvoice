@@ -3,25 +3,33 @@
  * Profil uživatele — záložky:
  *   - Heslo  (změna hesla, self-service)
  *   - 2FA    (TOTP setup, status, aktivace)
+ *   - Passkeys (registrace a správa přístupových klíčů)
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi, type TotpSetup } from '@/api/auth'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
+import Passkeys from '@/pages/Passkeys.vue'
 
 const { t } = useI18n()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
-type Tab = 'password' | 'totp'
-const tab = ref<Tab>((route.query.tab === 'totp' ? 'totp' : 'password') as Tab)
-function setTab(t: Tab) {
-  tab.value = t
-  router.replace({ query: { ...route.query, tab: t === 'password' ? undefined : t } })
+type Tab = 'password' | 'totp' | 'passkeys'
+function tabFromQuery(value: unknown): Tab {
+  return value === 'totp' || value === 'passkeys' ? value : 'password'
 }
+const tab = ref<Tab>(tabFromQuery(route.query.tab))
+function setTab(next: Tab) {
+  tab.value = next
+  router.replace({ query: { ...route.query, tab: next === 'password' ? undefined : next } })
+}
+watch(() => route.query.tab, value => {
+  tab.value = tabFromQuery(value)
+})
 
 // ── Heslo ─────────────────────────────────────────────────────────────
 const MIN_LEN = 12
@@ -141,6 +149,13 @@ onMounted(() => {
           {{ t('auth.totp_badge_on') }}
         </span>
       </button>
+      <button type="button" @click="setTab('passkeys')"
+        class="cursor-pointer px-4 py-2 text-sm border-b-2 transition"
+        :class="tab === 'passkeys'
+          ? 'border-primary-600 text-primary-700 font-medium'
+          : 'border-transparent text-neutral-600 hover:text-neutral-900'">
+        {{ t('passkeys.title') }}
+      </button>
     </div>
 
     <!-- ── Heslo ── -->
@@ -210,7 +225,7 @@ onMounted(() => {
     </form>
 
     <!-- ── 2FA / TOTP ── -->
-    <div v-else class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm space-y-4">
+    <div v-else-if="tab === 'totp'" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm space-y-4">
       <div v-if="totpStatus">
         <div v-if="totpStatus.enabled" class="flex items-center gap-2 text-success-600">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -266,5 +281,8 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- ── Passkeys ── -->
+    <Passkeys v-else />
   </div>
 </template>

@@ -40,11 +40,14 @@ api.interceptors.response.use(
     const status = error.response?.status
     const code = error.response?.data?.error?.code
 
-    if (status === 401) {
+    if (status === 401 && ['unauthenticated', 'session_expired', 'invalid_token'].includes(code)) {
       const path = window.location.pathname
       if (!path.startsWith('/login') && !path.startsWith('/setup')) {
         window.location.href = '/login'
       }
+    }
+    if (status === 423 && code === 'session_locked') {
+      window.dispatchEvent(new CustomEvent('myinvoice:session-locked'))
     }
     if (status === 423 && code === 'setup_required') {
       window.location.href = '/setup'
@@ -56,8 +59,13 @@ api.interceptors.response.use(
     // /login NEVYJÍMÁME — když máš stale session a otevřeš /login, redirect
     // na /setup-totp je správný.
     if (status === 403 && code === 'totp_setup_required') {
-      if (window.location.pathname !== '/setup-totp') {
-        window.location.href = '/setup-totp'
+      if (window.location.pathname !== '/setup-mfa') {
+        window.location.href = '/setup-mfa?method=totp'
+      }
+    }
+    if (status === 403 && code === 'mfa_setup_required') {
+      if (window.location.pathname !== '/setup-mfa') {
+        window.location.href = '/setup-mfa'
       }
     }
 
@@ -114,5 +122,6 @@ export interface HealthResponse {
 }
 
 export const systemApi = {
-  health: () => api.get<HealthResponse>('/health').then((r) => r.data),
+  health: (signal?: AbortSignal) =>
+    api.get<HealthResponse>('/health', { signal }).then((r) => r.data),
 }

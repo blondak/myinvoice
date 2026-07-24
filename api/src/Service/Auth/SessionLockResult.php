@@ -1,0 +1,44 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Service\Auth;
+
+final readonly class SessionLockResult
+{
+    private function __construct(
+        public bool $sessionExists,
+        public bool $locked,
+        public bool $transitioned,
+        public ?string $reason,
+        public ?\DateTimeImmutable $lastUserActivityAt,
+        public ?\DateTimeImmutable $lockedAt,
+    ) {}
+
+    public static function missing(): self
+    {
+        return new self(false, false, false, null, null, null);
+    }
+
+    public static function active(\DateTimeImmutable $lastUserActivityAt): self
+    {
+        return new self(true, false, false, null, $lastUserActivityAt, null);
+    }
+
+    public static function locked(
+        \DateTimeImmutable $lastUserActivityAt,
+        \DateTimeImmutable $lockedAt,
+        string $reason,
+        bool $transitioned,
+    ): self {
+        return new self(true, true, $transitioned, $reason, $lastUserActivityAt, $lockedAt);
+    }
+
+    public function idleExpiresAt(SessionLockPolicy $policy): ?\DateTimeImmutable
+    {
+        if (!$this->sessionExists || $this->locked || !$policy->isEnabled() || $this->lastUserActivityAt === null) {
+            return null;
+        }
+        return $this->lastUserActivityAt->modify(sprintf('+%d seconds', $policy->timeoutSeconds()));
+    }
+}

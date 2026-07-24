@@ -53,11 +53,16 @@ return [
     'session' => [
         'driver'        => 'auto',                   // 'auto' = Redis pokud běží, jinak DB | 'redis' | 'db'
         'lifetime_days' => 30,                       // platnost cookie i serverové session
+        'lock_after_minutes' => 0,                   // výchozí off; kladná hodnota zapne automatický zámek, ruční zůstává dostupné
         'cookie_name'   => '__Host-myinvoice_session', // __Host- prefix → vyžaduje Secure + Path=/ + bez Domain (přísnější CSRF). Pro HTTP dev změnit na 'myinvoice_session' a cookie_secure=false.
         'cookie_secure' => true,                     // true vyžaduje HTTPS — false jen pro lokální HTTP dev (a __Host- nebude fungovat)
         'cookie_samesite' => 'Lax',                  // 'Lax' | 'Strict' | 'None' (None vyžaduje secure=true)
     ],
     'auth' => [
+        // null = zachovat legacy auth.require_totp; true/false = explicitní obecná MFA politika.
+        'require_mfa' => null,
+        'allowed_mfa_methods' => ['passkey', 'totp'],
+
         // true = vynutit TOTP (2FA) pro VŠECHNY uživatele. Po loginu, pokud uživatel
         // ještě nemá totp_enabled=1, je zamčen na stránce /setup-totp dokud 2FA
         // neaktivuje. Single escape route je odhlášení. Doporučeno pro produkci

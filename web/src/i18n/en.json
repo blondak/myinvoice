@@ -997,6 +997,12 @@
     "name_placeholder": "e.g. Make integration",
     "name_required": "Give the token a name so you remember what it's for.",
     "totp_hint": "Enter the current code from your authenticator app (step-up security).",
+    "step_up_hint": "Verify your identity again before creating the token.",
+    "step_up_required": "Verify with a passkey or enter a valid TOTP code.",
+    "verify_passkey": "Verify with a passkey",
+    "passkey_verified": "Passkey verified",
+    "passkey_failed": "Passkey verification failed.",
+    "passkey_unsupported": "This browser does not support passkeys. Use TOTP if configured for the account; a passkey-only account must use a supported browser or an administrator.",
     "supplier_all": "All suppliers (token switches via X-Supplier-Id header)",
     "supplier_hint": "A token bound to a specific supplier can't access data from other companies. Recommended.",
     "scope_read": "read",
@@ -1068,6 +1074,36 @@
     "how_native_desc": "For native deployments (shared hosting / VPS without Docker) the UI in this version does not download the tarball automatically — instead it shows exact copy-paste commands after you click 'Update'. Requires PHP CLI + Composer + Node + pnpm on the host. If those are unavailable, use the production bundle from the release page (full deployable tar.gz):",
     "manual_link": "Details in the manual — § 19 Updates"
   },
+  "session_lock": {
+    "title": "Application locked",
+    "message": "You need to verify your identity again after a period of inactivity.",
+    "unlock": "Unlock with a passkey",
+    "unlocking": "Unlocking…",
+    "failed": "Could not unlock. Please try again.",
+    "no_passkey": "This session cannot be unlocked with a passkey. Sign out and sign in again.",
+    "unsupported": "This browser does not support passkeys. Use a supported device or browser, another configured recovery method, or ask an administrator to reset MFA.",
+    "status_failed": "The session status could not be verified safely. The application remains locked; check your connection and try again.",
+    "retry_status": "Verify session again",
+    "logout_failed": "Sign-out could not be confirmed. The application remains safely locked; check your connection and try again.",
+    "lock_now": "Lock"
+  },
+  "passkeys": {
+    "title": "Passkeys",
+    "subtitle": "Sign in and unlock using a fingerprint, face, device lock, or security key.",
+    "unsupported": "This browser does not support passkeys. Keys cannot be added here; they can be removed with TOTP if it is enabled for the account.",
+    "add": "Add passkey",
+    "label_placeholder": "Name, e.g. Pixel 9",
+    "fresh_auth_hint": "Adding and removing requires fresh verification with an existing strong factor; the first factor uses your current password.",
+    "totp_optional": "6-digit TOTP code (optional alternative)",
+    "empty": "You do not have any saved passkeys yet.",
+    "created": "Created:",
+    "last_used": "Last used:",
+    "rename": "Rename",
+    "rename_prompt": "New passkey name",
+    "revoke": "Remove",
+    "revoke_confirm": "Remove passkey “{label}”?",
+    "operation_failed": "The passkey operation failed."
+  },
   "auth": {
     "login": "Sign in", "login_title": "Sign in", "login_subtitle": "Sign in to your account",
     "email": "Email", "password": "Password", "forgot": "Forgot password?",
@@ -1123,7 +1159,12 @@
     "captcha_loading": "Please wait until CAPTCHA loads…",
     "captcha_failed": "CAPTCHA failed, try again.",
     "too_many_attempts": "Too many attempts. Try again later.",
-    "login_failed": "Login failed."
+    "login_failed": "Login failed.",
+    "passkey_login": "Verify with a passkey",
+    "passkey_verifying": "Verifying…",
+    "passkey_failed": "Passkey verification failed.",
+    "passkey_unsupported_recovery": "This browser does not support passkeys. Use an available TOTP code, a supported device or browser, or ask an administrator to reset MFA.",
+    "use_totp_instead": "Use an authenticator code"
   },
   "approval_inbox": {
     "title": "Approvals inbox",
@@ -4082,7 +4123,26 @@
     "sample_hint": "5 clients, 8 projects, 20 invoices, 4 credit notes and a vehicle logbook (1 car, 15 trips, 6 fuelings) from the last 2 months. For trying out the app. Can be wiped later via admin/reset.",
     "sample_done": "Generated: {clients} clients, {projects} projects, {invoices} invoices, {credit_notes} credit notes, {cars} car, {trips} trips, {fuelings} fuelings.",
     "require_totp_label": "Require two-factor authentication (2FA) for all users",
-    "require_totp_hint": "After login, every user will be redirected to TOTP setup until they activate 2FA. You can change this later in cfg.local.php (auth.require_totp)."
+    "require_totp_hint": "After login, every user is redirected to TOTP setup until they activate 2FA.",
+    "require_mfa_label": "Require multi-factor authentication (MFA) for all users",
+    "require_mfa_hint": "After entering a password, users must use a passkey or TOTP according to the allowed methods.",
+    "mfa_passkey": "Passkey (recommended)",
+    "mfa_totp": "TOTP from an authenticator app",
+    "mfa_method_required": "Select at least one method.",
+    "mfa_setup_next": "MFA enforcement is active. Continue to finish setting up an allowed method."
+  },
+  "mfa_setup": {
+    "title": "Set up multi-factor authentication",
+    "intro": "Before continuing to the application, activate one of the allowed security methods.",
+    "passkey": "Passkey",
+    "totp": "TOTP",
+    "passkey_hint": "A passkey uses secure device unlock on your phone or computer. MyInvoice never receives or stores biometric data.",
+    "passkey_unsupported": "This browser or connection does not support passkeys. Choose TOTP if allowed, use a supported device, or ask an administrator to reset MFA.",
+    "passkey_label": "Name, e.g. Phone",
+    "default_passkey_label": "My passkey",
+    "create_passkey": "Create passkey",
+    "password_required": "Enter your password again to register the first security method.",
+    "logout_hint": "Until MFA is completed, the account can only sign out."
   },
   "validation": {
     "required": "Required field",

@@ -190,9 +190,29 @@ Můžeš si změnit:
 
 - **Jméno + jazyk**
 - **Heslo** — vyžaduje původní heslo
-- **2FA** — zapnout / vypnout (vyžaduje heslo + ověření TOTP)
+- **TOTP** — zobrazit stav a aktivovat pomocí QR + ověřovacího kódu
+- **Passkeys** — přidat, pojmenovat, přejmenovat a odvolat vlastní přístupové
+  klíče
 
-Viz [39. Bezpečnost § 37.2](39_Bezpecnost.md) pro detail TOTP.
+Přidání nebo odvolání passkey vyžaduje čerstvý passkey/TOTP step-up; první
+passkey účtu bez silného faktoru vyžádá aktuální heslo. Odvolání passkey
+zneplatní ostatní session účtu. Při povinném MFA nelze odebrat poslední
+povolený silný faktor.
+
+V uživatelském menu je také akce **Zamknout**. Automatický serverový zámek je
+společná politika instalace a nastavuje se v `cfg.php`:
+
+```php
+'session' => [
+    'lock_after_minutes' => 15, // kladná hodnota zámek zapne; výchozí je 0
+],
+```
+
+Stejné nastavení lze předat přes
+`MYINVOICE_SESSION_LOCK_AFTER_MINUTES`. Automatický zámek je ve výchozím stavu
+vypnutý (`0`) a zapne se až explicitním nastavením kladné hodnoty. Ruční
+zamknutí zůstává dostupné i při hodnotě `0`. Podrobnosti jsou v
+[39. Bezpečnost](39_Bezpecnost.md).
 
 ## 36.4 E-mailové šablony
 
