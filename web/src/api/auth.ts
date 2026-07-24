@@ -72,6 +72,17 @@ export interface SessionState {
   user: User
 }
 
+export interface SessionLockPreference {
+  user_lock_after_minutes: number | null
+  admin_lock_after_minutes: number
+  maximum_lock_after_minutes: number
+  effective_lock_after_minutes: number
+}
+
+export interface SessionLockPreferenceUpdate extends SessionLockPreference {
+  session: SessionState
+}
+
 export interface AuthSessionContract {
   user: User
   csrf_token: string
@@ -200,6 +211,12 @@ export const authApi = {
     api.post<SessionState>('/auth/session/activity', {}).then(r => r.data),
   sessionLock: () =>
     api.post<SessionState>('/auth/session/lock', {}).then(r => r.data),
+  sessionLockPreference: () =>
+    api.get<SessionLockPreference>('/auth/session/lock-preference').then(r => r.data),
+  updateSessionLockPreference: (lockAfterMinutes: number | null) =>
+    api.put<SessionLockPreferenceUpdate>('/auth/session/lock-preference', {
+      lock_after_minutes: lockAfterMinutes,
+    }).then(r => r.data),
   sessionUnlockOptions: () =>
     api.post<WebAuthnFlow>('/auth/session/unlock/options', {}).then(r => r.data),
   sessionUnlockVerify: (flowToken: string, credential: Record<string, any>) =>
