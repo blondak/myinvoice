@@ -16,6 +16,8 @@ use Slim\Psr7\Factory\ResponseFactory;
 
 final class SessionLockMiddleware implements MiddlewareInterface
 {
+    public const ATTR_RESULT = 'auth.session_lock_result';
+
     /** @var array<string,list<string>> */
     private const LOCKED_ALLOWED = [
         'GET' => [
@@ -96,7 +98,15 @@ final class SessionLockMiddleware implements MiddlewareInterface
             );
         }
         $token = (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, '');
-        $result = $this->locks->evaluate($token);
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        $userTimeout = ($user['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $user['session_lock_after_minutes']
+            : null;
+        $result = $this->locks->evaluateForRequest(
+            $token,
+            is_array($session) ? $session : [],
+            $userTimeout,
+        );
         if (!$result->sessionExists) {
             return Json::error(
                 $this->responseFactory->createResponse(401),
@@ -105,12 +115,12 @@ final class SessionLockMiddleware implements MiddlewareInterface
                 401,
             );
         }
+        $request = $request->withAttribute(self::ATTR_RESULT, $result);
         if (!$result->locked) {
             return $handler->handle($request);
         }
 
         if ($result->transitioned) {
-            $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
             $userId = isset($user['id']) ? (int) $user['id'] : null;
             $this->logger->log(
                 'auth.session_locked',
@@ -134,7 +144,8 @@ final class SessionLockMiddleware implements MiddlewareInterface
                     ->withoutAttribute(AuthMiddleware::ATTR_USER)
                     ->withoutAttribute(AuthMiddleware::ATTR_SESSION)
                     ->withoutAttribute(AuthMiddleware::ATTR_TOKEN)
-                    ->withoutAttribute(AuthMiddleware::ATTR_METHOD),
+                    ->withoutAttribute(AuthMiddleware::ATTR_METHOD)
+                    ->withoutAttribute(self::ATTR_RESULT),
             );
         }
 

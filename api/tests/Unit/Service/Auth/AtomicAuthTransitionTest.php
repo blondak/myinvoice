@@ -100,9 +100,7 @@ final class AtomicAuthTransitionTest extends TestCase
         $redis = new RedisFactory($this->config);
         $this->sessions = new SessionManager(
             $this->db,
-            $redis,
             $this->config,
-            $this->clock,
             $this->securityClock,
         );
         $this->ceremonies = new WebAuthnCeremonyStore($this->db, $this->securityClock);
@@ -117,7 +115,6 @@ final class AtomicAuthTransitionTest extends TestCase
             $this->stepUp,
             $policy,
             $this->credentials,
-            $this->sessions,
             $tokens,
         );
     }
@@ -237,7 +234,6 @@ final class AtomicAuthTransitionTest extends TestCase
         self::assertNotNull($before);
         $locks = new SessionLockService(
             $this->db,
-            $this->sessions,
             new SessionLockPolicy($this->config),
             $this->securityClock,
             $this->ceremonies,
@@ -362,7 +358,6 @@ final class AtomicAuthTransitionTest extends TestCase
         );
         $locks = new SessionLockService(
             $this->db,
-            $this->sessions,
             new SessionLockPolicy($this->config),
             $this->securityClock,
             $this->ceremonies,
@@ -589,7 +584,6 @@ final class AtomicAuthTransitionTest extends TestCase
         );
         $locks = new SessionLockService(
             $this->db,
-            $this->sessions,
             new SessionLockPolicy($this->config),
             $this->securityClock,
             $this->ceremonies,

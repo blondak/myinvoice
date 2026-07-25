@@ -109,31 +109,22 @@ final class AuthMiddleware implements MiddlewareInterface
         $isLogout   = strtoupper($request->getMethod()) === 'POST'
             && $path === '/api/auth/logout';
 
-        $session = $token !== '' ? $this->sessions->load($token) : null;
+        $authentication = $token !== ''
+            ? $this->sessions->loadAuthenticationContext($token)
+            : null;
+        $session = $authentication['session'] ?? null;
+        $user = $authentication['user'] ?? null;
         $logoutTombstone = false;
         if ($session === null && $token !== '' && $isLogout) {
             $session = $this->sessions->loadTombstoneForLogout($token);
             $logoutTombstone = $session !== null;
+            $user = $logoutTombstone
+                ? $this->loadUser((int) $session['user_id'])
+                : null;
         }
 
         if ($session !== null) {
-            // Načti aktivního usera
-            $stmt = $this->db->pdo()->prepare(
-                'SELECT id, email, name, role, locale, is_active, totp_enabled,
-                        session_lock_after_minutes
-                   FROM users
-                  WHERE id = ?'
-            );
-            $stmt->execute([$session['user_id']]);
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if ($user && (int) $user['is_active'] === 1) {
-                $user['id']           = (int) $user['id'];
-                $user['is_active']    = (bool) $user['is_active'];
-                $user['totp_enabled'] = (int) ($user['totp_enabled'] ?? 0) === 1;
-                $user['session_lock_after_minutes'] = ($user['session_lock_after_minutes'] ?? null) !== null
-                    ? (int) $user['session_lock_after_minutes']
-                    : null;
+            if (is_array($user) && $user['is_active'] === true) {
                 Locale::set((string) ($user['locale'] ?? 'cs'));
                 $request = $request
                     ->withAttribute(self::ATTR_USER, $user)
@@ -145,7 +136,11 @@ final class AuthMiddleware implements MiddlewareInterface
                 }
 
                 if (!$logoutTombstone) {
-                    $this->sessions->touch($token);
+                    $this->sessions->touchIfStale(
+                        $token,
+                        (int) ($session['last_seen'] ?? 0),
+                        (int) ($session['evaluated_at_epoch'] ?? 0),
+                    );
                 }
             } else {
                 // User smazán/deaktivován — invaliduj session
@@ -166,6 +161,35 @@ final class AuthMiddleware implements MiddlewareInterface
         }
 
         return $handler->handle($request);
+    }
+
+    /**
+     * Tombstone se načítá jen při opakovaném logoutu. Běžná autorizace získá
+     * uživatele společně se session v SessionManageru.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function loadUser(int $userId): ?array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id, email, name, role, locale, is_active, totp_enabled,
+                    session_lock_after_minutes
+               FROM users
+              WHERE id = ?'
+        );
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($user === false) {
+            return null;
+        }
+
+        $user['id'] = (int) $user['id'];
+        $user['is_active'] = (int) $user['is_active'] === 1;
+        $user['totp_enabled'] = (int) ($user['totp_enabled'] ?? 0) === 1;
+        $user['session_lock_after_minutes'] = $user['session_lock_after_minutes'] !== null
+            ? (int) $user['session_lock_after_minutes']
+            : null;
+        return $user;
     }
 
     /**

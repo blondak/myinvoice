@@ -21,7 +21,6 @@ final class MfaProtectedOperationService
         private readonly MfaStepUpService $stepUp,
         private readonly MfaPolicyService $policy,
         private readonly PasskeyCredentialRepository $credentials,
-        private readonly SessionManager $sessions,
         private readonly ApiTokenService $tokens,
     ) {}
 
@@ -160,9 +159,6 @@ final class MfaProtectedOperationService
             throw $e;
         }
 
-        foreach ($revokedSessionTokens as $token) {
-            $this->sessions->invalidateCache($token);
-        }
         return $credential;
     }
 

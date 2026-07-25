@@ -9,7 +9,6 @@ use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Auth\SecurityClock;
 use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Auth\SessionLockService;
-use MyInvoice\Service\Auth\SessionManager;
 use MyInvoice\Service\Auth\WebAuthnCeremonyStore;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
@@ -46,7 +45,6 @@ final class SessionLockDisabledPolicyTest extends TestCase
 
         $result = (new SessionLockService(
             $db,
-            $this->createMock(SessionManager::class),
             new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 0]])),
             $clock,
             $ceremonies,

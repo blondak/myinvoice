@@ -11,7 +11,6 @@ final class SessionLockService
 {
     public function __construct(
         private readonly Connection $db,
-        private readonly SessionManager $sessions,
         private readonly SessionLockPolicy $policy,
         private readonly SecurityClock $clock,
         private readonly WebAuthnCeremonyStore $ceremonies,
@@ -23,6 +22,52 @@ final class SessionLockService
     public function evaluate(string $token): SessionLockResult
     {
         return $this->transition($token, false, false);
+    }
+
+    /**
+     * Běžný request už má autoritativní DB snapshot načtený v AuthMiddleware.
+     * Dokud idle deadline neuplynul, není potřeba druhé čtení ani transakce.
+     * Po překročení deadline se stav znovu ověří a materializuje pod zámkem.
+     *
+     * @param array<string,mixed> $session
+     */
+    public function evaluateForRequest(
+        string $token,
+        array $session,
+        ?int $userTimeoutMinutes,
+    ): SessionLockResult {
+        if (!self::isTokenShapeValid($token)) {
+            return SessionLockResult::missing();
+        }
+
+        try {
+            $lastActivity = self::parseUtc((string) ($session['last_user_activity_at'] ?? ''));
+            $evaluatedAt = self::parseUtc((string) ($session['evaluated_at'] ?? ''));
+            if (($session['locked_at'] ?? null) !== null) {
+                $reason = (string) ($session['lock_reason'] ?? '');
+                if ($reason === '') {
+                    return $this->evaluate($token);
+                }
+                return SessionLockResult::locked(
+                    $lastActivity,
+                    self::parseUtc((string) $session['locked_at']),
+                    $reason,
+                    false,
+                    $evaluatedAt,
+                );
+            }
+        } catch (\UnexpectedValueException) {
+            return $this->evaluate($token);
+        }
+
+        $timeoutSeconds = $this->policy->effectiveTimeoutSeconds($userTimeoutMinutes);
+        if ($timeoutSeconds === 0
+            || $lastActivity > $evaluatedAt->modify(sprintf('-%d seconds', $timeoutSeconds))
+        ) {
+            return SessionLockResult::active($lastActivity, $evaluatedAt);
+        }
+
+        return $this->evaluate($token);
     }
 
     /**
@@ -60,7 +105,13 @@ final class SessionLockService
             $cutoff = $this->clock->capture($pdo);
             $stmt = $pdo->prepare(
                 'SELECT s.last_user_activity_at, s.locked_at, s.lock_reason,
-                        u.session_lock_after_minutes
+                        u.session_lock_after_minutes,
+                        EXISTS (
+                            SELECT 1
+                              FROM webauthn_credentials c
+                             WHERE c.user_id = s.user_id
+                               AND c.revoked_at IS NULL
+                        ) AS has_active_passkey
                    FROM sessions s
                    JOIN users u ON u.id = s.user_id AND u.is_active = 1
                   WHERE s.id = ?
@@ -73,7 +124,6 @@ final class SessionLockService
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row === false) {
                 $pdo->commit();
-                $this->sessions->invalidateCache($token);
                 return SessionLockResult::missing();
             }
 
@@ -90,6 +140,12 @@ final class SessionLockService
             }
 
             $now = $cutoff->utc;
+            if ($manualLock && (int) $row['has_active_passkey'] !== 1) {
+                $pdo->commit();
+                throw new \DomainException(
+                    'Ruční zámek vyžaduje alespoň jednu aktivní passkey.',
+                );
+            }
             $timeoutSeconds = $this->policy->effectiveTimeoutSeconds(
                 self::nullableTimeout($row['session_lock_after_minutes'] ?? null),
             );
@@ -109,7 +165,6 @@ final class SessionLockService
                 }
                 $this->ceremonies->cancelForSessionAt($token, $cutoff->utcSql);
                 $pdo->commit();
-                $this->sessions->invalidateCache($token);
                 return SessionLockResult::locked($lastActivity, $now, $reason, true, $now);
             }
 
@@ -127,9 +182,6 @@ final class SessionLockService
             }
 
             $pdo->commit();
-            if ($recordActivity) {
-                $this->sessions->invalidateCache($token);
-            }
             return SessionLockResult::active($lastActivity, $now);
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -164,7 +216,6 @@ final class SessionLockService
         $stmt->execute([$token]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
-            $this->sessions->invalidateCache($token);
             return [SessionLockResult::missing(), 0];
         }
 

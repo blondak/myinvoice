@@ -95,8 +95,6 @@ final class PasskeySessionTransitionService
             throw $e;
         }
 
-        $this->sessions->invalidateCache($sessionToken);
-        $this->sessions->invalidateCache($session['token']);
         return ['session' => $session, 'credential' => $stored];
     }
 
@@ -288,7 +286,6 @@ final class PasskeySessionTransitionService
             throw $e;
         }
 
-        $this->sessions->invalidateCache($session['token']);
         return [
             'session' => $session,
             'credential' => $stored,

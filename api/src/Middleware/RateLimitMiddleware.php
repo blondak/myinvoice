@@ -127,8 +127,17 @@ final class RateLimitMiddleware implements MiddlewareInterface
         }
 
         if ($userId > 0 && str_starts_with($path, '/api/auth/session/')) {
-            $limit = $path === '/api/auth/session/activity' ? 120 : 20;
-            return ['rl:session:' . sha1($path) . ':user:' . $userId, $limit, 60];
+            if (in_array($path, [
+                '/api/auth/session/status',
+                '/api/auth/session/activity',
+            ], true)) {
+                $sessionToken = (string) $request->getAttribute(AuthMiddleware::ATTR_TOKEN, '');
+                $subject = $sessionToken !== ''
+                    ? 'session:' . hash('sha256', $sessionToken)
+                    : 'user:' . $userId;
+                return ['rl:session-poll:' . sha1($path) . ':' . $subject, 120, 60];
+            }
+            return ['rl:session:' . sha1($path) . ':user:' . $userId, 20, 60];
         }
         if ($userId > 0 && (
             str_starts_with($path, '/api/auth/webauthn/')

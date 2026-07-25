@@ -7,6 +7,7 @@ namespace MyInvoice\Tests\Unit\Action\Auth;
 use MyInvoice\Action\Auth\SessionAction;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Middleware\SessionLockMiddleware;
 use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
@@ -34,18 +35,15 @@ final class SessionActionTest extends TestCase
     public function testStatusReturnsMinimalAuthoritativeContract(): void
     {
         $locks = $this->createMock(SessionLockService::class);
-        $locks->expects(self::once())
-            ->method('evaluate')
-            ->with(str_repeat('a', 64))
-            ->willReturn(SessionLockResult::active(
-                new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
-            ));
+        $locks->expects(self::never())->method('evaluateForRequest');
+        $lockResult = SessionLockResult::active(
+            new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
+            new \DateTimeImmutable('2026-07-24 12:05:00 UTC'),
+        );
         $credentials = $this->createMock(PasskeyCredentialRepository::class);
         $credentials->expects(self::once())->method('countActiveForUser')->with(17)->willReturn(2);
         $clock = $this->createMock(ClockInterface::class);
-        $clock->expects(self::once())
-            ->method('now')
-            ->willReturn(new \DateTimeImmutable('2026-07-24 12:05:00 UTC'));
+        $clock->expects(self::never())->method('now');
         $passkeys = $this->createMock(PasskeyService::class);
         $passkeys->method('isAvailable')->willReturn(true);
         $action = new SessionAction(
@@ -71,7 +69,8 @@ final class SessionActionTest extends TestCase
             ->withAttribute(AuthMiddleware::ATTR_SESSION, [
                 'csrf_token' => str_repeat('b', 64),
                 'assurance_level' => 'strong',
-            ]);
+            ])
+            ->withAttribute(SessionLockMiddleware::ATTR_RESULT, $lockResult);
 
         $response = $action->status($request, (new ResponseFactory())->createResponse());
         $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
@@ -95,6 +94,46 @@ final class SessionActionTest extends TestCase
         self::assertArrayNotHasKey('role', $body);
         self::assertArrayNotHasKey('assurance_level', $body);
         self::assertSame('no-store', $response->getHeaderLine('Cache-Control'));
+    }
+
+    public function testManualLockWithoutPasskeyIsRejectedBeforeTransition(): void
+    {
+        $locks = $this->createMock(SessionLockService::class);
+        $locks->expects(self::never())->method('lockManually');
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->expects(self::once())
+            ->method('countActiveForUser')
+            ->with(17)
+            ->willReturn(0);
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->expects(self::once())->method('isAvailable')->willReturn(true);
+        $action = new SessionAction(
+            $this->createMock(SessionManager::class),
+            $locks,
+            new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 15]])),
+            $this->createMock(SessionLockPreferenceService::class),
+            $credentials,
+            $passkeys,
+            $this->createMock(WebAuthnCeremonyStore::class),
+            $this->createMock(ActivityLogger::class),
+            $this->createMock(IpMatcher::class),
+            $this->createMock(ClockInterface::class),
+            $this->createMock(BruteForceGuard::class),
+            $this->createMock(SessionCookieFactory::class),
+            $this->createMock(PasskeySessionTransitionService::class),
+        );
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/api/auth/session/lock')
+            ->withAttribute(AuthMiddleware::ATTR_METHOD, 'session')
+            ->withAttribute(AuthMiddleware::ATTR_TOKEN, str_repeat('a', 64))
+            ->withAttribute(AuthMiddleware::ATTR_USER, ['id' => 17])
+            ->withAttribute(AuthMiddleware::ATTR_SESSION, ['assurance_level' => 'strong']);
+
+        $response = $action->lock($request, (new ResponseFactory())->createResponse());
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame(409, $response->getStatusCode());
+        self::assertSame('session_unlock_unavailable', $body['error']['code']);
     }
 
     public function testMalformedUnlockConsumesCeremonyAndRecordsFailure(): void
@@ -177,8 +216,15 @@ final class SessionActionTest extends TestCase
         ]);
         $locks = $this->createMock(SessionLockService::class);
         $locks->expects(self::once())
-            ->method('evaluate')
-            ->with(str_repeat('a', 64))
+            ->method('evaluateForRequest')
+            ->with(
+                str_repeat('a', 64),
+                [
+                    'csrf_token' => str_repeat('b', 64),
+                    'assurance_level' => 'strong',
+                ],
+                5,
+            )
             ->willReturn(SessionLockResult::active(
                 new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
                 new \DateTimeImmutable('2026-07-24 12:01:00 UTC'),

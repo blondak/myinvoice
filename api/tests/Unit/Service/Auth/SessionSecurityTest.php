@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MyInvoice\Tests\Unit\Service\Auth;
 
-use MyInvoice\Infrastructure\Cache\RedisFactory;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Auth\SessionAuthContext;
@@ -68,14 +67,11 @@ final class SessionSecurityTest extends TestCase
         $this->clock = new SessionTestClock(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
         $this->sessions = new SessionManager(
             $this->db,
-            new RedisFactory($this->config),
             $this->config,
-            $this->clock,
             new PsrSecurityClock($this->clock),
         );
         $this->lock = new SessionLockService(
             $this->db,
-            $this->sessions,
             new SessionLockPolicy($this->config),
             new PsrSecurityClock($this->clock),
             new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),
@@ -153,11 +149,11 @@ final class SessionSecurityTest extends TestCase
 
     public function testManualLockWorksWhenAutomaticTimeoutIsDisabled(): void
     {
+        $this->createCredentialRow();
         $created = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit');
         $disabledPolicy = new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 0]]));
         $lock = new SessionLockService(
             $this->db,
-            $this->sessions,
             $disabledPolicy,
             new PsrSecurityClock($this->clock),
             new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),
@@ -170,6 +166,21 @@ final class SessionSecurityTest extends TestCase
         self::assertSame('manual', $result->reason);
     }
 
+    public function testManualLockWithoutPasskeyIsRejected(): void
+    {
+        $created = $this->sessions->create($this->userId, '127.0.0.1', 'PHPUnit');
+
+        try {
+            $this->lock->lockManually($created['token']);
+            self::fail('Ruční zámek bez aktivní passkey musí být odmítnut.');
+        } catch (\DomainException) {
+        }
+
+        $loaded = $this->sessions->load($created['token']);
+        self::assertNotNull($loaded);
+        self::assertNull($loaded['locked_at']);
+    }
+
     public function testUserCanOptInWhenAdminTimeoutIsDisabled(): void
     {
         $this->db->pdo()->prepare(
@@ -179,7 +190,6 @@ final class SessionSecurityTest extends TestCase
         $disabledPolicy = new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => 0]]));
         $lock = new SessionLockService(
             $this->db,
-            $this->sessions,
             $disabledPolicy,
             new PsrSecurityClock($this->clock),
             new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock)),

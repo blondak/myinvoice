@@ -6,6 +6,7 @@ namespace MyInvoice\Action\Auth;
 
 use MyInvoice\Http\Json;
 use MyInvoice\Middleware\AuthMiddleware;
+use MyInvoice\Middleware\SessionLockMiddleware;
 use MyInvoice\Repository\PasskeyCredentialRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
@@ -51,7 +52,7 @@ final class SessionAction
         if ($context === null) {
             return $this->expired($response);
         }
-        $result = $this->locks->evaluate($context['token']);
+        $result = $this->requestLockResult($request, $context);
         if (!$result->sessionExists) {
             return $this->expired($response);
         }
@@ -90,7 +91,16 @@ final class SessionAction
         if ($context === null) {
             return $this->expired($response);
         }
-        $result = $this->locks->lockManually($context['token']);
+        if (!$this->passkeys->isAvailable()
+            || $this->credentials->countActiveForUser($context['user_id']) === 0
+        ) {
+            return $this->manualLockUnavailable($response);
+        }
+        try {
+            $result = $this->locks->lockManually($context['token']);
+        } catch (\DomainException) {
+            return $this->manualLockUnavailable($response);
+        }
         if (!$result->sessionExists) {
             return $this->expired($response);
         }
@@ -150,7 +160,11 @@ final class SessionAction
         }
 
         $context['user']['session_lock_after_minutes'] = $preference['user_lock_after_minutes'];
-        $lock = $this->locks->evaluate($context['token']);
+        $lock = $this->locks->evaluateForRequest(
+            $context['token'],
+            $context['session'],
+            $preference['user_lock_after_minutes'],
+        );
         if (!$lock->sessionExists) {
             return $this->expired($response);
         }
@@ -178,7 +192,7 @@ final class SessionAction
         if ($context === null) {
             return $this->expired($response);
         }
-        $lock = $this->locks->evaluate($context['token']);
+        $lock = $this->requestLockResult($request, $context);
         if (!$lock->sessionExists) {
             return $this->expired($response);
         }
@@ -272,7 +286,13 @@ final class SessionAction
             'user' => $context['user'],
             'session' => $newSession,
         ];
-        $state = $this->locks->evaluate($rotated['token']);
+        $state = $this->locks->evaluateForRequest(
+            $rotated['token'],
+            $newSession,
+            ($context['user']['session_lock_after_minutes'] ?? null) !== null
+                ? (int) $context['user']['session_lock_after_minutes']
+                : null,
+        );
         $this->audit($request, 'auth.session_unlocked', $context['user_id'], [
             'method' => 'passkey',
             'credential_id' => $stored->id,
@@ -305,6 +325,26 @@ final class SessionAction
             'user' => $user,
             'session' => $session,
         ];
+    }
+
+    /**
+     * @param array{token:string,user_id:int,user:array<string,mixed>,session:array<string,mixed>} $context
+     */
+    private function requestLockResult(Request $request, array $context): SessionLockResult
+    {
+        $result = $request->getAttribute(SessionLockMiddleware::ATTR_RESULT);
+        if ($result instanceof SessionLockResult) {
+            return $result;
+        }
+
+        $userTimeout = ($context['user']['session_lock_after_minutes'] ?? null) !== null
+            ? (int) $context['user']['session_lock_after_minutes']
+            : null;
+        return $this->locks->evaluateForRequest(
+            $context['token'],
+            $context['session'],
+            $userTimeout,
+        );
     }
 
     /**
@@ -353,6 +393,16 @@ final class SessionAction
             'passkeys_unavailable',
             'Passkeys nejsou kvůli konfiguraci této instalace dostupné.',
             503,
+        );
+    }
+
+    private function manualLockUnavailable(Response $response): Response
+    {
+        return Json::error(
+            $response,
+            'session_unlock_unavailable',
+            'Ruční zámek vyžaduje alespoň jednu aktivní a dostupnou passkey.',
+            409,
         );
     }
 

@@ -4,26 +4,22 @@ declare(strict_types=1);
 
 namespace MyInvoice\Service\Auth;
 
-use MyInvoice\Infrastructure\Cache\RedisFactory;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use PDO;
-use Predis\Client as RedisClient;
-use Psr\Clock\ClockInterface;
 
 /**
  * Server-side browser sessions.
  *
- * MariaDB je autorita pro expiraci, revokaci, session lineage a lock stav.
- * Redis je pouze best-effort cache; jeho obsah nikdy sám neautorizuje request.
+ * MariaDB je jediná autorita pro expiraci, revokaci, session lineage a lock stav.
  */
 final class SessionManager
 {
+    private const TOUCH_INTERVAL_SECONDS = 300;
+
     public function __construct(
         private readonly Connection $db,
-        private readonly RedisFactory $redis,
         private readonly Config $config,
-        private readonly ClockInterface $clock,
         private readonly SecurityClock $securityClock,
     ) {}
 
@@ -56,7 +52,6 @@ final class SessionManager
             }
             throw $e;
         }
-        $this->deleteCache($session['token']);
         return $session;
     }
 
@@ -125,44 +120,79 @@ final class SessionManager
     }
 
     /**
-     * Načte pouze aktuální aktivní generaci session. Bezpečnostní stav se vždy
-     * čte z MariaDB; stale Redis payload nikdy request neautorizuje.
+     * Načte pouze aktuální aktivní generaci session.
      *
      * @return array<string,mixed>|null
      */
     public function load(string $token): ?array
+    {
+        $context = $this->loadAuthenticationContext($token);
+        return $context['session'] ?? null;
+    }
+
+    /**
+     * Autoritativně načte session a jejího uživatele jedním dotazem. Uživatele
+     * vrací i neaktivního, aby jej middleware mohl revokovat stejným způsobem
+     * jako dosud.
+     *
+     * @return array{session:array<string,mixed>,user:array<string,mixed>}|null
+     */
+    public function loadAuthenticationContext(string $token): ?array
     {
         if (!self::isTokenShapeValid($token)) {
             return null;
         }
 
         $stmt = $this->db->pdo()->prepare(
-            'SELECT id, user_id, csrf_token, ip, user_agent,
-                    UNIX_TIMESTAMP(created_at) AS created_at,
-                    UNIX_TIMESTAMP(last_seen) AS last_seen,
-                    UNIX_TIMESTAMP(expires_at) AS expires_at,
-                    auth_method, assurance_level, mfa_verified_at, auth_credential_id,
-                    last_user_activity_at, locked_at, lock_reason,
-                    last_unlock_at, last_unlock_method,
-                    HEX(session_family_id) AS session_family_id,
-                    generation, replaced_at, revoked_at
-               FROM sessions
-              WHERE id = ?
-                AND expires_at > NOW()
-                AND replaced_at IS NULL
-                AND revoked_at IS NULL
+            'SELECT s.id, s.user_id, s.csrf_token, s.ip, s.user_agent,
+                    UNIX_TIMESTAMP(s.created_at) AS created_at,
+                    UNIX_TIMESTAMP(s.last_seen) AS last_seen,
+                    UNIX_TIMESTAMP(s.expires_at) AS expires_at,
+                    s.auth_method, s.assurance_level, s.mfa_verified_at,
+                    s.auth_credential_id, s.last_user_activity_at, s.locked_at,
+                    s.lock_reason, s.last_unlock_at, s.last_unlock_method,
+                    HEX(s.session_family_id) AS session_family_id,
+                    s.generation, s.replaced_at, s.revoked_at,
+                    UTC_TIMESTAMP(6) AS evaluated_at,
+                    UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) AS evaluated_at_epoch,
+                    u.id AS account_id, u.email AS account_email,
+                    u.name AS account_name, u.role AS account_role,
+                    u.locale AS account_locale, u.is_active AS account_is_active,
+                    u.totp_enabled AS account_totp_enabled,
+                    u.session_lock_after_minutes AS account_session_lock_after_minutes
+               FROM sessions s
+               JOIN users u ON u.id = s.user_id
+              WHERE s.id = ?
+                AND s.expires_at > CURRENT_TIMESTAMP(6)
+                AND s.replaced_at IS NULL
+                AND s.revoked_at IS NULL
               LIMIT 1'
         );
         $stmt->execute([$token]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
-            $this->deleteCache($token);
             return null;
         }
 
-        $data = self::hydrate($row);
-        $this->writeCache($token, $data);
-        return $data;
+        $user = [
+            'id' => (int) $row['account_id'],
+            'email' => (string) $row['account_email'],
+            'name' => (string) $row['account_name'],
+            'role' => (string) $row['account_role'],
+            'locale' => (string) $row['account_locale'],
+            'is_active' => (int) $row['account_is_active'] === 1,
+            'totp_enabled' => (int) ($row['account_totp_enabled'] ?? 0) === 1,
+            'session_lock_after_minutes' => $row['account_session_lock_after_minutes'] !== null
+                ? (int) $row['account_session_lock_after_minutes']
+                : null,
+        ];
+        foreach (array_keys($row) as $key) {
+            if (str_starts_with((string) $key, 'account_')) {
+                unset($row[$key]);
+            }
+        }
+
+        return ['session' => self::hydrate($row), 'user' => $user];
     }
 
     /**
@@ -189,7 +219,7 @@ final class SessionManager
                     generation, replaced_at, revoked_at
                FROM sessions
               WHERE id = ?
-                AND expires_at > NOW()
+                AND expires_at > CURRENT_TIMESTAMP(6)
                 AND (replaced_at IS NOT NULL OR revoked_at IS NOT NULL)
               LIMIT 1'
         );
@@ -208,11 +238,34 @@ final class SessionManager
         }
         $stmt = $this->db->pdo()->prepare(
             'UPDATE sessions
-                SET last_seen = NOW()
-              WHERE id = ? AND expires_at > NOW() AND replaced_at IS NULL AND revoked_at IS NULL'
+                SET last_seen = UTC_TIMESTAMP(6)
+              WHERE id = ? AND expires_at > CURRENT_TIMESTAMP(6)
+                AND replaced_at IS NULL AND revoked_at IS NULL'
         );
         $stmt->execute([$token]);
-        $this->deleteCache($token);
+    }
+
+    /**
+     * Omezí provozní last_seen zápis na nejvýše jeden za pět minut. Rozhodnutí
+     */
+    public function touchIfStale(string $token, int $lastSeenEpoch, int $evaluatedAtEpoch): void
+    {
+        if (!self::isTokenShapeValid($token)
+            || $lastSeenEpoch > $evaluatedAtEpoch - self::TOUCH_INTERVAL_SECONDS
+        ) {
+            return;
+        }
+
+        $stmt = $this->db->pdo()->prepare(
+            'UPDATE sessions
+                SET last_seen = UTC_TIMESTAMP(6)
+              WHERE id = ?
+                AND expires_at > CURRENT_TIMESTAMP(6)
+                AND replaced_at IS NULL
+                AND revoked_at IS NULL
+                AND last_seen <= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 MINUTE)'
+        );
+        $stmt->execute([$token]);
     }
 
     /**
@@ -233,13 +286,8 @@ final class SessionManager
             $familyId = $family->fetchColumn();
             if (!is_string($familyId) || $familyId === '') {
                 $pdo->commit();
-                $this->deleteCache($token);
                 return;
             }
-
-            $tokens = $pdo->prepare('SELECT id FROM sessions WHERE session_family_id = ? FOR UPDATE');
-            $tokens->execute([$familyId]);
-            $familyTokens = array_values(array_map('strval', $tokens->fetchAll(PDO::FETCH_COLUMN) ?: []));
 
             $revoke = $pdo->prepare(
                 'UPDATE sessions
@@ -253,10 +301,6 @@ final class SessionManager
                 $pdo->rollBack();
             }
             throw $e;
-        }
-
-        foreach ($familyTokens as $familyToken) {
-            $this->deleteCache($familyToken);
         }
     }
 
@@ -294,16 +338,11 @@ final class SessionManager
                 $params[] = $exceptFamily;
             }
 
-            $tokens = $pdo->prepare("SELECT id FROM sessions WHERE {$where} FOR UPDATE");
-            $tokens->execute($params);
-            $revokedTokens = array_values(array_map('strval', $tokens->fetchAll(PDO::FETCH_COLUMN) ?: []));
-
-            if ($revokedTokens !== []) {
-                $revoke = $pdo->prepare(
-                    "UPDATE sessions SET revoked_at = ? WHERE {$where}"
-                );
-                $revoke->execute([$cutoff->utcSql, ...$params]);
-            }
+            $revoke = $pdo->prepare(
+                "UPDATE sessions SET revoked_at = ? WHERE {$where}"
+            );
+            $revoke->execute([$cutoff->utcSql, ...$params]);
+            $revoked = $revoke->rowCount();
             $pdo->commit();
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -312,10 +351,7 @@ final class SessionManager
             throw $e;
         }
 
-        foreach ($revokedTokens as $revokedToken) {
-            $this->deleteCache($revokedToken);
-        }
-        return count($revokedTokens);
+        return $revoked;
     }
 
     /**
@@ -349,8 +385,6 @@ final class SessionManager
         $token = bin2hex(random_bytes(32));
         $csrf = bin2hex(random_bytes(32));
         $familyId = random_bytes(32);
-        $setupTokens = [];
-
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
@@ -377,15 +411,6 @@ final class SessionManager
             if ($current->fetchColumn() === false) {
                 throw new \DomainException('Setup session už není dostupná.');
             }
-
-            $allSetup = $pdo->prepare(
-                'SELECT id
-                   FROM sessions
-                  WHERE user_id = ? AND assurance_level = ? AND revoked_at IS NULL
-                  FOR UPDATE'
-            );
-            $allSetup->execute([$userId, 'setup']);
-            $setupTokens = array_values(array_map('strval', $allSetup->fetchAll(PDO::FETCH_COLUMN) ?: []));
 
             $revoke = $pdo->prepare(
                 'UPDATE sessions
@@ -428,11 +453,6 @@ final class SessionManager
             }
             throw $e;
         }
-
-        foreach ($setupTokens as $oldToken) {
-            $this->deleteCache($oldToken);
-        }
-        $this->deleteCache($token);
 
         return [
             'token' => $token,
@@ -493,8 +513,6 @@ final class SessionManager
             throw $e;
         }
 
-        $this->deleteCache($token);
-        $this->deleteCache($rotated['token']);
         return $rotated;
     }
 
@@ -595,11 +613,6 @@ final class SessionManager
         ];
     }
 
-    public function invalidateCache(string $token): void
-    {
-        $this->deleteCache($token);
-    }
-
     /**
      * @param array<string,mixed> $row
      * @return array<string,mixed>
@@ -612,6 +625,9 @@ final class SessionManager
         $row['created_at'] = (int) $row['created_at'];
         $row['last_seen'] = (int) $row['last_seen'];
         $row['expires_at'] = (int) $row['expires_at'];
+        if (array_key_exists('evaluated_at_epoch', $row)) {
+            $row['evaluated_at_epoch'] = (int) $row['evaluated_at_epoch'];
+        }
         $row['auth_credential_id'] = $row['auth_credential_id'] !== null
             ? (int) $row['auth_credential_id']
             : null;
@@ -619,49 +635,6 @@ final class SessionManager
         $row['session_family_id'] = strtolower((string) $row['session_family_id']);
         unset($row['id']);
         return $row;
-    }
-
-    /**
-     * @param array<string,mixed> $data
-     */
-    private function writeCache(string $token, array $data): void
-    {
-        $redis = $this->cacheClient();
-        if ($redis === null) {
-            return;
-        }
-        $ttl = (int) ($data['expires_at'] ?? 0) - $this->clock->now()->getTimestamp();
-        try {
-            if ($ttl <= 0) {
-                $redis->del('sess:' . $token);
-                return;
-            }
-            $redis->setex(
-                'sess:' . $token,
-                $ttl,
-                json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            );
-        } catch (\Throwable) {
-            // MariaDB už je autorita; výpadek cache nesmí změnit výsledek.
-        }
-    }
-
-    private function deleteCache(string $token): void
-    {
-        try {
-            $this->cacheClient()?->del('sess:' . $token);
-        } catch (\Throwable) {
-            // DB revokace/rotace zůstává autoritativní.
-        }
-    }
-
-    private function cacheClient(): ?RedisClient
-    {
-        $driver = strtolower((string) $this->config->get('session.driver', 'auto'));
-        if (!in_array($driver, ['auto', 'redis', 'db'], true)) {
-            throw new \InvalidArgumentException('session.driver musí být auto, redis nebo db.');
-        }
-        return $driver === 'db' ? null : $this->redis->client();
     }
 
     private static function isTokenShapeValid(string $token): bool

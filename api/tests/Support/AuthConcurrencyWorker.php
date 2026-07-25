@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use MyInvoice\Infrastructure\Cache\RedisFactory;
-use MyInvoice\Infrastructure\Clock\UtcClock;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Auth\DatabaseSecurityClock;
@@ -37,9 +35,7 @@ try {
         [$sessionToken, $credentialId] = $arguments;
         $sessions = new SessionManager(
             $db,
-            new RedisFactory($config),
             $config,
-            new UtcClock(),
             new DatabaseSecurityClock(),
         );
         $sessions->rotateLocked($sessionToken, 'passkey', (int) $credentialId);

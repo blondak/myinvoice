@@ -25,8 +25,12 @@ final class SessionLockMiddlewareTest extends TestCase
     {
         $locks = $this->createMock(SessionLockService::class);
         $locks->expects(self::once())
-            ->method('evaluate')
-            ->with(str_repeat('a', 64))
+            ->method('evaluateForRequest')
+            ->with(
+                str_repeat('a', 64),
+                ['csrf_token' => str_repeat('b', 64)],
+                null,
+            )
             ->willReturn(SessionLockResult::locked(
                 new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
                 new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
@@ -49,8 +53,12 @@ final class SessionLockMiddlewareTest extends TestCase
     {
         $locks = $this->createMock(SessionLockService::class);
         $locks->expects(self::once())
-            ->method('evaluate')
-            ->with(str_repeat('a', 64))
+            ->method('evaluateForRequest')
+            ->with(
+                str_repeat('a', 64),
+                ['csrf_token' => str_repeat('b', 64)],
+                null,
+            )
             ->willReturn(SessionLockResult::missing());
         $handler = $this->createMock(RequestHandlerInterface::class);
         $handler->expects(self::never())->method('handle');
@@ -67,6 +75,43 @@ final class SessionLockMiddlewareTest extends TestCase
         );
     }
 
+    public function testPassesExactEvaluationResultToHandler(): void
+    {
+        $result = SessionLockResult::active(
+            new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
+            new \DateTimeImmutable('2026-07-24 12:05:00 UTC'),
+        );
+        $locks = $this->createMock(SessionLockService::class);
+        $locks->expects(self::once())
+            ->method('evaluateForRequest')
+            ->with(
+                str_repeat('a', 64),
+                ['csrf_token' => str_repeat('b', 64)],
+                null,
+            )
+            ->willReturn($result);
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::once())
+            ->method('handle')
+            ->with(self::callback(
+                static function (ServerRequestInterface $request) use ($result): bool {
+                    self::assertSame(
+                        $result,
+                        $request->getAttribute(SessionLockMiddleware::ATTR_RESULT),
+                    );
+                    return true;
+                },
+            ))
+            ->willReturn((new ResponseFactory())->createResponse(204));
+
+        $response = $this->middleware($locks)->process(
+            $this->sessionRequest('/api/invoices'),
+            $handler,
+        );
+
+        self::assertSame(204, $response->getStatusCode());
+    }
+
     public function testLockedStatusAndUnlockRoutesPassThrough(): void
     {
         foreach ([
@@ -76,7 +121,7 @@ final class SessionLockMiddlewareTest extends TestCase
             ['POST', '/api/auth/logout'],
         ] as [$method, $path]) {
             $locks = $this->createMock(SessionLockService::class);
-            $locks->method('evaluate')->willReturn(SessionLockResult::locked(
+            $locks->method('evaluateForRequest')->willReturn(SessionLockResult::locked(
                 new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
                 new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
                 'idle',
@@ -98,7 +143,7 @@ final class SessionLockMiddlewareTest extends TestCase
             '/api/auth/webauthn/login/verify',
         ] as $path) {
             $locks = $this->createMock(SessionLockService::class);
-            $locks->method('evaluate')->willReturn(SessionLockResult::locked(
+            $locks->method('evaluateForRequest')->willReturn(SessionLockResult::locked(
                 new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
                 new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
                 'idle',
@@ -117,7 +162,7 @@ final class SessionLockMiddlewareTest extends TestCase
     public function testLockedAllowlistRequiresExactHttpMethod(): void
     {
         $locks = $this->createMock(SessionLockService::class);
-        $locks->method('evaluate')->willReturn(SessionLockResult::locked(
+        $locks->method('evaluateForRequest')->willReturn(SessionLockResult::locked(
             new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
             new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
             'idle',
@@ -135,7 +180,7 @@ final class SessionLockMiddlewareTest extends TestCase
     public function testLogoutTombstonePassesOnlyExactLogoutRequest(): void
     {
         $locks = $this->createMock(SessionLockService::class);
-        $locks->expects(self::never())->method('evaluate');
+        $locks->expects(self::never())->method('evaluateForRequest');
         $request = $this->sessionRequest('/api/auth/logout', 'POST')
             ->withAttribute(AuthMiddleware::ATTR_LOGOUT_TOMBSTONE, true);
 
@@ -154,7 +199,7 @@ final class SessionLockMiddlewareTest extends TestCase
     public function testLockedPublicRequestCannotUseOptionalAuthenticatedContext(): void
     {
         $locks = $this->createMock(SessionLockService::class);
-        $locks->method('evaluate')->willReturn(SessionLockResult::locked(
+        $locks->method('evaluateForRequest')->willReturn(SessionLockResult::locked(
             new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
             new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
             'manual',
@@ -167,6 +212,7 @@ final class SessionLockMiddlewareTest extends TestCase
                 TestCase::assertNull($request->getAttribute(AuthMiddleware::ATTR_SESSION));
                 TestCase::assertNull($request->getAttribute(AuthMiddleware::ATTR_TOKEN));
                 TestCase::assertNull($request->getAttribute(AuthMiddleware::ATTR_METHOD));
+                TestCase::assertNull($request->getAttribute(SessionLockMiddleware::ATTR_RESULT));
                 return (new ResponseFactory())->createResponse(204);
             }
         };
@@ -186,7 +232,7 @@ final class SessionLockMiddlewareTest extends TestCase
             ['POST', '/api/health'],
         ] as [$method, $path]) {
             $locks = $this->createMock(SessionLockService::class);
-            $locks->method('evaluate')->willReturn(SessionLockResult::locked(
+            $locks->method('evaluateForRequest')->willReturn(SessionLockResult::locked(
                 new \DateTimeImmutable('2026-07-24 12:00:00 UTC'),
                 new \DateTimeImmutable('2026-07-24 12:15:00 UTC'),
                 'manual',
@@ -207,7 +253,7 @@ final class SessionLockMiddlewareTest extends TestCase
     public function testSetupSessionIsNotEvaluatedByIdleLock(): void
     {
         $locks = $this->createMock(SessionLockService::class);
-        $locks->expects(self::never())->method('evaluate');
+        $locks->expects(self::never())->method('evaluateForRequest');
 
         $request = $this->sessionRequest('/api/auth/totp/status')
             ->withAttribute(AuthMiddleware::ATTR_SESSION, [
