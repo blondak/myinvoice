@@ -38,6 +38,8 @@ final class RequireMfaMiddleware implements MiddlewareInterface
     /** @var array<string,list<string>> */
     private const SETUP_PATHS = [
         'GET' => [
+            '/api/health',
+            '/api/version',
             '/api/auth/me',
             '/api/auth/totp/status',
             '/api/auth/webauthn/credentials',

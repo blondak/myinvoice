@@ -46,9 +46,19 @@ final class MfaStepUpService
             }
         }
 
-        if ($operation !== self::OPERATION_PASSKEY_REGISTER
-            && !$this->policy->isMethodAllowed($authMethod)
-        ) {
+        $methodAllowed = $this->policy->isMethodAllowed($authMethod);
+        if ($operation === self::OPERATION_PASSKEY_REGISTER) {
+            $passkeyAllowed = $authMethod === 'passkey'
+                ? $methodAllowed
+                : $this->policy->isMethodAllowed('passkey');
+            $firstPasskeyTransition = !$methodAllowed
+                && $authMethod === 'totp'
+                && $passkeyAllowed
+                && $this->credentials->countActiveForUser($userId) === 0;
+            if (!$passkeyAllowed || (!$methodAllowed && !$firstPasskeyTransition)) {
+                throw new StepUpOperationException('Tato metoda není pro operaci povolená.');
+            }
+        } elseif (!$methodAllowed) {
             throw new StepUpOperationException('Tato metoda není pro operaci povolená.');
         }
 

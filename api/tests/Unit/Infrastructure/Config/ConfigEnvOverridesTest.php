@@ -129,12 +129,13 @@ PHP);
         self::assertFalse($cfg->get('auth.passwordless_login.enabled'));
     }
 
-    public function testSessionLockEnvironmentOverrideRejectsNonIntegerValue(): void
+    public function testInvalidSessionLockEnvironmentOverrideIsPreservedForPolicyValidation(): void
     {
         $this->setEnv('MYINVOICE_SESSION_LOCK_AFTER_MINUTES', '15 minutes');
 
-        $this->expectException(\RuntimeException::class);
-        Config::load($this->tmpDir);
+        $cfg = Config::load($this->tmpDir);
+
+        self::assertSame('15 minutes', $cfg->get('session.lock_after_minutes'));
     }
 
     private function setEnv(string $name, string $value): void

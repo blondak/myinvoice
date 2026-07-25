@@ -8,6 +8,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasskeyVerificationException;
 use MyInvoice\Service\Auth\WebAuthnConfig;
+use MyInvoice\Tests\Support\OpensslConfigTrait;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Uid\Uuid;
 use Webauthn\CredentialRecord;
@@ -16,6 +17,8 @@ use Webauthn\TrustPath\EmptyTrustPath;
 
 final class PasskeyServiceTest extends TestCase
 {
+    use OpensslConfigTrait;
+
     private PasskeyService $service;
 
     protected function setUp(): void
@@ -202,7 +205,7 @@ final class PasskeyServiceTest extends TestCase
         $privateKey = openssl_pkey_new([
             'private_key_type' => OPENSSL_KEYTYPE_EC,
             'curve_name' => 'prime256v1',
-        ]);
+        ] + self::opensslConfigArgs());
         self::assertInstanceOf(\OpenSSLAsymmetricKey::class, $privateKey);
         $details = openssl_pkey_get_details($privateKey);
         self::assertIsArray($details);

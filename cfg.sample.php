@@ -43,7 +43,7 @@ return [
         'backup_skip_routines' => false,             // true = vynechat stored procedures/functions ze zálohy. Dej true pokud DB user nemá privilege a nechceš grantovat (např. shared hosting). Default false = včetně procedur; při permission erroru auto-fallback s warningem.
     ],
     'redis' => [
-        'enabled' => false,                           // false = fallback na DB sessions a in-memory cache
+        'enabled' => false,                           // distribuovaný cache, rate limiting a brute-force ochrana
         'host'    => '127.0.0.1',
         'port'    => 6379,
         'auth'    => null,                           // heslo nebo null
@@ -51,7 +51,6 @@ return [
         'prefix'  => 'myinvoice:dev:',               // namespace všech klíčů — změň na 'myinvoice:prod:' v produkci
     ],
     'session' => [
-        'driver'        => 'auto',                   // 'auto' = Redis pokud běží, jinak DB | 'redis' | 'db'
         'lifetime_days' => 30,                       // platnost cookie i serverové session
         'lock_after_minutes' => 0,                   // výchozí interval a maximum osobní volby; 0 nic nevynucuje, uživatel si může nastavit 1–1440 min
         'cookie_name'   => '__Host-myinvoice_session', // __Host- prefix → vyžaduje Secure + Path=/ + bez Domain (přísnější CSRF). Pro HTTP dev změnit na 'myinvoice_session' a cookie_secure=false.
@@ -215,7 +214,7 @@ return [
         'invoices_dir' => __DIR__ . '/storage/invoices',  // vygenerovaná PDF
         'uploads_dir'  => __DIR__ . '/storage/uploads',   // dočasné upload soubory (GPC výpisy, attachementy)
         'backup_dir'   => __DIR__ . '/storage/backup',    // mysqldump zálohy z cron-backup.php
-        'sessions_dir' => __DIR__ . '/storage/sessions',  // jen pokud session.driver = 'db' (file fallback)
+        'sessions_dir' => __DIR__ . '/storage/sessions',  // runtime adresář pro session-kompatibilní integrace
         'cache_dir'    => __DIR__ . '/storage/cache',     // file cache (ARES/VIES odpovědi, PDF mezikroky)
     ],
     'pdf_signing' => [

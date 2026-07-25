@@ -11,6 +11,7 @@ use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Service\Auth\MfaPolicyService;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\SecretEncryption;
+use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Update\VersionService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -24,6 +25,7 @@ final class HealthAction
         private readonly VersionService $version,
         private readonly PasskeyService $passkeys,
         private readonly MfaPolicyService $mfaPolicy,
+        private readonly SessionLockPolicy $sessionLockPolicy,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -55,6 +57,13 @@ final class HealthAction
                     'code' => 'webauthn_configuration',
                     'message' => $this->passkeys->configurationError()
                         ?? 'Konfigurace WebAuthn není platná.',
+                ];
+            }
+            $lockWarning = $this->sessionLockPolicy->configurationWarning();
+            if ($lockWarning !== null) {
+                $warnings[] = [
+                    'code' => 'session_lock_configuration',
+                    'message' => $lockWarning,
                 ];
             }
             $payload['warnings'] = $warnings;

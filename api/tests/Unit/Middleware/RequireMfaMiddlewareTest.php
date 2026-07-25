@@ -55,6 +55,8 @@ final class RequireMfaMiddlewareTest extends TestCase
     {
         $middleware = $this->middleware(required: true);
         $allowed = [
+            ['GET', '/api/health'],
+            ['GET', '/api/version'],
             ['GET', '/api/auth/me'],
             ['GET', '/api/auth/totp/status'],
             ['GET', '/api/auth/webauthn/credentials'],

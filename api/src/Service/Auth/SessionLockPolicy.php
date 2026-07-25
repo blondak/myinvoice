@@ -12,18 +12,33 @@ final class SessionLockPolicy
     public const MAX_TIMEOUT_MINUTES = 1440;
 
     private readonly int $adminTimeoutMinutes;
+    private readonly ?string $configurationWarning;
 
     public function __construct(Config $config)
     {
         $timeout = $config->get('session.lock_after_minutes', 0);
+        if (is_string($timeout)
+            && preg_match('/^(?:0|[1-9][0-9]*)$/D', $timeout) === 1
+        ) {
+            $timeout = (int) $timeout;
+        }
+
         if (!is_int($timeout) || $timeout < 0 || $timeout > self::MAX_TIMEOUT_MINUTES) {
-            throw new \InvalidArgumentException(sprintf(
-                'session.lock_after_minutes musí být 0 až %d.',
+            $this->adminTimeoutMinutes = 0;
+            $this->configurationWarning = sprintf(
+                'session.lock_after_minutes musí být celé číslo 0 až %d; výchozí automatický zámek byl vypnut.',
                 self::MAX_TIMEOUT_MINUTES,
-            ));
+            );
+            return;
         }
 
         $this->adminTimeoutMinutes = $timeout;
+        $this->configurationWarning = null;
+    }
+
+    public function configurationWarning(): ?string
+    {
+        return $this->configurationWarning;
     }
 
     public function isEnabled(): bool

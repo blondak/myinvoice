@@ -45,6 +45,16 @@ final class SessionLockPolicyTest extends TestCase
         $policy->assertUserTimeoutAllowed(31);
     }
 
+    public function testCanonicalNumericStringIsAccepted(): void
+    {
+        $policy = new SessionLockPolicy(new Config([
+            'session' => ['lock_after_minutes' => '15'],
+        ]));
+
+        self::assertSame(15, $policy->timeoutMinutes());
+        self::assertNull($policy->configurationWarning());
+    }
+
     #[DataProvider('invalidUserTimeoutProvider')]
     public function testInvalidUserTimeoutIsRejected(int $timeout): void
     {
@@ -55,11 +65,15 @@ final class SessionLockPolicyTest extends TestCase
     }
 
     #[DataProvider('invalidTimeoutProvider')]
-    public function testInvalidTimeoutIsRejected(mixed $timeout): void
+    public function testInvalidTimeoutFailsSoftWithWarning(mixed $timeout): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $policy = new SessionLockPolicy(new Config([
+            'session' => ['lock_after_minutes' => $timeout],
+        ]));
 
-        new SessionLockPolicy(new Config(['session' => ['lock_after_minutes' => $timeout]]));
+        self::assertFalse($policy->isEnabled());
+        self::assertSame(0, $policy->timeoutMinutes());
+        self::assertNotNull($policy->configurationWarning());
     }
 
     /**
@@ -69,7 +83,8 @@ final class SessionLockPolicyTest extends TestCase
     {
         yield 'negative' => [-1];
         yield 'too high' => [SessionLockPolicy::MAX_TIMEOUT_MINUTES + 1];
-        yield 'string' => ['15'];
+        yield 'non-canonical string' => ['015'];
+        yield 'string with unit' => ['15 minutes'];
         yield 'float' => [15.5];
         yield 'null' => [null];
     }

@@ -6,11 +6,13 @@ namespace MyInvoice\Tests\Unit\Action\System;
 
 use MyInvoice\Action\System\HealthAction;
 use MyInvoice\Infrastructure\Cache\RedisProbe;
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Service\Auth\MfaPolicyService;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\SecretEncryption;
+use MyInvoice\Service\Auth\SessionLockPolicy;
 use MyInvoice\Service\Update\VersionService;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
@@ -37,7 +39,15 @@ final class HealthActionTest extends TestCase
             ->willReturn('WebAuthn vyžaduje HTTPS.');
         $policy = $this->createMock(MfaPolicyService::class);
         $policy->expects(self::once())->method('isMethodAllowed')->with('passkey')->willReturn(true);
-        $action = new HealthAction($db, $redis, $crypto, $version, $passkeys, $policy);
+        $action = new HealthAction(
+            $db,
+            $redis,
+            $crypto,
+            $version,
+            $passkeys,
+            $policy,
+            new SessionLockPolicy(new Config([])),
+        );
 
         $response = $action(
             (new ServerRequestFactory())
@@ -68,7 +78,15 @@ final class HealthActionTest extends TestCase
         $passkeys->expects(self::never())->method('isAvailable');
         $policy = $this->createMock(MfaPolicyService::class);
         $policy->expects(self::never())->method('isMethodAllowed');
-        $action = new HealthAction($db, $redis, $crypto, $version, $passkeys, $policy);
+        $action = new HealthAction(
+            $db,
+            $redis,
+            $crypto,
+            $version,
+            $passkeys,
+            $policy,
+            new SessionLockPolicy(new Config([])),
+        );
 
         $response = $action(
             (new ServerRequestFactory())->createServerRequest('GET', '/api/health'),
@@ -77,5 +95,49 @@ final class HealthActionTest extends TestCase
         $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
 
         self::assertArrayNotHasKey('warnings', $body);
+    }
+
+    public function testAuthenticatedHealthReportsInvalidSessionLockConfiguration(): void
+    {
+        $db = $this->createMock(Connection::class);
+        $db->method('ping')->willReturn(true);
+        $redis = $this->createMock(RedisProbe::class);
+        $redis->method('isAvailable')->willReturn(false);
+        $crypto = $this->createMock(SecretEncryption::class);
+        $crypto->method('validateKey')->willReturn(null);
+        $version = $this->createMock(VersionService::class);
+        $version->method('getCurrentVersion')->willReturn('test');
+        $passkeys = $this->createMock(PasskeyService::class);
+        $passkeys->expects(self::never())->method('isAvailable');
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::once())
+            ->method('isMethodAllowed')
+            ->with('passkey')
+            ->willReturn(false);
+        $action = new HealthAction(
+            $db,
+            $redis,
+            $crypto,
+            $version,
+            $passkeys,
+            $policy,
+            new SessionLockPolicy(new Config([
+                'session' => ['lock_after_minutes' => 'invalid'],
+            ])),
+        );
+
+        $response = $action(
+            (new ServerRequestFactory())
+                ->createServerRequest('GET', '/api/health')
+                ->withAttribute(AuthMiddleware::ATTR_USER, ['id' => 17]),
+            (new ResponseFactory())->createResponse(),
+        );
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('session_lock_configuration', $body['warnings'][0]['code']);
+        self::assertStringContainsString(
+            'výchozí automatický zámek byl vypnut',
+            $body['warnings'][0]['message'],
+        );
     }
 }

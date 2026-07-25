@@ -284,14 +284,13 @@ final class Config
             'REDIS_PASSWORD'          => ['redis.auth', 'string'],
 
             // Session
-            'MYINVOICE_SESSION_DRIVER'       => ['session.driver', 'string'],
             'MYINVOICE_SESSION_COOKIE_SECURE'=> ['session.cookie_secure', 'bool'],
             // Cookie name přes ENV kvůli full-ENV deployům (Portainer/Dockge/PaaS):
             // přes plain HTTP musí být ne-`__Host-` jméno (`__Host-` vyžaduje Secure),
             // jinak se přihlašovací cookie neuloží. Default je `__Host-myinvoice_session`.
             'MYINVOICE_SESSION_COOKIE_NAME'  => ['session.cookie_name', 'string'],
             'MYINVOICE_SESSION_SAMESITE'     => ['session.cookie_samesite', 'string'],
-            'MYINVOICE_SESSION_LOCK_AFTER_MINUTES' => ['session.lock_after_minutes', 'strict_int'],
+            'MYINVOICE_SESSION_LOCK_AFTER_MINUTES' => ['session.lock_after_minutes', 'lock_timeout'],
 
             // Auth
             'MYINVOICE_AUTH_REQUIRE_TOTP'    => ['auth.require_totp', 'bool'],
@@ -389,20 +388,22 @@ final class Config
         return match ($type) {
             'bool'       => filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $raw,
             'int'        => (int) $raw,
-            'strict_int' => self::castStrictIntEnv($raw),
+            'lock_timeout' => self::castSessionLockTimeoutEnv($raw),
             'csv'        => self::castCsvEnv($raw),
             'float'      => (float) $raw,
             default      => $raw,
         };
     }
 
-    private static function castStrictIntEnv(string $raw): int
+    private static function castSessionLockTimeoutEnv(string $raw): int|string
     {
-        $value = filter_var(trim($raw), FILTER_VALIDATE_INT);
-        if ($value === false) {
-            throw new \RuntimeException('Neplatná celočíselná hodnota v environment konfiguraci.');
+        $value = trim($raw);
+        if (preg_match('/^(?:0|[1-9][0-9]*)$/D', $value) === 1) {
+            return (int) $value;
         }
 
+        // Zámek je volitelná ochrana. Neplatnou hodnotu ponecháme policy
+        // vrstvě, která ji fail-soft vypne a vystaví diagnostiku v health.
         return $value;
     }
 

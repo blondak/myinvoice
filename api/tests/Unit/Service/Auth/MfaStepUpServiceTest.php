@@ -38,11 +38,21 @@ final class MfaStepUpServiceTest extends TestCase
             ->with(17, 'session', MfaStepUpService::OPERATION_PASSKEY_REGISTER, 'totp', null)
             ->willReturn('proof-token');
         $policy = $this->createMock(MfaPolicyService::class);
-        $policy->expects(self::never())->method('isMethodAllowed');
+        $policy->expects(self::exactly(2))
+            ->method('isMethodAllowed')
+            ->willReturnMap([
+                ['totp', false],
+                ['passkey', true],
+            ]);
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->expects(self::once())
+            ->method('countActiveForUser')
+            ->with(17)
+            ->willReturn(0);
         $service = new MfaStepUpService(
             $proofs,
             $policy,
-            $this->createMock(PasskeyCredentialRepository::class),
+            $credentials,
         );
 
         self::assertSame(
@@ -53,6 +63,57 @@ final class MfaStepUpServiceTest extends TestCase
                 MfaStepUpService::OPERATION_PASSKEY_REGISTER,
                 'totp',
             ),
+        );
+    }
+
+    public function testPhasedOutTotpCannotAuthorizeAnotherPasskeyEnrollment(): void
+    {
+        $proofs = $this->createMock(MfaStepUpProofStore::class);
+        $proofs->expects(self::never())->method('issue');
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::exactly(2))
+            ->method('isMethodAllowed')
+            ->willReturnMap([
+                ['totp', false],
+                ['passkey', true],
+            ]);
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->expects(self::once())
+            ->method('countActiveForUser')
+            ->with(17)
+            ->willReturn(1);
+        $service = new MfaStepUpService($proofs, $policy, $credentials);
+
+        $this->expectException(StepUpOperationException::class);
+        $service->issue(
+            17,
+            'session',
+            MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+            'totp',
+        );
+    }
+
+    public function testTotpCannotAuthorizeEnrollmentWhenPasskeysAreNotAllowed(): void
+    {
+        $proofs = $this->createMock(MfaStepUpProofStore::class);
+        $proofs->expects(self::never())->method('issue');
+        $policy = $this->createMock(MfaPolicyService::class);
+        $policy->expects(self::exactly(2))
+            ->method('isMethodAllowed')
+            ->willReturnMap([
+                ['totp', true],
+                ['passkey', false],
+            ]);
+        $credentials = $this->createMock(PasskeyCredentialRepository::class);
+        $credentials->expects(self::never())->method('countActiveForUser');
+        $service = new MfaStepUpService($proofs, $policy, $credentials);
+
+        $this->expectException(StepUpOperationException::class);
+        $service->issue(
+            17,
+            'session',
+            MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+            'totp',
         );
     }
 
