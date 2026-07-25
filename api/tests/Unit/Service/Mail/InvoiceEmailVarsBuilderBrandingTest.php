@@ -147,6 +147,33 @@ final class InvoiceEmailVarsBuilderBrandingTest extends TestCase
         self::assertSame(9, $vars['supplier']['email_profile_id']);
     }
 
+    public function testEnabledBrandingProfilesFallBackToLiveSupplierBrandingWithoutSelectedProfile(): void
+    {
+        // Modul profilů zapnutý, ale doklad nemá vybraný profil (default není
+        // nastavený) → e-mail musí ukázat živý supplier branding stejně jako PDF,
+        // ne prázdno (logo/barva/přepínač). Regrese by jinak zůstala i po #242.
+        $pdo = $this->brandingDatabase();
+        $pdo->exec(
+            "INSERT INTO supplier
+                (id, branding_profiles_enabled, email_branding_enabled, email_accent_color, logo_path)
+             VALUES
+                (1, 1, 1, '#123456', 'storage/supplier-logos/sup-1.png')"
+        );
+
+        $vars = $this->builder($pdo)->buildReminder([
+            'supplier_id' => 1,
+            'supplier_snapshot' => $this->supplierSnapshot(),
+            'invoice_type' => 'invoice',
+            'varsymbol' => '',
+            'status' => 'issued',
+            'total_with_vat' => 1210,
+        ], 1, 'cs');
+
+        self::assertTrue($vars['supplier']['email_branding_enabled']);
+        self::assertSame('#123456', $vars['supplier']['email_accent_color']);
+        self::assertSame('storage/supplier-logos/sup-1.png', $vars['supplier']['logo_path']);
+    }
+
     private function brandingDatabase(): PDO
     {
         $pdo = new PDO('sqlite::memory:');

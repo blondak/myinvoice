@@ -272,8 +272,10 @@ final class InvoiceEmailVarsBuilder
         }
 
         // 3. Profilový branding vystaveného dokladu je immutable ve snapshotu.
-        //    Bez profilového snapshotu musí vypnutý modul zachovat původní
-        //    chování: logo, přepínač a barvu načítat živě ze supplier.
+        //    Bez profilového snapshotu je základ VŽDY živý branding ze supplier
+        //    (shodně s PDF resolveSupplier: logo/barva/přepínač nejsou ve snapshotu) —
+        //    platí pro vypnutý modul i pro zapnutý modul u dokladu bez vybraného
+        //    profilu. Explicitní profil (draft) tento základ přebije živým overlayem.
         if ($row !== null && $sid > 0) {
             $hasSnapshotProfile = !empty($row['branding_profile_id']);
             if (!$hasSnapshotProfile) {
@@ -284,11 +286,13 @@ final class InvoiceEmailVarsBuilder
                 $legacyStmt->execute([$sid]);
                 $legacy = $legacyStmt->fetch(\PDO::FETCH_ASSOC);
 
-                if ($legacy !== false && empty($legacy['branding_profiles_enabled'])) {
+                if ($legacy !== false) {
                     $row['email_branding_enabled'] = (bool) $legacy['email_branding_enabled'];
                     $row['email_accent_color'] = (string) ($legacy['email_accent_color'] ?: '#3B2D83');
                     $row['logo_path'] = $legacy['logo_path'] ?: null;
-                } elseif (!empty($invoice['branding_profile_id'])) {
+                }
+
+                if ($legacy !== false && !empty($legacy['branding_profiles_enabled']) && !empty($invoice['branding_profile_id'])) {
                     $profileId = (int) $invoice['branding_profile_id'];
                     $bStmt = $this->db->pdo()->prepare(
                         'SELECT bp.* FROM supplier s
