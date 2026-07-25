@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:pwa": "node --test \"tests/*.test.mjs\"",
+    "test:pwa": "node --test --test-concurrency=1 \"tests/*.test.mjs\"",
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {

@@ -24,8 +24,37 @@ test('locking cancels an active WebAuthn ceremony', () => {
 
 test('cold-start lock keeps the private route unmounted until full profile hydration', () => {
   assert.match(app, /RouterView v-if="showRoutedContent"/)
+  assert.match(app, /privateSessionReady[\s\S]*auth\.profileHydrated[\s\S]*session_state === 'active'/)
+  assert.match(app, /v-else-if="showColdStartGate"/)
   assert.match(sessionSecurity, /await auth\.refresh\(\)/)
   assert.match(sessionSecurity, /!auth\.profileHydrated/)
+})
+
+test('routine visibility checks do not cover an active session', () => {
+  const visibilityHandler = lockOverlay.match(/function visibilityChanged\(\) \{([\s\S]*?)\n\}/)?.[1] || ''
+  const refresh = sessionSecurity.match(/function refresh\(options: RefreshOptions = \{\}\): Promise<boolean> \{([\s\S]*?)\n\}/)?.[1] || ''
+
+  assert.match(visibilityHandler, /visibilityState === 'visible'[\s\S]*security\.refresh\(\)/)
+  assert.doesNotMatch(visibilityHandler, /visibilityState === 'hidden'/)
+  assert.doesNotMatch(visibilityHandler, /privacyCurtain/)
+  assert.doesNotMatch(refresh, /privacyCurtain\.value = true/)
+})
+
+test('session status refresh is single-flight and coalesces browser lifecycle events', () => {
+  assert.match(sessionSecurity, /let refreshPromise: Promise<boolean> \| null = null/)
+  assert.match(sessionSecurity, /if \(refreshPromise\) return refreshPromise/)
+  assert.match(sessionSecurity, /REFRESH_COOLDOWN_MS/)
+  assert.match(sessionSecurity, /!options\.force[\s\S]*lastRefreshCompletedAt/)
+  assert.match(sessionSecurity, /refresh\(\{ force: true \}\)/)
+})
+
+test('only a confirmed lock or an elapsed local deadline keeps the privacy curtain active', () => {
+  assert.match(sessionSecurity, /deadlineElapsed = true\s*privacyCurtain\.value = true/)
+  assert.match(sessionSecurity, /function coverElapsedDeadline\(\)[\s\S]*Date\.now\(\) < deadlineDueAt[\s\S]*privacyCurtain\.value = true/)
+  assert.match(sessionSecurity, /function refresh[\s\S]*coverElapsedDeadline\(\)/)
+  assert.match(sessionSecurity, /state\.value\?\.session_state === 'locked'[\s\S]*privacyCurtain\.value = true/)
+  assert.match(sessionSecurity, /else if \(!deadlineElapsed\) \{\s*privacyCurtain\.value = false/)
+  assert.doesNotMatch(lockOverlay, /security\.privacyCurtain\s*=/)
 })
 
 test('disabled automatic lock does not emit activity heartbeats', () => {

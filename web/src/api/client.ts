@@ -40,7 +40,12 @@ api.interceptors.response.use(
     const status = error.response?.status
     const code = error.response?.data?.error?.code
 
-    if (status === 401 && ['unauthenticated', 'session_expired', 'invalid_token'].includes(code)) {
+    if (status === 401 && [
+      'unauthenticated',
+      'session_expired',
+      'invalid_token',
+      'mfa_reauthentication_required',
+    ].includes(code)) {
       const path = window.location.pathname
       if (!path.startsWith('/login') && !path.startsWith('/setup')) {
         window.location.href = '/login'

@@ -14,6 +14,8 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const lockedSession = ref<SessionState | null>(null)
   const profileHydrated = ref(false)
+  let logoutRetryCsrfToken = ''
+  let logoutPromise: Promise<void> | null = null
 
   const isAuthenticated = computed(() => user.value !== null)
   const needsSetup = computed(() => setupStatus.value?.needs_setup === true)
@@ -34,6 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
   function setSessionCsrfToken(token: string) {
     csrfToken.value = token
     setCsrfToken(token || null)
+    if (token) logoutRetryCsrfToken = ''
   }
 
   function setMfaPolicy(required: boolean, methods: Array<'passkey' | 'totp'>) {
@@ -108,14 +111,46 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function logout() {
-    await authApi.logout()
+  function clearPrivateState() {
     user.value = null
-    setSessionCsrfToken('')
+    csrfToken.value = ''
+    setCsrfToken(null)
     setMfaPolicy(false, [])
     lockedSession.value = null
     profileHydrated.value = false
-    broadcastSessionEvent('logout')
+    useSupplierStore().setAvailable([], 0)
+  }
+
+  async function performLogout() {
+    const requestCsrfToken = logoutRetryCsrfToken || csrfToken.value
+    if (requestCsrfToken) setCsrfToken(requestCsrfToken)
+
+    try {
+      await authApi.logout()
+      logoutRetryCsrfToken = ''
+      broadcastSessionEvent('logout')
+    } catch (error) {
+      logoutRetryCsrfToken = requestCsrfToken
+      throw error
+    } finally {
+      clearPrivateState()
+    }
+  }
+
+  function logout(): Promise<void> {
+    if (logoutPromise) return logoutPromise
+
+    const pending = performLogout()
+    logoutPromise = pending
+    void pending.then(
+      () => {
+        if (logoutPromise === pending) logoutPromise = null
+      },
+      () => {
+        if (logoutPromise === pending) logoutPromise = null
+      },
+    )
+    return pending
   }
 
   function setLockedSession(session: SessionState | null) {

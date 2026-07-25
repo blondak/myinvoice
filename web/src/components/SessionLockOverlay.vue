@@ -57,9 +57,7 @@ function realInput(event: Event) {
   }
 }
 function visibilityChanged() {
-  if (document.visibilityState === 'hidden') {
-    if (privateRoute.value) security.privacyCurtain = true
-  } else if (privateRoute.value) {
+  if (document.visibilityState === 'visible' && privateRoute.value) {
     void security.refresh()
   }
 }
@@ -70,8 +68,11 @@ async function logout() {
   security.error = ''
   try {
     await auth.logout()
+    security.clear()
     window.location.href = '/login'
   } catch {
+    security.clear()
+    security.markLocked()
     security.error = 'logout_failed'
   }
 }
@@ -142,7 +143,6 @@ watch(visible, async (covered) => {
 
 watch(privateRoute, (isPrivate, wasPrivate) => {
   if (isPrivate && !wasPrivate) {
-    security.privacyCurtain = true
     void security.refresh()
   }
 })
@@ -201,14 +201,14 @@ onUnmounted(() => {
               class="mt-5 w-full h-11 rounded-md bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-400 text-white font-medium">
         {{ security.busy ? t('session_lock.unlocking') : t('session_lock.unlock') }}
       </button>
-      <p v-if="!security.state"
+      <p v-if="!security.state && security.error !== 'logout_failed'"
          class="mt-3 text-xs text-neutral-500">{{ t('session_lock.status_failed') }}</p>
       <p v-else-if="!hasPasskey"
          class="mt-3 text-xs text-neutral-500">{{ t('session_lock.no_passkey') }}</p>
       <p v-else-if="!passkeySupported"
          class="mt-3 text-xs text-neutral-500">{{ t('session_lock.unsupported') }}</p>
       <button v-if="security.error === 'session_status_failed'" type="button"
-              @click="security.refresh()"
+              @click="security.refresh({ force: true })"
               class="mt-4 w-full h-10 rounded-md border border-neutral-600 text-neutral-200 hover:bg-neutral-800 font-medium">
         {{ t('session_lock.retry_status') }}
       </button>

@@ -6,11 +6,13 @@ import AppShell from '@/components/layout/AppShell.vue'
 import { authApi, type TotpSetup } from '@/api/auth'
 import { createCredential, isWebAuthnAvailable } from '@/security/webauthn'
 import { useAuthStore } from '@/stores/auth'
+import { useSessionSecurityStore } from '@/stores/sessionSecurity'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const sessionSecurity = useSessionSecurityStore()
 
 const method = ref<'passkey' | 'totp'>('passkey')
 const busy = ref(false)
@@ -69,6 +71,7 @@ async function completePasskey() {
     )
     if (result.csrf_token) auth.setSessionCsrfToken(result.csrf_token)
     await auth.refresh()
+    await sessionSecurity.refresh({ force: true })
     await router.replace('/')
   } catch (e: any) {
     error.value = e?.response?.data?.error?.message || t('auth.passkey_failed')
@@ -109,8 +112,18 @@ async function completeTotp() {
 }
 
 async function logout() {
-  await auth.logout()
-  await router.replace('/login')
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await auth.logout()
+    await router.replace('/login')
+  } catch {
+    error.value = t('auth.logout_failed')
+  } finally {
+    sessionSecurity.clear()
+    busy.value = false
+  }
 }
 
 onMounted(async () => {
@@ -200,7 +213,8 @@ onMounted(async () => {
 
         <div class="pt-4 border-t border-neutral-200 flex justify-between items-center">
           <p class="text-xs text-neutral-500">{{ t('mfa_setup.logout_hint') }}</p>
-          <button type="button" @click="logout" class="text-sm text-neutral-600 hover:text-neutral-800 underline">
+          <button type="button" @click="logout" :disabled="busy"
+                  class="text-sm text-neutral-600 hover:text-neutral-800 underline disabled:opacity-60">
             {{ t('auth.logout') }}
           </button>
         </div>

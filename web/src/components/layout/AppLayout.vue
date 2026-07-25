@@ -10,6 +10,7 @@ import SupplierSwitcher from './SupplierSwitcher.vue'
 import GlobalSearch from './GlobalSearch.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import { useSessionSecurityStore } from '@/stores/sessionSecurity'
+import { useToast } from '@/composables/useToast'
 
 const { t, locale } = useI18n()
 function setLocale(l: 'cs' | 'en') {
@@ -22,17 +23,33 @@ const route = useRoute()
 const auth = useAuthStore()
 const supplierStore = useSupplierStore()
 const sessionSecurity = useSessionSecurityStore()
+const toast = useToast()
 
 const mobileOpen = ref(false)
 const quickOpen = ref(false)
 const supportOpen = ref(false)
 const featureOpen = ref(false)
 const accountantSigningProfilesEnabled = ref(false)
+const logoutBusy = ref(false)
+const canLockSession = computed(() => sessionSecurity.state?.session_state === 'active'
+  && sessionSecurity.state.unlock_methods.includes('passkey'))
 let signingSettingsRequest = 0
 
 async function logout() {
-  await auth.logout()
-  router.push('/login')
+  if (logoutBusy.value) return
+  logoutBusy.value = true
+  try {
+    await auth.logout()
+    sessionSecurity.clear()
+    mobileOpen.value = false
+    await router.replace('/login')
+  } catch {
+    sessionSecurity.markLocked()
+    sessionSecurity.error = 'logout_failed'
+    toast.error(t('auth.logout_failed'))
+  } finally {
+    logoutBusy.value = false
+  }
 }
 
 async function loadAccountantSigningMenu() {
@@ -431,12 +448,14 @@ onMounted(async () => {
 
           <!-- Odhlásit (desktop) -->
           <button
+            v-if="canLockSession"
             @click="sessionSecurity.lock"
             class="cursor-pointer hidden sm:inline-flex px-3 h-8 items-center text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50"
           >{{ t('session_lock.lock_now') }}</button>
           <button
             @click="logout"
-            class="cursor-pointer hidden sm:inline-flex px-3 h-8 items-center text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50"
+            :disabled="logoutBusy"
+            class="cursor-pointer hidden sm:inline-flex px-3 h-8 items-center text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
           >{{ t('nav.logout') }}</button>
 
           <!-- Hamburger (mobile, < lg) -->
@@ -634,14 +653,16 @@ onMounted(async () => {
               </button>
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid gap-2" :class="canLockSession ? 'grid-cols-2' : 'grid-cols-1'">
             <button
+              v-if="canLockSession"
               @click="sessionSecurity.lock"
               class="cursor-pointer w-full px-2 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
             >{{ t('session_lock.lock_now') }}</button>
             <button
               @click="logout"
-              class="cursor-pointer w-full px-2 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface"
+              :disabled="logoutBusy"
+              class="cursor-pointer w-full px-2 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface disabled:opacity-60"
             >{{ t('nav.logout') }}</button>
           </div>
         </div>

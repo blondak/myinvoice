@@ -86,9 +86,12 @@ test('passkey changes refresh the shared user profile independently of CSRF rota
 
   assert.match(
     add,
-    /if \(registered\.csrf_token\) \{[\s\S]*?auth\.setSessionCsrfToken\(registered\.csrf_token\)[\s\S]*?\}\s*await auth\.refresh\(\)/,
+    /if \(registered\.csrf_token\) \{[\s\S]*?auth\.setSessionCsrfToken\(registered\.csrf_token\)[\s\S]*?\}\s*await auth\.refresh\(\)[\s\S]*?await sessionSecurity\.refresh\(\{ force: true \}\)/,
   )
-  assert.match(revoke, /passkeyRevoke[\s\S]*?await auth\.refresh\(\)[\s\S]*?await load\(\)/)
+  assert.match(
+    revoke,
+    /passkeyRevoke[\s\S]*?await auth\.refresh\(\)[\s\S]*?await sessionSecurity\.refresh\(\{ force: true \}\)[\s\S]*?await load\(\)/,
+  )
 })
 
 test('forced passkey setup uses existing TOTP as transition step-up', async () => {
@@ -98,4 +101,5 @@ test('forced passkey setup uses existing TOTP as transition step-up', async () =
   assert.match(setup, /totpStepUp\('passkey\.register'/)
   assert.match(setup, /authorization\.step_up_token/)
   assert.match(setup, /authorization\.current_password/)
+  assert.match(setup, /await auth\.refresh\(\)[\s\S]*await sessionSecurity\.refresh\(\{ force: true \}\)/)
 })

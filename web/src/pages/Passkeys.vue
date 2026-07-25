@@ -4,9 +4,11 @@ import { useI18n } from 'vue-i18n'
 import { authApi, type PasskeyCredential } from '@/api/auth'
 import { createCredential, getCredential, isWebAuthnAvailable } from '@/security/webauthn'
 import { useAuthStore } from '@/stores/auth'
+import { useSessionSecurityStore } from '@/stores/sessionSecurity'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const sessionSecurity = useSessionSecurityStore()
 const list = ref<PasskeyCredential[]>([])
 const label = ref('')
 const currentPassword = ref('')
@@ -46,6 +48,7 @@ async function add() {
       auth.setSessionCsrfToken(registered.csrf_token)
     }
     await auth.refresh()
+    await sessionSecurity.refresh({ force: true })
     label.value = ''
     currentPassword.value = ''
     totpCode.value = ''
@@ -77,6 +80,7 @@ async function revoke(item: PasskeyCredential) {
     await authApi.passkeyRevoke(item.id, proof)
     totpCode.value = ''
     await auth.refresh()
+    await sessionSecurity.refresh({ force: true })
     await load()
   } catch (e: any) {
     error.value = e?.response?.data?.error?.message || t('passkeys.operation_failed')

@@ -5,33 +5,57 @@ import { cancelActiveWebAuthnCeremony, getCredential } from '@/security/webauthn
 import { useAuthStore } from './auth'
 import { broadcastSessionEvent, subscribeSessionEvents } from '@/security/sessionChannel'
 
+const REFRESH_COOLDOWN_MS = 750
+
+interface RefreshOptions {
+  force?: boolean
+}
+
 export const useSessionSecurityStore = defineStore('session-security', () => {
   const state = ref<SessionState | null>(null)
   const privacyCurtain = ref(false)
   const busy = ref(false)
   const error = ref('')
   let deadlineTimer: number | null = null
+  let deadlineDueAt: number | null = null
+  let deadlineElapsed = false
+  let refreshPromise: Promise<boolean> | null = null
+  let lastRefreshCompletedAt = 0
+  let refreshGeneration = 0
 
   function clearDeadlineTimer() {
     if (deadlineTimer !== null) {
       window.clearTimeout(deadlineTimer)
       deadlineTimer = null
     }
+    deadlineDueAt = null
+  }
+
+  function coverElapsedDeadline() {
+    if (deadlineDueAt === null || Date.now() < deadlineDueAt) return
+    deadlineDueAt = null
+    deadlineElapsed = true
+    privacyCurtain.value = true
   }
 
   function scheduleDeadline(next: SessionState) {
     clearDeadlineTimer()
+    deadlineElapsed = false
     if (next.session_state !== 'active' || next.idle_expires_at === null) return
     const remaining = Date.parse(next.idle_expires_at) - Date.parse(next.server_time)
     if (!Number.isFinite(remaining) || remaining <= 0) {
+      deadlineElapsed = true
       privacyCurtain.value = true
-      void refresh()
+      void refresh({ force: true })
       return
     }
+    deadlineDueAt = Date.now() + remaining
     deadlineTimer = window.setTimeout(() => {
       deadlineTimer = null
+      deadlineDueAt = null
+      deadlineElapsed = true
       privacyCurtain.value = true
-      void refresh()
+      void refresh({ force: true })
     }, Math.min(remaining, 2_147_000_000))
   }
 
@@ -47,15 +71,16 @@ export const useSessionSecurityStore = defineStore('session-security', () => {
 
   function markLocked() {
     clearDeadlineTimer()
+    deadlineElapsed = false
     cancelActiveWebAuthnCeremony()
     privacyCurtain.value = true
     if (state.value) state.value = { ...state.value, session_state: 'locked' }
   }
 
-  async function refresh(): Promise<boolean> {
-    privacyCurtain.value = true
+  async function performRefresh(generation: number): Promise<boolean> {
     try {
       const next = await authApi.sessionStatus()
+      if (generation !== refreshGeneration) return false
       const auth = useAuthStore()
       if (next.session_state === 'active' && !auth.profileHydrated) {
         auth.setSessionCsrfToken(next.csrf_token)
@@ -72,10 +97,39 @@ export const useSessionSecurityStore = defineStore('session-security', () => {
       apply(next)
       return true
     } catch {
+      if (generation !== refreshGeneration) return false
       error.value = 'session_status_failed'
-      clearDeadlineTimer()
+      if (state.value?.session_state === 'locked') {
+        privacyCurtain.value = true
+      } else if (!deadlineElapsed) {
+        privacyCurtain.value = false
+      }
       return false
     }
+  }
+
+  function refresh(options: RefreshOptions = {}): Promise<boolean> {
+    coverElapsedDeadline()
+    if (refreshPromise) return refreshPromise
+
+    const now = Date.now()
+    if (!options.force
+      && state.value !== null
+      && now - lastRefreshCompletedAt < REFRESH_COOLDOWN_MS
+    ) {
+      return Promise.resolve(error.value !== 'session_status_failed')
+    }
+
+    const generation = refreshGeneration
+    const pending = performRefresh(generation)
+    refreshPromise = pending
+    void pending.finally(() => {
+      if (refreshPromise === pending) {
+        refreshPromise = null
+        lastRefreshCompletedAt = Date.now()
+      }
+    })
+    return pending
   }
 
   async function recordActivity() {
@@ -91,6 +145,9 @@ export const useSessionSecurityStore = defineStore('session-security', () => {
   }
 
   async function lock() {
+    if (state.value?.session_state !== 'active'
+      || !state.value.unlock_methods.includes('passkey')
+    ) return
     apply(await authApi.sessionLock())
     broadcastSessionEvent('locked')
   }
@@ -117,17 +174,40 @@ export const useSessionSecurityStore = defineStore('session-security', () => {
     }
   }
 
+  function clear() {
+    refreshGeneration += 1
+    refreshPromise = null
+    lastRefreshCompletedAt = 0
+    deadlineElapsed = false
+    clearDeadlineTimer()
+    state.value = null
+    privacyCurtain.value = false
+    busy.value = false
+    error.value = ''
+  }
+
   subscribeSessionEvents((type) => {
     if (type === 'locked') {
       markLocked()
     } else if (type === 'unlocked') {
-      privacyCurtain.value = true
-      void refresh()
+      void refresh({ force: true })
     } else {
-      clearDeadlineTimer()
+      clear()
       window.location.href = '/login'
     }
   })
 
-  return { state, privacyCurtain, busy, error, apply, markLocked, refresh, recordActivity, lock, unlock }
+  return {
+    state,
+    privacyCurtain,
+    busy,
+    error,
+    apply,
+    markLocked,
+    refresh,
+    recordActivity,
+    lock,
+    unlock,
+    clear,
+  }
 })
