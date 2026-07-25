@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Toaster from '@/components/Toaster.vue'
@@ -20,9 +20,22 @@ const privateContentCovered = computed(() => security.privacyCurtain && protecte
 const privateSessionReady = computed(() => auth.isAuthenticated
   && auth.profileHydrated
   && security.state?.session_state === 'active')
-const showRoutedContent = computed(() => !protectedPrivateRoute.value || privateSessionReady.value)
+const privateTreeMounted = ref(false)
+watch(
+  [privateSessionReady, () => auth.isAuthenticated],
+  ([ready, authenticated]) => {
+    if (!authenticated) {
+      privateTreeMounted.value = false
+    } else if (ready) {
+      privateTreeMounted.value = true
+    }
+  },
+  { immediate: true },
+)
+const showRoutedContent = computed(() => !protectedPrivateRoute.value
+  || (auth.isAuthenticated && privateTreeMounted.value))
 const showColdStartGate = computed(() => protectedPrivateRoute.value
-  && !privateSessionReady.value
+  && !privateTreeMounted.value
   && security.state?.session_state !== 'locked')
 </script>
 

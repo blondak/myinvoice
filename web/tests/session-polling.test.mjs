@@ -25,9 +25,22 @@ test('locking cancels an active WebAuthn ceremony', () => {
 test('cold-start lock keeps the private route unmounted until full profile hydration', () => {
   assert.match(app, /RouterView v-if="showRoutedContent"/)
   assert.match(app, /privateSessionReady[\s\S]*auth\.profileHydrated[\s\S]*session_state === 'active'/)
+  assert.match(app, /const privateTreeMounted = ref\(false\)/)
+  assert.match(app, /if \(!authenticated\) \{\s*privateTreeMounted\.value = false/)
+  assert.match(app, /else if \(ready\) \{\s*privateTreeMounted\.value = true/)
+  assert.match(app, /showRoutedContent[\s\S]*auth\.isAuthenticated && privateTreeMounted\.value/)
   assert.match(app, /v-else-if="showColdStartGate"/)
   assert.match(sessionSecurity, /await auth\.refresh\(\)/)
   assert.match(sessionSecurity, /!auth\.profileHydrated/)
+})
+
+test('confirmed lock keeps a hydrated private route mounted below the overlay', () => {
+  const showRoutedContent = app.match(
+    /const showRoutedContent = computed\(\(\) => ([\s\S]*?)\)\nconst showColdStartGate/,
+  )?.[1] || ''
+
+  assert.match(showRoutedContent, /privateTreeMounted\.value/)
+  assert.doesNotMatch(showRoutedContent, /privateSessionReady\.value/)
 })
 
 test('routine visibility checks do not cover an active session', () => {
