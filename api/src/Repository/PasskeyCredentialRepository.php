@@ -55,8 +55,12 @@ final class PasskeyCredentialRepository
         throw new \RuntimeException('WebAuthn user handle se nepodařilo vytvořit.');
     }
 
-    public function save(int $userId, CredentialRecord $record, string $label): int
-    {
+    public function save(
+        int $userId,
+        CredentialRecord $record,
+        string $label,
+        bool $requireNoActivePasskey = false,
+    ): int {
         $label = self::normalizeLabel($label);
         if ($record->type !== PublicKeyCredentialDescriptor::CREDENTIAL_TYPE_PUBLIC_KEY) {
             throw new \InvalidArgumentException('Nepodporovaný typ WebAuthn credential.');
@@ -83,7 +87,13 @@ final class PasskeyCredentialRepository
                 'SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = ? AND revoked_at IS NULL'
             );
             $count->execute([$userId]);
-            if ((int) $count->fetchColumn() >= 10) {
+            $activeCount = (int) $count->fetchColumn();
+            if ($requireNoActivePasskey && $activeCount !== 0) {
+                throw new \DomainException(
+                    'Registrační flow je platné pouze pro první passkey uživatele.',
+                );
+            }
+            if ($activeCount >= 10) {
                 throw new \DomainException('Uživatel může mít nejvýše 10 aktivních passkeys.');
             }
 

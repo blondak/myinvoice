@@ -35,14 +35,15 @@ $report = [];
 $n = $pdo->exec("DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL 24 HOUR");
 $report['login_attempts'] = (int) $n;
 
-// 2) sessions — TIMESTAMP porovnáváme s CURRENT_TIMESTAMP, aby MariaDB
-// správně zohlednila session timezone. Nahrazené generace bez revoked_at
-// držíme jako logout tombstones až do jejich absolutní expirace.
+// 2) sessions — TIMESTAMP expires_at porovnáváme s CURRENT_TIMESTAMP, aby
+// MariaDB správně zohlednila session timezone. UTC DATETIME revoked_at naopak
+// porovnáváme s UTC_TIMESTAMP. Nahrazené generace bez revoked_at držíme jako
+// logout tombstones až do jejich absolutní expirace.
 $n = $pdo->exec('DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP(6)');
 $report['expired_sessions'] = (int) $n;
 $n = $pdo->exec(
     'DELETE FROM sessions
-      WHERE revoked_at < CURRENT_TIMESTAMP(6) - INTERVAL 7 DAY'
+      WHERE revoked_at < UTC_TIMESTAMP(6) - INTERVAL 7 DAY'
 );
 $report['revoked_sessions'] = (int) $n;
 

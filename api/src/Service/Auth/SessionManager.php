@@ -238,7 +238,7 @@ final class SessionManager
         }
         $stmt = $this->db->pdo()->prepare(
             'UPDATE sessions
-                SET last_seen = UTC_TIMESTAMP(6)
+                SET last_seen = CURRENT_TIMESTAMP(6)
               WHERE id = ? AND expires_at > CURRENT_TIMESTAMP(6)
                 AND replaced_at IS NULL AND revoked_at IS NULL'
         );
@@ -258,12 +258,12 @@ final class SessionManager
 
         $stmt = $this->db->pdo()->prepare(
             'UPDATE sessions
-                SET last_seen = UTC_TIMESTAMP(6)
+                SET last_seen = CURRENT_TIMESTAMP(6)
               WHERE id = ?
                 AND expires_at > CURRENT_TIMESTAMP(6)
                 AND replaced_at IS NULL
                 AND revoked_at IS NULL
-                AND last_seen <= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 MINUTE)'
+                AND last_seen <= DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 5 MINUTE)'
         );
         $stmt->execute([$token]);
     }

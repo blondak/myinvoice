@@ -101,13 +101,17 @@ final class PasskeyAction
 
         $hasStrongFactor = (int) $user['totp_enabled'] === 1
             || $this->credentials->countActiveForUser($context['user_id']) > 0;
+        $requireNoActivePasskey = false;
         if ($hasStrongFactor) {
             try {
-                $this->stepUp->consume(
+                $proof = $this->stepUp->consume(
                     trim((string) ($body['step_up_token'] ?? '')),
                     $context['user_id'],
                     $context['session_token'],
                     MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+                );
+                $requireNoActivePasskey = !$this->mfaPolicy->isMethodAllowed(
+                    $proof->authMethod,
                 );
             } catch (OneTimeTokenException|StepUpOperationException) {
                 return Json::error(
@@ -127,6 +131,8 @@ final class PasskeyAction
                 'Aktuální heslo není správné.',
                 403,
             );
+        } else {
+            $requireNoActivePasskey = true;
         }
 
         $stored = $this->credentials->findAllForUser($context['user_id']);
@@ -145,7 +151,9 @@ final class PasskeyAction
             WebAuthnCeremonyStore::PURPOSE_REGISTER,
             $context['user_id'],
             $context['session_token'],
-            null,
+            $requireNoActivePasskey
+                ? WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY
+                : null,
             $challenge,
             $options,
             $this->clientIp($request),
@@ -180,12 +188,10 @@ final class PasskeyAction
         $credentialPayload = $body['credential'] ?? null;
 
         try {
-            $ceremony = $this->ceremonies->consume(
+            $ceremony = $this->ceremonies->consumeRegistration(
                 trim((string) ($body['flow_token'] ?? '')),
-                WebAuthnCeremonyStore::PURPOSE_REGISTER,
                 $context['user_id'],
                 $context['session_token'],
-                null,
             );
             if (!is_array($credentialPayload)) {
                 throw new PasskeyVerificationException('Chybí WebAuthn credential.');
@@ -198,6 +204,8 @@ final class PasskeyAction
                 $context['user_id'],
                 $record,
                 (string) ($body['label'] ?? ''),
+                $ceremony->operation
+                    === WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
             );
         } catch (OneTimeTokenException|PasskeyVerificationException) {
             return Json::error(

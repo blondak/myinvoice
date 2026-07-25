@@ -91,6 +91,32 @@ final class SessionManagerHotPathTest extends TestCase
         );
     }
 
+    public function testStaleLastSeenUsesTimestampCompatibleDatabaseClock(): void
+    {
+        $token = str_repeat('a', 64);
+        $statement = $this->createMock(PDOStatement::class);
+        $statement->expects(self::once())->method('execute')->with([$token])->willReturn(true);
+        $pdo = $this->createMock(PDO::class);
+        $pdo->expects(self::once())
+            ->method('prepare')
+            ->with(self::callback(
+                static fn (string $sql): bool => str_contains(
+                    $sql,
+                    'SET last_seen = CURRENT_TIMESTAMP(6)',
+                )
+                    && str_contains(
+                        $sql,
+                        'last_seen <= DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 5 MINUTE)',
+                    )
+                    && !str_contains($sql, 'UTC_TIMESTAMP'),
+            ))
+            ->willReturn($statement);
+        $db = $this->createMock(Connection::class);
+        $db->expects(self::once())->method('pdo')->willReturn($pdo);
+
+        $this->manager($db)->touchIfStale($token, 1_721_822_000, 1_721_822_400);
+    }
+
     private function manager(Connection $db): SessionManager
     {
         return new SessionManager(

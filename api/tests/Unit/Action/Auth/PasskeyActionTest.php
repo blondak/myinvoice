@@ -14,6 +14,7 @@ use MyInvoice\Service\Auth\LastMfaFactorException;
 use MyInvoice\Service\Auth\LoginSessionIssuer;
 use MyInvoice\Service\Auth\MfaPolicyService;
 use MyInvoice\Service\Auth\MfaProtectedOperationService;
+use MyInvoice\Service\Auth\MfaStepUpProof;
 use MyInvoice\Service\Auth\MfaStepUpService;
 use MyInvoice\Service\Auth\PasskeyService;
 use MyInvoice\Service\Auth\PasskeySessionTransitionService;
@@ -134,6 +135,95 @@ final class PasskeyActionTest extends TestCase
 
         self::assertSame(409, $response->getStatusCode());
         self::assertSame('last_mfa_factor', $this->errorCode($response));
+    }
+
+    public function testPhasedOutTotpCreatesFirstPasskeyOnlyRegistrationFlow(): void
+    {
+        $this->policy->method('isMethodAllowed')->willReturnMap([
+            ['passkey', true],
+            ['totp', false],
+        ]);
+        $this->mockFreshUser(['totp_enabled' => 1]);
+        $this->stepUp->expects(self::once())
+            ->method('consume')
+            ->with(
+                'transition-proof',
+                17,
+                str_repeat('a', 64),
+                MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+            )
+            ->willReturn(new MfaStepUpProof(
+                17,
+                MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+                'totp',
+                null,
+            ));
+        $this->passwords->expects(self::never())->method('verify');
+        $this->expectRegistrationOptions(
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+        );
+
+        $response = $this->action()->registerOptions(
+            $this->sessionRequest('POST', '/api/auth/webauthn/register/options')
+                ->withParsedBody(['step_up_token' => 'transition-proof']),
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+    }
+
+    public function testCurrentlyAllowedStrongFactorCreatesUnconstrainedRegistrationFlow(): void
+    {
+        $this->policy->method('isMethodAllowed')->willReturnMap([
+            ['passkey', true],
+            ['totp', true],
+        ]);
+        $this->mockFreshUser(['totp_enabled' => 1]);
+        $this->stepUp->expects(self::once())
+            ->method('consume')
+            ->willReturn(new MfaStepUpProof(
+                17,
+                MfaStepUpService::OPERATION_PASSKEY_REGISTER,
+                'totp',
+                null,
+            ));
+        $this->expectRegistrationOptions(null);
+
+        $response = $this->action()->registerOptions(
+            $this->sessionRequest('POST', '/api/auth/webauthn/register/options')
+                ->withParsedBody(['step_up_token' => 'strong-proof']),
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+    }
+
+    public function testPasswordAuthorizedRegistrationIsLimitedToFirstPasskey(): void
+    {
+        $this->policy->method('isMethodAllowed')->willReturnMap([
+            ['passkey', true],
+        ]);
+        $this->mockFreshUser(['totp_enabled' => 0]);
+        $this->credentials->expects(self::once())
+            ->method('countActiveForUser')
+            ->with(17)
+            ->willReturn(0);
+        $this->passwords->expects(self::once())
+            ->method('verify')
+            ->with('Synthetic-test-password-42', 'synthetic-hash')
+            ->willReturn(true);
+        $this->stepUp->expects(self::never())->method('consume');
+        $this->expectRegistrationOptions(
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+        );
+
+        $response = $this->action()->registerOptions(
+            $this->sessionRequest('POST', '/api/auth/webauthn/register/options')
+                ->withParsedBody(['current_password' => 'Synthetic-test-password-42']),
+            (new ResponseFactory())->createResponse(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
     }
 
     public function testLoginVerifyIssuesStrongPasskeySessionOnlyAfterCounterUpdate(): void
@@ -396,14 +486,14 @@ final class PasskeyActionTest extends TestCase
         $ceremony = new WebAuthnCeremony(
             WebAuthnCeremonyStore::PURPOSE_REGISTER,
             17,
-            null,
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
             random_bytes(32),
             ['challenge' => 'synthetic'],
         );
         $this->policy->expects(self::once())->method('isMethodAllowed')->with('passkey')->willReturn(true);
         $this->ceremonies->expects(self::once())
-            ->method('consume')
-            ->with('flow-token', WebAuthnCeremonyStore::PURPOSE_REGISTER, 17, str_repeat('a', 64), null)
+            ->method('consumeRegistration')
+            ->with('flow-token', 17, str_repeat('a', 64))
             ->willReturn($ceremony);
         $this->passkeys->expects(self::once())
             ->method('verifyRegistration')
@@ -411,7 +501,7 @@ final class PasskeyActionTest extends TestCase
             ->willReturn($stored->record);
         $this->credentials->expects(self::once())
             ->method('save')
-            ->with(17, $stored->record, 'Pixel 9')
+            ->with(17, $stored->record, 'Pixel 9', true)
             ->willReturn(42);
         $this->credentials->expects(self::once())
             ->method('findActiveForUserById')
@@ -487,6 +577,44 @@ final class PasskeyActionTest extends TestCase
         $pdo = $this->createMock(\PDO::class);
         $pdo->expects(self::once())->method('prepare')->willReturn($statement);
         $this->db->expects(self::once())->method('pdo')->willReturn($pdo);
+    }
+
+    private function expectRegistrationOptions(?string $constraint): void
+    {
+        $this->credentials->expects(self::once())
+            ->method('findAllForUser')
+            ->with(17)
+            ->willReturn([]);
+        $this->credentials->expects(self::once())
+            ->method('userHandle')
+            ->with(17)
+            ->willReturn(str_repeat('h', 32));
+        $this->passkeys->expects(self::once())
+            ->method('registrationOptions')
+            ->with(
+                'synthetic@example.invalid',
+                'Synthetic User',
+                str_repeat('h', 32),
+                [],
+                self::callback(static fn (string $challenge): bool => strlen($challenge) === 32),
+            )
+            ->willReturn(['challenge' => 'synthetic-options']);
+        $this->ceremonies->expects(self::once())
+            ->method('create')
+            ->with(
+                WebAuthnCeremonyStore::PURPOSE_REGISTER,
+                17,
+                str_repeat('a', 64),
+                $constraint,
+                self::callback(static fn (string $challenge): bool => strlen($challenge) === 32),
+                ['challenge' => 'synthetic-options'],
+                '127.0.0.1',
+                '',
+            )
+            ->willReturn('registration-flow');
+        $this->ipMatcher->expects(self::once())
+            ->method('clientIpFromRequest')
+            ->willReturn('127.0.0.1');
     }
 
     private function action(): PasskeyAction

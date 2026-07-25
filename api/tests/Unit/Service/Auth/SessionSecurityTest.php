@@ -392,6 +392,37 @@ final class SessionSecurityTest extends TestCase
         );
     }
 
+    public function testLastSeenTouchUsesTimestampClockOutsideUtcSession(): void
+    {
+        $this->db->pdo()->exec("SET time_zone = '+09:00'");
+        $created = $this->sessions->create(
+            $this->userId,
+            '127.0.0.1',
+            'Timezone touch',
+            SessionAuthContext::strong('totp', $this->clock->now()),
+        );
+        $this->db->pdo()->prepare(
+            'UPDATE sessions
+                SET last_seen = DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 10 MINUTE)
+              WHERE id = ?'
+        )->execute([$created['token']]);
+
+        $before = $this->sessions->loadAuthenticationContext($created['token']);
+        self::assertNotNull($before);
+        $this->sessions->touchIfStale(
+            $created['token'],
+            $before['session']['last_seen'],
+            $before['session']['evaluated_at_epoch'],
+        );
+        $after = $this->sessions->loadAuthenticationContext($created['token']);
+
+        self::assertNotNull($after);
+        self::assertLessThanOrEqual(
+            2,
+            abs($after['session']['evaluated_at_epoch'] - $after['session']['last_seen']),
+        );
+    }
+
     private function createCredentialRow(): int
     {
         $handle = random_bytes(32);

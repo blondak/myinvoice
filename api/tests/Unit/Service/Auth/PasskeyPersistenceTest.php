@@ -145,23 +145,117 @@ final class PasskeyPersistenceTest extends TestCase
             'PHPUnit',
         );
 
-        $flow = $store->consume(
+        $flow = $store->consumeRegistration(
             $token,
-            WebAuthnCeremonyStore::PURPOSE_REGISTER,
             $this->userId,
             'session-token',
-            null,
         );
         self::assertSame($challenge, $flow->challenge);
         self::assertSame(['challenge' => 'encoded-challenge'], $flow->options);
 
         $this->expectException(OneTimeTokenException::class);
-        $store->consume(
+        $store->consumeRegistration(
             $token,
+            $this->userId,
+            'session-token',
+        );
+    }
+
+    public function testTwoPreissuedFirstPasskeyFlowsCanStoreOnlyOneCredential(): void
+    {
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
+        $tokens = [];
+        for ($i = 0; $i < 2; $i++) {
+            $tokens[] = $store->create(
+                WebAuthnCeremonyStore::PURPOSE_REGISTER,
+                $this->userId,
+                'session-token',
+                WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+                random_bytes(32),
+                ['challenge' => "first-passkey-{$i}"],
+                '127.0.0.1',
+                'PHPUnit',
+            );
+        }
+
+        $handle = $this->credentials->userHandle($this->userId);
+        $first = $store->consumeRegistration($tokens[0], $this->userId, 'session-token');
+        self::assertSame(
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+            $first->operation,
+        );
+        $this->credentials->save(
+            $this->userId,
+            $this->credentialRecord($handle),
+            'First key',
+            true,
+        );
+
+        $second = $store->consumeRegistration($tokens[1], $this->userId, 'session-token');
+        self::assertSame(
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+            $second->operation,
+        );
+        try {
+            $this->credentials->save(
+                $this->userId,
+                $this->credentialRecord($handle),
+                'Second key',
+                true,
+            );
+            self::fail('Druhé předem vydané first-passkey flow nesmí uložit credential.');
+        } catch (\DomainException) {
+        }
+
+        self::assertSame(1, $this->credentials->countActiveForUser($this->userId));
+    }
+
+    public function testRegistrationRejectsUnknownInternalConstraint(): void
+    {
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $store->create(
             WebAuthnCeremonyStore::PURPOSE_REGISTER,
             $this->userId,
             'session-token',
-            null,
+            'unknown_registration_constraint',
+            random_bytes(32),
+            ['challenge' => 'invalid-constraint'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+    }
+
+    public function testRegistrationConstraintRequiresSpecializedConsumer(): void
+    {
+        $store = new WebAuthnCeremonyStore($this->db, new PsrSecurityClock($this->clock));
+        $token = $store->create(
+            WebAuthnCeremonyStore::PURPOSE_REGISTER,
+            $this->userId,
+            'session-token',
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+            random_bytes(32),
+            ['challenge' => 'first-passkey-only'],
+            '127.0.0.1',
+            'PHPUnit',
+        );
+
+        try {
+            $store->consume(
+                $token,
+                WebAuthnCeremonyStore::PURPOSE_REGISTER,
+                $this->userId,
+                'session-token',
+                WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+            );
+            self::fail('Interní registrační constraint nesmí přijmout obecný consumer.');
+        } catch (\InvalidArgumentException) {
+        }
+
+        self::assertSame(
+            WebAuthnCeremonyStore::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+            $store->consumeRegistration($token, $this->userId, 'session-token')->operation,
         );
     }
 

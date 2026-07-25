@@ -51,6 +51,24 @@ final class AuthMiddleware implements MiddlewareInterface
         '/api/auth/reset',
     ];
 
+    /**
+     * Zahájení nového přihlášení nesmí zdědit identitu ze staré browserové
+     * session. Jinak legacy session při povinném MFA zastaví request dřív,
+     * než ji může úspěšné přihlášení nahradit strong session.
+     *
+     * @var array<string,list<string>>
+     */
+    private const SESSION_IGNORED_PATHS = [
+        'GET' => [
+            '/api/auth/setup-status',
+        ],
+        'POST' => [
+            '/api/auth/login',
+            '/api/auth/webauthn/login/options',
+            '/api/auth/webauthn/login/verify',
+        ],
+    ];
+
     public function __construct(
         private readonly Config $config,
         private readonly SessionManager $sessions,
@@ -102,12 +120,14 @@ final class AuthMiddleware implements MiddlewareInterface
         }
 
         // 2) Session cookie (browser SPA)
+        $method     = strtoupper($request->getMethod());
+        $path       = $request->getUri()->getPath();
         $cookieName = (string) $this->config->get('session.cookie_name', '__Host-myinvoice_session');
         $cookies    = $request->getCookieParams();
-        $token      = (string) ($cookies[$cookieName] ?? '');
-        $path       = $request->getUri()->getPath();
-        $isLogout   = strtoupper($request->getMethod()) === 'POST'
-            && $path === '/api/auth/logout';
+        $token      = self::isAllowed($method, $path, self::SESSION_IGNORED_PATHS)
+            ? ''
+            : (string) ($cookies[$cookieName] ?? '');
+        $isLogout   = $method === 'POST' && $path === '/api/auth/logout';
 
         $authentication = $token !== ''
             ? $this->sessions->loadAuthenticationContext($token)
@@ -224,5 +244,13 @@ final class AuthMiddleware implements MiddlewareInterface
             return 'cs';
         }
         return $best['lang'];
+    }
+
+    /**
+     * @param array<string,list<string>> $allowlist
+     */
+    private static function isAllowed(string $method, string $path, array $allowlist): bool
+    {
+        return in_array($path, $allowlist[$method] ?? [], true);
     }
 }

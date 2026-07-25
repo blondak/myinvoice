@@ -52,7 +52,7 @@ final class AuthRuntimeConfigContractTest extends TestCase
             $contents,
         );
         self::assertStringContainsString(
-            'WHERE revoked_at < CURRENT_TIMESTAMP(6) - INTERVAL 7 DAY',
+            'WHERE revoked_at < UTC_TIMESTAMP(6) - INTERVAL 7 DAY',
             $contents,
         );
         self::assertStringNotContainsString(

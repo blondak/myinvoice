@@ -14,6 +14,7 @@ final class WebAuthnCeremonyStore
     public const PURPOSE_DISCOVERABLE_LOGIN = 'passkey.login.discoverable';
     public const PURPOSE_STEP_UP = 'passkey.step_up';
     public const PURPOSE_UNLOCK = 'session.unlock';
+    public const REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY = 'first_passkey_only';
 
     private const PURPOSES = [
         self::PURPOSE_REGISTER,
@@ -106,12 +107,32 @@ final class WebAuthnCeremonyStore
         ?string $expectedSessionToken,
         ?string $expectedOperation,
     ): WebAuthnCeremony {
+        if ($expectedPurpose === self::PURPOSE_REGISTER && $expectedOperation !== null) {
+            throw new \InvalidArgumentException(
+                'Registrační constraint lze spotřebovat pouze přes consumeRegistration().',
+            );
+        }
         return $this->consumeBound(
             $flowToken,
             $expectedPurpose,
             $expectedUserId,
             $expectedSessionToken,
             $expectedOperation,
+        );
+    }
+
+    public function consumeRegistration(
+        string $flowToken,
+        int $expectedUserId,
+        string $expectedSessionToken,
+    ): WebAuthnCeremony {
+        return $this->consumeBound(
+            $flowToken,
+            self::PURPOSE_REGISTER,
+            $expectedUserId,
+            $expectedSessionToken,
+            null,
+            true,
         );
     }
 
@@ -216,12 +237,13 @@ final class WebAuthnCeremonyStore
         ?int $expectedUserId,
         ?string $expectedSessionToken,
         ?string $expectedOperation,
+        bool $allowRegistrationConstraint = false,
     ): WebAuthnCeremony {
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
             $cutoff = $this->securityClock->capture($pdo);
-            $ceremony = $this->consumeInTransaction(
+            $ceremony = $this->consumeInTransactionInternal(
                 $pdo,
                 $cutoff,
                 $flowToken,
@@ -229,6 +251,7 @@ final class WebAuthnCeremonyStore
                 $expectedUserId,
                 $expectedSessionToken,
                 $expectedOperation,
+                $allowRegistrationConstraint,
             );
             $pdo->commit();
             return $ceremony;
@@ -254,7 +277,39 @@ final class WebAuthnCeremonyStore
         ?string $expectedSessionToken,
         ?string $expectedOperation,
     ): WebAuthnCeremony {
+        if ($expectedPurpose === self::PURPOSE_REGISTER && $expectedOperation !== null) {
+            throw new \InvalidArgumentException(
+                'Registrační constraint lze spotřebovat pouze přes consumeRegistration().',
+            );
+        }
+        return $this->consumeInTransactionInternal(
+            $pdo,
+            $cutoff,
+            $flowToken,
+            $expectedPurpose,
+            $expectedUserId,
+            $expectedSessionToken,
+            $expectedOperation,
+            false,
+        );
+    }
+
+    private function consumeInTransactionInternal(
+        PDO $pdo,
+        SecurityTime $cutoff,
+        string $flowToken,
+        string $expectedPurpose,
+        ?int $expectedUserId,
+        ?string $expectedSessionToken,
+        ?string $expectedOperation,
+        bool $allowRegistrationConstraint,
+    ): WebAuthnCeremony {
         self::validateContext($expectedPurpose, $expectedSessionToken, $expectedOperation);
+        if ($allowRegistrationConstraint
+            && ($expectedPurpose !== self::PURPOSE_REGISTER || $expectedOperation !== null)
+        ) {
+            throw new \LogicException('Registration constraint lze použít jen pro registrační flow.');
+        }
         if (!self::isTokenShapeValid($flowToken)) {
             throw new OneTimeTokenException('Neplatné nebo spotřebované WebAuthn flow.');
         }
@@ -280,7 +335,11 @@ final class WebAuthnCeremonyStore
             || ($expectedUserId !== null && (int) $row['user_id'] !== $expectedUserId)
             || !hash_equals((string) $row['purpose'], $expectedPurpose)
             || !self::nullableHashMatches($row['session_id_hash'], $expectedSessionToken)
-            || !self::nullableStringMatches($row['operation'], $expectedOperation)
+            || !self::operationMatches(
+                $row['operation'],
+                $expectedOperation,
+                $allowRegistrationConstraint,
+            )
         ) {
             throw new OneTimeTokenException('Neplatné nebo spotřebované WebAuthn flow.');
         }
@@ -356,8 +415,18 @@ final class WebAuthnCeremonyStore
         if ($purpose === self::PURPOSE_STEP_UP && ($operation === null || trim($operation) === '')) {
             throw new \InvalidArgumentException('Step-up flow vyžaduje účelovou operaci.');
         }
-        if ($purpose !== self::PURPOSE_STEP_UP && $operation !== null) {
-            throw new \InvalidArgumentException('Operaci smí nést pouze step-up flow.');
+        if ($purpose === self::PURPOSE_REGISTER
+            && $operation !== null
+            && $operation !== self::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY
+        ) {
+            throw new \InvalidArgumentException('Neplatný constraint registračního flow.');
+        }
+        if (!in_array($purpose, [self::PURPOSE_STEP_UP, self::PURPOSE_REGISTER], true)
+            && $operation !== null
+        ) {
+            throw new \InvalidArgumentException(
+                'Operaci nebo constraint smí nést pouze step-up nebo registrační flow.',
+            );
         }
         if ($operation !== null && strlen($operation) > 190) {
             throw new \InvalidArgumentException('Step-up operace je příliš dlouhá.');
@@ -388,6 +457,21 @@ final class WebAuthnCeremonyStore
             return $stored === null && $expected === null;
         }
         return hash_equals((string) $stored, $expected);
+    }
+
+    private static function operationMatches(
+        mixed $stored,
+        ?string $expected,
+        bool $allowRegistrationConstraint,
+    ): bool {
+        if ($allowRegistrationConstraint) {
+            return $stored === null
+                || hash_equals(
+                    (string) $stored,
+                    self::REGISTRATION_CONSTRAINT_NO_ACTIVE_PASSKEY,
+                );
+        }
+        return self::nullableStringMatches($stored, $expected);
     }
 
     private static function formatTime(\DateTimeImmutable $time): string
