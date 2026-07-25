@@ -3874,8 +3874,10 @@ paths:
       description: |
         Přepíše výchozí konstanty pro daný rok. Tělo lze poslat buď jako plochý
         objekt, nebo zabalené v `{ "data": { ... } }`. Skalární klíče jsou povinné
-        (sazby, limity), vnořené (`pausal_annual`, `band_ceilings`, `expense_caps`,
-        `child_credits`) musí být objekty/pole.
+        (sazby, limity), vnořené (`band_ceilings`, `expense_caps`, `child_credits`)
+        musí být objekty/pole. Paušální daň se posílá jako rozvrh měsíčních záloh
+        `pausal_monthly` (roční `pausal_annual` je odvozená a neukládá se; přijme se
+        jen kvůli zpětné kompatibilitě, když rozvrh chybí).
       requestBody:
         required: true
         content:
@@ -5385,7 +5387,6 @@ components:
         - vat_rate_standard
         - vat_rate_reduced
         - kh_item_threshold
-        - pausal_annual
         - band_ceilings
         - expense_caps
         - child_credits
@@ -5410,9 +5411,28 @@ components:
         vat_rate_standard: { type: number, description: "Základní sazba DPH (%) — sloupce DPH výkazů, samovyměření RC, auto-klasifikace" }
         vat_rate_reduced: { type: number, description: Snížená sazba DPH (%) }
         kh_item_threshold: { type: number, description: "Limit KH (Kč vč. DPH) — nad limit doklad jednotlivě (A.4/B.2), do limitu sumace (A.5/B.3)" }
+        pausal_monthly:
+          type: array
+          description: |
+            Rozvrh měsíčních záloh paušální daně. Segment platí od `from` (vždy 1. den
+            měsíce daného roku, první musí být 1. 1.), dokud ho nevystřídá další —
+            sazba se může změnit uprostřed roku (2026: 1. pásmo 9 984 → 9 162 Kč
+            od 1. 7.). Roční částka `pausal_annual` je z rozvrhu odvozená a neukládá se.
+            Starší klienti smí místo rozvrhu poslat `pausal_annual` (bere se doslova).
+          items:
+            type: object
+            required: [from, band1, band2, band3]
+            properties:
+              from: { type: string, format: date, example: '2026-07-01' }
+              band1: { type: number, description: Měsíční záloha 1. pásma (Kč) }
+              band2: { type: number }
+              band3: { type: number }
         pausal_annual:
           type: object
-          description: Měsíční/roční částky paušální daně per pásmo
+          description: |
+            Roční částky paušální daně per pásmo. Ve výstupu ODVOZENÉ ze součtu
+            dvanácti měsíčních záloh roku; na vstupu se přijímají jen tehdy, není-li
+            poslaný `pausal_monthly` (zpětná kompatibilita).
         band_ceilings:
           type: object
           description: Stropy obratu pro pásma paušální daně
