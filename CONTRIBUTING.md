@@ -10,7 +10,7 @@ Pull requesty, hlášení chyb i náměty vítáme. Díky, že chcete MyInvoice 
   jinou odměnu.
 - Potvrzujete, že jste autorem příspěvku (nebo máte právo jej takto poskytnout)
   a že neobsahuje kód třetích stran pod licencí neslučitelnou s MIT.
-- Pull requesty, které tato pravidla nesplňují, nemůžeme přijmout.##
+- Pull requesty, které tato pravidla nesplňují, nemůžeme přijmout.
 
 ## Jak poslat pull request
 
