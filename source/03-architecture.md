@@ -124,7 +124,7 @@ myinvoice.cz/
 │
 ├── storage/                      # gitignore, runtime data
 │   ├── invoices/                 # cached PDF: YYYY-MM/Faktura-YY-MM-NNN.pdf
-│   ├── sessions/                 # fallback pokud bez Redis
+│   ├── sessions/                 # rezervovaný runtime prostor
 │   ├── uploads/                  # supplier logo, signature
 │   ├── cache/                    # Twig compile cache
 │   └── backup/                   # mariadb-dump archivy

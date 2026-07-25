@@ -214,7 +214,7 @@ return [
         'invoices_dir' => __DIR__ . '/storage/invoices',  // vygenerovaná PDF
         'uploads_dir'  => __DIR__ . '/storage/uploads',   // dočasné upload soubory (GPC výpisy, attachementy)
         'backup_dir'   => __DIR__ . '/storage/backup',    // mysqldump zálohy z cron-backup.php
-        'sessions_dir' => __DIR__ . '/storage/sessions',  // runtime adresář pro session-kompatibilní integrace
+        'sessions_dir' => __DIR__ . '/storage/sessions',  // rezervovaný runtime adresář (browser session jsou v MariaDB)
         'cache_dir'    => __DIR__ . '/storage/cache',     // file cache (ARES/VIES odpovědi, PDF mezikroky)
     ],
     'pdf_signing' => [

@@ -297,6 +297,13 @@ a chybné ověření vracejí stejnou obecnou chybu.
 
 - Management passkeys je session-only; registrace a odvolání vyžadují čerstvý
   účelový proof, první faktor účtu bez silného MFA aktuální heslo.
+- Při přechodu politiky z TOTP na passkeys smí jinak už nepovolené TOTP vydat
+  proof pouze pro `passkey.register`, jen pokud politika povoluje passkey a
+  uživatel dosud nemá žádnou aktivní passkey. Výjimka neplatí pro druhý klíč
+  ani pro jinou operaci. Registration ceremony si toto omezení nese jako
+  interní constraint a uložení credential jej znovu atomicky ověří po zamčení
+  uživatele; více předem vydaných first-passkey flow proto uloží nejvýše jeden
+  klíč.
 - Options/verify flow je pětiminutový, jednorázový a server ukládá jen hash
   opaque tokenu. Každá ceremony je vázaná na účel a podle typu také session a
   operation.

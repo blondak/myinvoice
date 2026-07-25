@@ -90,7 +90,8 @@ Multi-supplier: N dodavatelů (firem / IČO) v jedné instalaci, plně izolovan�
 ### 2.2 Přihlášení
 - POST `/api/auth/login` přijme `{email, password}`, vrátí session cookie + CSRF token v `X-CSRF-Token` headeru.
 - Hesla bcrypt, cost 12, peppered (pepper z env `APP_PEPPER`).
-- Session uložena v Redis (klíč `sess:<id>`, TTL 30 dní), fallback do `sessions` tabulky.
+- Browser session je uložena autoritativně v MariaDB tabulce `sessions`; Redis
+  se používá pro rate limiting, brute-force ochranu a jiné best-effort cache.
 
 ### 2.3 Brute-force ochrana
 **Klíč: `bf:<sha1(email)>:<ip_class_c>`**, sliding window, fail2ban algoritmus:
@@ -808,7 +809,8 @@ Server identification:
 #### 9.3.2 Session
 - **Cookie:** `__Host-myinvoice_session=<256-bit random>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=<zbývající absolutní platnost>`
 - `SameSite=Lax` (nejen Strict) — Strict by rozbil link z emailů (reset hesla). Pro mutating requesty máme CSRF token jako další vrstvu.
-- **Server-side store:** Redis (primární) nebo MariaDB `sessions` tabulka. Klient nemá žádná data v cookie, jen opaque ID.
+- **Server-side store:** MariaDB tabulka `sessions`. Klient nemá žádná data
+  v cookie, pouze neprůhledné ID; Redis není autoritou pro platnost session.
 - **Session ID rotace:** `regenerateId()` při:
   - úspěšném login
   - elevation privilegií (změna hesla, přechod readonly → admin)
@@ -822,7 +824,16 @@ Server identification:
   absolutní platnosti.
 - **Absolute timeout:** 30 dní od prvního přihlášení → force re-login.
 - **Concurrent sessions:** povolené (uživatel může být na desktopu i mobilu).
-- **Logout invaliduje session na serveru** (smaže z Redis/DB), ne jen cookie.
+- **Request hot-path:** session a uživatel se načtou jedním autoritativním JOIN;
+  `last_seen` typu `TIMESTAMP` se zapisuje pomocí session-timezone
+  `CURRENT_TIMESTAMP` nejvýše jednou za pět minut. Lock middleware používá
+  stejný snapshot a transakci s `FOR UPDATE` otevírá až po dosažení idle
+  deadline nebo při explicitním bezpečnostním přechodu.
+- **Čerstvý login:** přesně vyjmenované setup-status, heslové a WebAuthn login
+  endpointy ignorují případnou existující browser session. Legacy cookie při
+  nově zapnutém povinném MFA proto nemůže zablokovat vydání nové strong session;
+  na ostatních routách dál platí fail-closed kontrola assurance.
+- **Logout invaliduje session na serveru** v MariaDB, ne jen cookie.
 - **MFA:** passkey/WebAuthn a TOTP jsou silné faktory. E-mailové OTP není silný
   faktor pro povinnou MFA. Passkey se používá po hesle, pro účelový step-up,
   k odemčení a při administrátorském opt-in také jako discoverable

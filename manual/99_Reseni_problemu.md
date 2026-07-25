@@ -226,8 +226,8 @@ Stats cache možná chybí. Spusť `php api/bin/recompute-stats.php` — přepo�
 
 ### Aplikace pomalu reaguje pod zátěží
 
-- Zapni Redis (`cfg.php → redis.enabled => true`) — sessions + brute-force
-  cache jdou do paměti místo DB
+- Zapni Redis (`cfg.php → redis.enabled => true`) — rate limiting, brute-force
+  ochrana a aplikační cache pak používají paměť místo DB
 - Zkontroluj `cfg.php → app.debug => false` v produkci (debug logs jsou
   drahé)
 - Sledování v `log/app-YYYY-MM-DD.log` (pomalé queries = `slow_query` v DB)

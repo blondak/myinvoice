@@ -64,6 +64,14 @@ Přidání a odvolání passkey vyžaduje nové ověření passkey nebo TOTP. U 
 dosavadního silného faktoru první registrace vyžádá aktuální heslo. Při povinném
 MFA nelze odvolat poslední povolený silný faktor.
 
+Pokud správce přechází z TOTP na passkeys a vyřadí TOTP ze seznamu povolených
+metod, uživatel smí existujícím TOTP potvrdit pouze registraci své první
+passkey. Přechod je dostupný jen tehdy, když jsou passkeys povolené a účet ještě
+nemá žádnou aktivní passkey. Stejné omezení platí pro registraci heslem u účtu
+bez dosavadního silného faktoru. Server pod databázovým zámkem znovu ověří, že
+jde skutečně o první klíč, takže nelze předem otevřít více registrací a dokončit
+je až po přidání prvního klíče. Další klíče už vyžadují aktuálně povolený faktor.
+
 TOTP = time-based one-time password (RFC 6238).
 
 ### 39.2.2 Aktivace TOTP
@@ -220,6 +228,12 @@ výchozí timeout pomocí `session.lock_after_minutes` nebo
 nevynucuje. Uživatel jej přesto může dobrovolně zapnout v profilu na záložce
 **Zámek aplikace**.
 
+Hodnota musí být celé číslo od 0 do 1440; podporovaný je i kanonický numerický
+řetězec, například `"15"`. Neplatná hodnota nesmí zablokovat start aplikace:
+výchozí automatický zámek se bezpečně vypne a přihlášený uživatel uvidí
+upozornění `session_lock_configuration` na health endpointu. Osobní explicitně
+nastavené intervaly zůstávají účinné.
+
 Osobní nastavení má tyto hranice:
 
 - **Použít nastavení správce** zachová hodnotu správce; při `0` je automatický
@@ -232,7 +246,10 @@ Osobní nastavení má tyto hranice:
 - Zkrácení timeoutu se vyhodnotí serverově hned při uložení a může aktuální
   session rovnou zamknout.
 
-Ruční **Zamknout** v uživatelském menu zůstává dostupné bez ohledu na timeout.
+Ruční **Zamknout** v uživatelském menu je dostupné bez ohledu na timeout, ale
+jen pokud má účet alespoň jednu aktivní passkey a instalace ji umí použít.
+Bez dostupné passkey se tlačítko nezobrazuje a server přímý požadavek odmítne,
+aby nevznikla session, kterou lze ukončit pouze úplným odhlášením.
 
 Aktivitu posouvají pouze skutečné vstupy do viditelné soukromé stránky, například
 kliknutí, dotyk nebo klávesa. Polling, běžné API requesty, focus okna ani service
@@ -250,6 +267,20 @@ zákaz screenshotu ani skrytí Android Recents. Rozpracovaný formulář zůstan
 zachovaný jen dokud prohlížeč stránku drží v paměti; po ukončení stránky
 Androidem se neuložená data ztratí. Offline odemčení není možné, protože server
 musí vydat a ověřit jednorázovou challenge.
+
+### 39.2.8 Nasazení změny autentizačního modelu
+
+Aktivní session vytvořené před doplněním autentizačního kontextu se po migraci
+označí jako `legacy`; migrace z pouhé existence TOTP neodvozuje, že konkrétní
+session druhý faktor skutečně ověřila. Pokud instalace vyžaduje MFA, uživatelé
+s takovou session se proto musí jednou znovu přihlásit. Jde o záměrné
+fail-closed chování, které brání povýšení staré session bez důkazu o MFA.
+Přihlašovací endpointy přítomnou starou cookie ignorují, takže stačí dokončit
+standardní login; cookie není nutné ručně mazat v nastavení prohlížeče.
+
+Browser session a její stav zámku jsou autoritativně uložené v MariaDB. Redis
+slouží pro rate limiting, brute-force ochranu a best-effort cache; jeho výpadek
+nesmí obnovit odvolanou, nahrazenou nebo zamčenou session.
 
 ## 39.3 Brute-force ochrana
 
