@@ -32,6 +32,14 @@ final class SupplierScopeMiddleware implements MiddlewareInterface
 
     public function process(Request $request, Handler $handler): Response
     {
+        $path = $request->getUri()->getPath();
+        if (str_starts_with($path, '/api/auth/webauthn/')
+            || str_starts_with($path, '/api/auth/mfa/')
+            || str_starts_with($path, '/api/auth/session/')
+        ) {
+            return $handler->handle($request);
+        }
+
         // 0. Bearer (API token) — pokud je token bound na konkrétního supplier-a,
         //    forcuj ho a ignoruj header / query (token nesmí "skočit" do jiné firmy).
         $apiToken = $request->getAttribute(AuthMiddleware::ATTR_API_TOKEN);

@@ -133,8 +133,29 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, version, db, redis, time]
                 properties:
-                  ok: { type: boolean, example: true }
+                  status: { type: string, enum: [ok] }
+                  version: { type: string, example: "4.3.1" }
+                  db: { type: boolean }
+                  redis: { type: boolean }
+                  time: { type: string, format: date-time }
+                  warnings:
+                    type: array
+                    description: Diagnostika dostupná pouze přihlášenému uživateli.
+                    items:
+                      type: object
+                      required: [code, message]
+                      properties:
+                        code:
+                          type: string
+                          enum:
+                            - secret_encryption_key
+                            - webauthn_configuration
+                            - mfa_methods_configuration
+                            - session_lock_configuration
+                            - session_lock_without_unlock_method
+                        message: { type: string }
 
   /api/v1/version:
     get:

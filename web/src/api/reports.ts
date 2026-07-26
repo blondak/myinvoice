@@ -363,8 +363,8 @@ export const reportsApi = {
     api.get<MonthlyExportJob>(`/reports/monthly-export/jobs/${id}`).then(r => r.data),
 
   /** Poslední exporty (historie — zůstávají ke stažení dokud nejsou smazané / uklizené). */
-  monthlyExportJobs: () =>
-    api.get<MonthlyExportJob[]>('/reports/monthly-export/jobs').then(r => r.data),
+  monthlyExportJobs: (signal?: AbortSignal) =>
+    api.get<MonthlyExportJob[]>('/reports/monthly-export/jobs', { signal }).then(r => r.data),
 
   monthlyExportCancel: (id: number) =>
     api.post<{ ok: boolean; cancel_requested: boolean }>(`/reports/monthly-export/jobs/${id}/cancel`).then(r => r.data),
