@@ -1,5 +1,16 @@
 type JsonObject = Record<string, any>
-let activeCeremony: AbortController | null = null
+
+/**
+ * Ceremony se NEPŘEDÁVÁ AbortSignal.
+ *
+ * Správci hesel přepisují navigator.credentials.* a jejich obal signál nemusí
+ * zvládnout — na dev instanci změřeno, že volání s už zrušeným signálem proti
+ * specifikaci neodmítne AbortError, ale vůbec nedoběhne. Signál navíc nic
+ * nezbytného neřeší: zrušit rozdělanou ceremonii umí uživatel v systémovém
+ * dialogu a náš vlastní timeout drží strop. Místo abortu proto jen zahazujeme
+ * výsledek zastaralé ceremonie podle generace.
+ */
+let ceremonyGeneration = 0
 
 export function isWebAuthnAvailable(): boolean {
   return typeof window !== 'undefined'
@@ -8,18 +19,68 @@ export function isWebAuthnAvailable(): boolean {
 }
 
 export function cancelActiveWebAuthnCeremony(): void {
-  activeCeremony?.abort()
-  activeCeremony = null
+  ceremonyGeneration += 1
 }
 
-function startCeremony(): AbortController {
-  cancelActiveWebAuthnCeremony()
-  activeCeremony = new AbortController()
-  return activeCeremony
+function startCeremony(): number {
+  ceremonyGeneration += 1
+  return ceremonyGeneration
 }
 
-function finishCeremony(controller: AbortController): void {
-  if (activeCeremony === controller) activeCeremony = null
+function isCurrentCeremony(generation: number): boolean {
+  return generation === ceremonyGeneration
+}
+
+// Prohlížeč nemusí serverový `timeout` z options vůbec vynutit — a když se nad
+// nezaostřenou stránkou nevykreslí systémový dialog, promise nedoběhne vůbec.
+// Vlastní strop zaručí, že se UI nikdy nezasekne bez chybové hlášky.
+const CEREMONY_GRACE_MS = 5_000
+const CEREMONY_FALLBACK_TIMEOUT_MS = 120_000
+
+/**
+ * Správci hesel a passkey rozšíření běžně přepisují navigator.credentials.*.
+ * Když jejich obal spadne (typicky `Cannot read properties of null`), promise
+ * nikdy nedoběhne a UI by jen viselo. Nativní implementaci poznáme podle
+ * `[native code]` v toString — slouží to výhradně k lepší chybové hlášce.
+ */
+function isNative(fn: unknown): boolean {
+  try {
+    return Function.prototype.toString.call(fn).includes('[native code]')
+  } catch {
+    return false
+  }
+}
+
+export function isCredentialsApiPatched(): boolean {
+  if (!isWebAuthnAvailable()) return false
+  return !isNative(navigator.credentials.get) || !isNative(navigator.credentials.create)
+}
+
+async function runCeremony(
+  options: JsonObject,
+  run: (credentials: CredentialsContainer) => Promise<Credential | null>,
+): Promise<JsonObject> {
+  if (!isWebAuthnAvailable()) throw new Error('webauthn_unavailable')
+  const generation = startCeremony()
+  const configured = Number(options.timeout)
+  const limit = (Number.isFinite(configured) && configured > 0
+    ? configured
+    : CEREMONY_FALLBACK_TIMEOUT_MS) + CEREMONY_GRACE_MS
+
+  const ceremony = run(navigator.credentials)
+  const timeout = new Promise<never>((_, reject) => {
+    window.setTimeout(
+      () => reject(new Error(isCredentialsApiPatched()
+        ? 'webauthn_timeout_extension'
+        : 'webauthn_timeout')),
+      limit,
+    )
+  })
+
+  const credential = await Promise.race([ceremony, timeout])
+  if (!isCurrentCeremony(generation)) throw new Error('webauthn_cancelled')
+  if (!(credential instanceof PublicKeyCredential)) throw new Error('webauthn_cancelled')
+  return credentialToJson(credential)
 }
 
 export function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
@@ -35,7 +96,25 @@ export function toBase64Url(value: ArrayBuffer): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-export function requestOptionsFromJson(options: JsonObject): PublicKeyCredentialRequestOptions {
+/**
+ * Options musí být čistá data, ne Vue reaktivní Proxy.
+ *
+ * Správci hesel přepisují navigator.credentials a options si mezi světy posílají
+ * přes CustomEvent, jehož `detail` se strukturovaně klonuje. Proxy se naklonovat
+ * nedá, klon selže a listener dostane `detail === null` — Keeper na tom padá
+ * v `switch (t.detail.type)` a naše promise nikdy nedoběhne. Options ze serveru
+ * jsou čisté JSON, takže je stačí přelít přes JSON a zbavit se tím reaktivity;
+ * teprve pak se dělají ArrayBuffery, které přes JSON projít nesmí.
+ *
+ * Chrání to všechna volání bez ohledu na to, jestli si volající flow uložil do
+ * ref() (Login.vue) nebo drží prostý objekt (odemčení zámku, registrace).
+ */
+function plainJson(options: JsonObject): JsonObject {
+  return JSON.parse(JSON.stringify(options))
+}
+
+export function requestOptionsFromJson(source: JsonObject): PublicKeyCredentialRequestOptions {
+  const options = plainJson(source)
   return {
     ...options,
     challenge: fromBase64Url(options.challenge),
@@ -46,7 +125,8 @@ export function requestOptionsFromJson(options: JsonObject): PublicKeyCredential
   } as PublicKeyCredentialRequestOptions
 }
 
-export function creationOptionsFromJson(options: JsonObject): PublicKeyCredentialCreationOptions {
+export function creationOptionsFromJson(source: JsonObject): PublicKeyCredentialCreationOptions {
+  const options = plainJson(source)
   return {
     ...options,
     challenge: fromBase64Url(options.challenge),
@@ -82,31 +162,13 @@ export function credentialToJson(credential: PublicKeyCredential): JsonObject {
 }
 
 export async function getCredential(options: JsonObject): Promise<JsonObject> {
-  if (!isWebAuthnAvailable()) throw new Error('webauthn_unavailable')
-  const controller = startCeremony()
-  try {
-    const credential = await navigator.credentials.get({
-      publicKey: requestOptionsFromJson(options),
-      signal: controller.signal,
-    })
-    if (!(credential instanceof PublicKeyCredential)) throw new Error('webauthn_cancelled')
-    return credentialToJson(credential)
-  } finally {
-    finishCeremony(controller)
-  }
+  return runCeremony(options, credentials => credentials.get({
+    publicKey: requestOptionsFromJson(options),
+  }))
 }
 
 export async function createCredential(options: JsonObject): Promise<JsonObject> {
-  if (!isWebAuthnAvailable()) throw new Error('webauthn_unavailable')
-  const controller = startCeremony()
-  try {
-    const credential = await navigator.credentials.create({
-      publicKey: creationOptionsFromJson(options),
-      signal: controller.signal,
-    })
-    if (!(credential instanceof PublicKeyCredential)) throw new Error('webauthn_cancelled')
-    return credentialToJson(credential)
-  } finally {
-    finishCeremony(controller)
-  }
+  return runCeremony(options, credentials => credentials.create({
+    publicKey: creationOptionsFromJson(options),
+  }))
 }
