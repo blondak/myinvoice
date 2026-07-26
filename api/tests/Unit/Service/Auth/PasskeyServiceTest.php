@@ -209,8 +209,12 @@ final class PasskeyServiceTest extends TestCase
         self::assertInstanceOf(\OpenSSLAsymmetricKey::class, $privateKey);
         $details = openssl_pkey_get_details($privateKey);
         self::assertIsArray($details);
-        $x = (string) ($details['ec']['x'] ?? '');
-        $y = (string) ($details['ec']['y'] ?? '');
+        // openssl_pkey_get_details() vrací souřadnice jako velké celé číslo, tedy
+        // bez vedoucích nul. U P-256 proto zhruba každý 128. klíč vyjde kratší než
+        // 32 bajtů. COSE souřadnice ale musí být přesně 32 bajtů, takže se doplní
+        // zleva — bez toho by test náhodně padal (a padal, hned na prvním CI běhu).
+        $x = str_pad((string) ($details['ec']['x'] ?? ''), 32, "\x00", STR_PAD_LEFT);
+        $y = str_pad((string) ($details['ec']['y'] ?? ''), 32, "\x00", STR_PAD_LEFT);
         self::assertSame(32, strlen($x));
         self::assertSame(32, strlen($y));
 
