@@ -81,7 +81,13 @@ Můžeš si změnit:
 
 Pro běžný účet je vhodné mít dvě passkeys, případně jednu passkey a aktivní
 TOTP. Přidání nebo odvolání passkey vyžaduje čerstvé ověření existujícím silným
-faktorem. Pokud žádný nemáš, první registrace vyžádá aktuální heslo.
+faktorem, a to podle toho, co účet zrovna má:
+
+| Stav účtu | Co registrace vyžádá |
+|---|---|
+| Žádný silný faktor | Aktuální heslo |
+| Aktivní TOTP, zatím žádná passkey | **Povinně kód z autentikátoru** — jiný silný faktor k ověření neexistuje |
+| Alespoň jedna passkey | Potvrzení existující passkey; kód z autentikátoru je volitelná alternativa |
 
 ## 7.6 Zamknutí a odemčení aplikace
 

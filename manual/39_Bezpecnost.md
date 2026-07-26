@@ -37,7 +37,7 @@ e-mailového OTP.
 
 ### 39.2.1 Passkeys
 
-Passkey zaregistruješ v **Můj profil → Zabezpečení → Passkeys**. Každý klíč má
+Passkey zaregistruješ v **Profil → Přístupové klíče**. Každý klíč má
 vlastní název, datum vytvoření a posledního použití. Lze jej přejmenovat nebo
 odvolat. Aplikace podporuje více klíčů; doporučené jsou dvě passkeys nebo jedna
 passkey spolu s TOTP.
@@ -76,7 +76,7 @@ TOTP = time-based one-time password (RFC 6238).
 
 ### 39.2.2 Aktivace TOTP
 
-**Můj profil → 2FA → Aktivovat**.
+**Profil → 2FA / TOTP → Aktivovat**.
 
 ![Aktivace 2FA](img/16_2fa_setup.webp)
 
