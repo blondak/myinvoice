@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.51.0] — 2026-07-26
+
 ### Added
 
 - **Přístupové klíče (passkeys) jako druhý faktor.** Účet si v *Profil → Přístupové klíče* může zaregistrovat libovolný počet klíčů — otisk prstu, obličej, zámek zařízení nebo hardwarový klíč. Registrace prvního klíče se ověřuje aktuálním heslem, dalších už existujícím silným faktorem. Kde klíč fyzicky leží, rozhoduje prohlížeč: buď je vázaný na zařízení (Windows Hello, Touch ID), nebo ho synchronizuje správce hesel či cloud účtu — první případ znamená, že se ztrátou zařízení mizí i faktor, proto si u jediného zařízením vázaného klíče drž zálohu v podobě druhého klíče nebo TOTP. Ověření uživatele na zařízení je povinné, ceremonie jsou jednorázové a systém hlídá anomálie čítače podpisů. Funkce je čistě opt-in: kdo si klíč nezaregistruje, nepozná změnu. (#239)
