@@ -16,10 +16,24 @@ test('session-aware polling stops for hidden or covered private UI and aborts in
   assert.match(polling, /controller\?\.abort\(\)/)
 })
 
-test('locking cancels an active WebAuthn ceremony', () => {
-  assert.match(webauthn, /signal:\s*controller\.signal/)
-  assert.match(webauthn, /activeCeremony\?\.abort\(\)/)
+test('locking discards a stale WebAuthn ceremony without AbortSignal', () => {
+  // Obal správce hesel AbortSignal nezvládá (změřeno: volání se zrušeným
+  // signálem proti specifikaci nedoběhne), takže se ceremonii signál nepředává
+  // a zastaralý výsledek se jen zahodí podle generace.
+  assert.doesNotMatch(webauthn, /signal[,:]/)
+  assert.match(webauthn, /let ceremonyGeneration = 0/)
+  assert.match(webauthn, /function isCurrentCeremony/)
+  assert.match(webauthn, /if \(!isCurrentCeremony\(generation\)\) throw new Error\('webauthn_cancelled'\)/)
   assert.match(sessionSecurity, /cancelActiveWebAuthnCeremony\(\)/)
+})
+
+test('a stuck WebAuthn ceremony cannot hang the UI silently', () => {
+  // Bez vlastního stropu promise nedoběhne, když se systémový dialog nevykreslí.
+  assert.match(webauthn, /CEREMONY_FALLBACK_TIMEOUT_MS/)
+  assert.match(webauthn, /Promise\.race\(\[ceremony, timeout\]\)/)
+  // Přepsané navigator.credentials.* (správci hesel) se hlásí zvlášť.
+  assert.match(webauthn, /isCredentialsApiPatched\(\)[\s\S]{0,40}'webauthn_timeout_extension'/)
+  assert.match(webauthn, /includes\('\[native code\]'\)/)
 })
 
 test('cold-start lock keeps the private route unmounted until full profile hydration', () => {
@@ -35,8 +49,9 @@ test('cold-start lock keeps the private route unmounted until full profile hydra
 })
 
 test('confirmed lock keeps a hydrated private route mounted below the overlay', () => {
+  // \r?\n — na Windows checkoutu s core.autocrlf=true jsou konce řádků CRLF.
   const showRoutedContent = app.match(
-    /const showRoutedContent = computed\(\(\) => ([\s\S]*?)\)\nconst showColdStartGate/,
+    /const showRoutedContent = computed\(\(\) => ([\s\S]*?)\)\r?\nconst showColdStartGate/,
   )?.[1] || ''
 
   assert.match(showRoutedContent, /privateTreeMounted\.value/)
@@ -51,6 +66,17 @@ test('routine visibility checks do not cover an active session', () => {
   assert.doesNotMatch(visibilityHandler, /visibilityState === 'hidden'/)
   assert.doesNotMatch(visibilityHandler, /privacyCurtain/)
   assert.doesNotMatch(refresh, /privacyCurtain\.value = true/)
+})
+
+test('lifecycle rechecks are skipped when the session cannot lock at all', () => {
+  assert.match(lockOverlay, /const lockPossible = computed\(\(\) => security\.state === null/)
+  assert.match(lockOverlay, /lock_after_minutes \?\? 0\) > 0/)
+  assert.match(lockOverlay, /unlock_methods\.length > 0/)
+
+  const visibilityHandler = lockOverlay.match(/function visibilityChanged\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  const recheckHandler = lockOverlay.match(/function recheck\(\) \{([\s\S]*?)\r?\n\}/)?.[1] || ''
+  assert.match(visibilityHandler, /lockPossible\.value/)
+  assert.match(recheckHandler, /lockPossible\.value/)
 })
 
 test('session status refresh is single-flight and coalesces browser lifecycle events', () => {
