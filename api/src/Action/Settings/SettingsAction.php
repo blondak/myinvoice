@@ -39,6 +39,7 @@ final class SettingsAction
         private readonly InvoicePdfRenderer $pdf,
         private readonly Config $config,
         private readonly \MyInvoice\Service\Ares\SupplierRegistryEnricher $enricher,
+        private readonly \MyInvoice\Service\Report\EpoIdentityValidator $epoValidator,
     ) {}
 
     /** Aktuální supplier (z X-Supplier-Id middleware). */
@@ -334,6 +335,43 @@ final class SettingsAction
                 }
             }
         }
+        // CZ-NACE (c_okec v DPHDP3, BUG 7): kanonizace proti snapshotu číselníku
+        // ČINNOSTI (OKEC) Daňového portálu — viz EpoOkecCodebook. Zápis dle ČSÚ
+        // se dohledá doplněním nul zprava (73.11 / 7311 → 731100), kanonické
+        // hodnoty číselníku vč. bez-nulových kódů sekcí 01–09 („14800") projdou
+        // beze změny. Dvoumístný oddíl z ARES („74") v číselníku neexistuje →
+        // EPO propustná chyba 30; takový vstup se NEUKLÁDÁ. Kód expirovaný
+        // (přechod číselníku na NACE rev. 2.1 k 1. 1. 2026) nebo neznámý se
+        // ukládá — snapshot může zestárnout, neblokujeme — ale odpověď nese
+        // `cz_nace_warning`, které UI zobrazí u pole.
+        $czNaceWarning = null;
+        if (array_key_exists('cz_nace_code', $body) && $body['cz_nace_code'] !== null
+            && trim((string) $body['cz_nace_code']) !== ''
+        ) {
+            $resolvedNace = \MyInvoice\Service\Report\EpoOkecCodebook::normalize((string) $body['cz_nace_code']);
+            if ($resolvedNace === null) {
+                return Json::error($response, 'validation_failed',
+                    'CZ-NACE musí být alespoň 4místný kód třídy (např. 73.11). Dvoumístný oddíl z ARES nestačí, EPO ho v číselníku nenajde.',
+                    422);
+            }
+            $body['cz_nace_code'] = $resolvedNace['code'];
+            if ($resolvedNace['status'] === \MyInvoice\Service\Report\EpoOkecCodebook::STATUS_EXPIRED) {
+                $czNaceWarning = sprintf(
+                    'Kód CZ-NACE %s (%s) měl v číselníku EPO platnost do %s — číselník přešel na NACE rev. 2.1. '
+                    . 'Kód se uložil, ale EPO by podání odmítlo propustnou chybou 30; vyber aktuální kód činnosti '
+                    . '(Daňový portál → Dokumentace → Rozhraní číselníků → ČINNOSTI).',
+                    $resolvedNace['code'],
+                    mb_strtolower((string) $resolvedNace['name']),
+                    (new \DateTimeImmutable((string) $resolvedNace['valid_to']))->format('j. n. Y')
+                );
+            } elseif ($resolvedNace['status'] === \MyInvoice\Service\Report\EpoOkecCodebook::STATUS_UNKNOWN) {
+                $czNaceWarning = sprintf(
+                    'Kód CZ-NACE %s není ve snapshotu číselníku EPO. Kód se uložil — pokud jde o novou hodnotu '
+                    . 'číselníku, je vše v pořádku; jinak hrozí při podání propustná chyba 30.',
+                    $resolvedNace['code']
+                );
+            }
+        }
         // Empty string → null pro tax fields (NULL = nevyplněno)
         foreach (['taxpayer_type', 'vat_period', 'financial_office_code', 'workplace_code',
                   'cz_nace_code', 'data_box_id',
@@ -446,7 +484,22 @@ final class SettingsAction
             $this->pdf->invalidateDraftsBySupplier($id);
         }
         $this->log($request, 'supplier.updated', $id, ['fields' => array_keys(array_intersect_key($body, array_flip($allowed)))]);
-        return $this->respondSupplier($response, $id);
+        // EPO připravenost (informativně, uložení neblokuje): plátce-PO dostane
+        // v odpovědi epo_ready + seznam chybějících XSD-povinných polí pro EPO
+        // podání (kód FÚ, DIČ, typ poplatníka) — UI z toho staví hint/badge.
+        // Doporučená pole (ÚzP, e-mail, opr_*) sem nepatří, ta podání neblokují.
+        $extra = [];
+        $cur = $this->db->pdo()->prepare('SELECT taxpayer_type, is_vat_payer FROM supplier WHERE id = ?');
+        $cur->execute([$id]);
+        $curRow = $cur->fetch(\PDO::FETCH_ASSOC) ?: [];
+        if (($curRow['taxpayer_type'] ?? null) === 'po' && !empty($curRow['is_vat_payer'])) {
+            $epo = $this->epoValidator->forSupplier($id, \MyInvoice\Service\Report\EpoIdentityValidator::DOC_DPHDP3);
+            $extra = ['epo_ready' => $epo['missing'] === [], 'missing' => $epo['missing']];
+        }
+        if ($czNaceWarning !== null) {
+            $extra['cz_nace_warning'] = $czNaceWarning;
+        }
+        return $this->respondSupplier($response, $id, $extra);
     }
 
     /** DELETE /api/suppliers/{id} — jen pokud supplier nemá clients/invoices/currencies s daty. */
@@ -512,7 +565,8 @@ final class SettingsAction
         return Json::ok($response, ['deleted' => true]);
     }
 
-    private function respondSupplier(Response $response, int $id): Response
+    /** @param array<string,mixed> $extra doplňkové klíče odpovědi (např. epo_ready/missing po update) */
+    private function respondSupplier(Response $response, int $id, array $extra = []): Response
     {
         if ($id <= 0) return Json::error($response, 'not_found', 'Supplier nenalezen.', 404);
         $stmt = $this->db->pdo()->prepare(
@@ -595,7 +649,7 @@ final class SettingsAction
             // Přijaté faktury nemají cfg fallback — výchozí je vestavěná šablona generátoru.
             'purchase'    => \MyInvoice\Repository\PurchaseInvoiceRepository::PURCHASE_DEFAULT_TEMPLATE,
         ];
-        return Json::ok($response, $row);
+        return Json::ok($response, array_merge($row, $extra));
     }
 
     private function nullable(array $b, string $key): ?string

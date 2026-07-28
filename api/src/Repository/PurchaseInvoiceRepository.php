@@ -832,6 +832,17 @@ final class PurchaseInvoiceRepository
                 !empty($item['is_fixed_asset']) ? 1 : 0,
             ]);
         }
+
+        // Pozn.: konzistenci hlavičkového reverse_charge s klasifikací položek
+        // ZDE ZÁMĚRNĚ neřešíme. Flip příznaku patří do Create/Update akcí, které
+        // se dívají jen na kódy VÝSLOVNĚ zadané uživatelem (VatClassificationDefaulter
+        // ::anyReverseChargeCode) a vrací o tom warning. Kdyby se flipovalo tady,
+        // vstupem by byly i kódy dosazené defaultem (24e/24 pro zahraničního
+        // dodavatele s 0 % — větev výše nezávisí na RC flagu), takže doklad
+        // s vědomě vypnutým reverse_charge by se tiše přepisoval při každém
+        // uložení i re-importu. Výkazy rozpor hlavičky a položek unesou:
+        // VatLedgerService zařazuje i samovyměřuje podle flagu NEBO kódu
+        // (23/24/24e/25) — viz testImportedServiceSelfAssessesWithoutInvoiceFlag.
     }
 
     /**

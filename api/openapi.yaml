@@ -1755,6 +1755,32 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /api/v1/invoices/{id}/rebuild-snapshots:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceOps]
+      summary: Obnoví snapshoty klienta/dodavatele na dokladu z aktuálních live dat (admin)
+      description: |
+        Lehčí alternativa k odemčení celého formuláře: přepíše POUZE `client_snapshot` /
+        `supplier_snapshot` / `bank_snapshot` z aktuálních live dat, a to i u uzamčeného
+        (issued/sent/paid) dokladu, a zneplatní vygenerované PDF (stará verze se
+        archivuje). Částky, stav, datumy ani varsymbol se nemění. Auditováno jako
+        `invoice.rebuild_snapshots` se starým i novým snapshotem.
+
+        Akce NEMÁ vliv na kontrolní hlášení ani přiznání DPH — výkazy čtou DIČ
+        protistrany z živé tabulky `clients`, nikoli ze snapshotů. Projeví se jen
+        v obsahu PDF a exportů (ISDOC/Pohoda/Stereo).
+      responses:
+        '200':
+          description: Aktualizovaná faktura
+        '403': { description: Pouze admin }
+        '409': { description: Draft (snapshoty nepoužívá) nebo stornovaný doklad }
+
   /api/v1/invoices/{id}/cancel:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
@@ -3531,7 +3557,11 @@ paths:
         - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 }, description: 'Pro kvartální periodu' }
       responses:
         '200':
-          description: JSON summary (lines 1-29 + 40+, totals, deadline)
+          description: |
+            JSON summary (lines 1-29 + 40+, totals, deadline) + warnings[] (doporučená
+            pole identifikace, propustné chyby EPO) + missing[] (chybějící XSD-povinná
+            pole identifikace). Náhled se nikdy neblokuje — missing[] jen znamená, že
+            stažení XML vrátí 422.
           content:
             application/json:
               schema: { type: object }
@@ -3546,11 +3576,17 @@ paths:
         - { in: query, name: year, required: true, schema: { type: integer } }
         - { in: query, name: month, schema: { type: integer } }
         - { in: query, name: quarter, schema: { type: integer } }
+        - { in: query, name: form, schema: { type: string, enum: [B, O], default: B },
+            description: 'Forma podání (dapdph_forma): B řádné, O opravné (§ 138 DŘ). Dodatečné D/E dočasně nepodporováno — § 141/2 DŘ vyžaduje vykázání rozdílů proti poslední známé dani a builder umí jen plné hodnoty období.' }
+        - { in: query, name: d_zjist, schema: { type: string, pattern: '^\d{2}\.\d{2}\.\d{4}$' },
+            description: 'Datum zjištění důvodů pro podání (DD.MM.YYYY) — volitelné u O' }
       responses:
         '200':
           description: XML download
           content:
             application/xml: {}
+        '400': { description: Neplatná forma podání nebo chybějící/neplatné d_zjist }
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
         '403': { description: Pouze admin/accountant }
 
   /api/v1/reports/dphkh1/preview:
@@ -3564,7 +3600,7 @@ paths:
         - { in: query, name: year,  required: true, schema: { type: integer } }
         - { in: query, name: month, required: true, schema: { type: integer, minimum: 1, maximum: 12 } }
       responses:
-        '200': { description: Summary s counts sekcí A.1/A.2/A.4/A.5/B.1/B.2/B.3 }
+        '200': { description: 'Summary s counts sekcí A.1/A.2/A.4/A.5/B.1/B.2/B.3 + warnings[] + missing[] (chybějící XSD-povinná pole identifikace; náhled se neblokuje, stažení XML vrátí 422)' }
         '403': { description: Pouze admin/accountant }
 
   /api/v1/reports/dphkh1:
@@ -3575,11 +3611,17 @@ paths:
         - $ref: '#/components/parameters/SupplierIdHeader'
         - { in: query, name: year,  required: true, schema: { type: integer } }
         - { in: query, name: month, required: true, schema: { type: integer } }
+        - { in: query, name: form, schema: { type: string, enum: [B, O, N, E], default: B },
+            description: 'Forma podání (khdph_forma): B řádné, O opravné, N následné, E následné/opravné (§ 101e–101f ZDPH)' }
+        - { in: query, name: d_zjist, schema: { type: string, pattern: '^\d{2}\.\d{2}\.\d{4}$' },
+            description: 'Datum zjištění důvodů pro podání (DD.MM.YYYY) — povinné u form=N/E, volitelné u O' }
       responses:
         '200':
           description: XML download
           content:
             application/xml: {}
+        '400': { description: Neplatná forma podání nebo chybějící/neplatné d_zjist }
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
 
   /api/v1/reports/dphshv/preview:
     get:
@@ -3593,7 +3635,7 @@ paths:
         - { in: query, name: year,  required: true, schema: { type: integer } }
         - { in: query, name: month, required: true, schema: { type: integer } }
       responses:
-        '200': { description: "Summary s řádky (country, vat_id, sh_type, amount, count)" }
+        '200': { description: "Summary s řádky (country, vat_id, sh_type, amount, count) + warnings[] + missing[] (chybějící XSD-povinná pole identifikace; náhled se neblokuje, stažení XML vrátí 422)" }
 
   /api/v1/reports/dphshv:
     get:
@@ -3608,6 +3650,7 @@ paths:
           description: XML download
           content:
             application/xml: {}
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
 
   /api/v1/reports/income-tax/preview:
     get:
@@ -4818,7 +4861,8 @@ paths:
                 properties:
                   id: { type: integer, format: int64 }
                   is_vat_payer: { type: boolean }
-                  source: { type: string, enum: [ares, vies, unknown] }
+                  source: { type: string, enum: [ares, vies, crpdph, unknown],
+                            description: 'crpdph = skupinová registrace (CZ699…) ověřená v registru plátců DPH, VIES ji nezná' }
                   ic: { type: [string, "null"] }
                   dic: { type: [string, "null"] }
         '404':
@@ -6301,21 +6345,31 @@ components:
 
     ViesLookupResult:
       type: object
+      description: |
+        Výsledek ověření DIČ. Pozor: české DIČ skupinové registrace (CZ699…) VIES
+        nezná, takže se ověřuje v registru plátců DPH (`source: crpdph`) — ten
+        vrací platnost, ale NE název ani adresu subjektu (`name`/`address` prázdné,
+        `parsed` null). Nedostupný registr/VIES je měkká chyba: `valid: false`
+        se `source: error` (neznamená neplatné DIČ).
       properties:
         valid: { type: boolean }
-        vat_id: { type: string, example: "DE123456789" }
-        country_code: { type: string, example: "DE" }
+        vat_number: { type: string, example: "DE123456789" }
+        country: { type: string, example: "DE" }
         name: { type: [string, "null"] }
         address: { type: [string, "null"] }
-        consultation_number:
-          type: [string, "null"]
-          description: |
-            VIES consultation number — důkazní záznam pro daňovou kontrolu, že DIČ
-            byl k danému datu platný.
-        request_date: { type: string, format: date-time }
+        parsed:
+          type: [object, "null"]
+          description: Rozparsovaná adresa, pokud ji zdroj vrátil.
+          properties:
+            street: { type: string }
+            city: { type: string }
+            zip: { type: string }
+        group_registration:
+          type: boolean
+          description: True u DIČ skupinové registrace (CZ699…), ověřeno v registru plátců DPH.
         source:
           type: string
-          enum: [fresh, cache]
+          enum: [cache, rest, soap, ares, crpdph, error]
 
     ActivityLogEntry:
       type: object
