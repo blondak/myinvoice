@@ -149,7 +149,7 @@ const epoMissingLocal = computed<string[]>(() => {
 const epoRecommendedLocal = computed<string[]>(() => {
   const s = supplier.value as any
   if (!s) return []
-  const fields = ['workplace_code', 'email']
+  const fields = ['workplace_code', 'email', 'phone', 'cz_nace_code']
   if (s.taxpayer_type === 'po') fields.push('opr_jmeno', 'opr_prijmeni', 'opr_postaveni')
   return fields.filter((f) => epoFieldEmpty(s[f]))
 })
@@ -793,6 +793,7 @@ async function removeLogo() {
               <p v-if="czNaceError" class="text-xs text-danger-500 mt-1">{{ czNaceError }}</p>
               <!-- Warning číselníku ze serveru (expirovaný kód po přechodu na NACE 2.1 / kód mimo číselník) -->
               <p v-else-if="czNaceServerWarning" class="text-xs text-warning-600 mt-1">{{ czNaceServerWarning }}</p>
+              <p v-else-if="epoFieldEmpty(supplier.cz_nace_code)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.data_box_id') }}</label>

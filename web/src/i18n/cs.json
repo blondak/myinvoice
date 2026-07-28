@@ -659,7 +659,7 @@
     },
     "warning": {
       "credit_note_positive_total": "Dobropis má kladný součet — má mít záporné částky. Záporné znaménko stačí na jedné straně (např. −1 ks × 1000, nebo 1 ks × −1000); pokud jsou záporné množství i cena zároveň, výkazy DPH/KH plnění přičtou místo odečtení. Zkontroluj prosím znaménka.",
-      "credit_note_mixed_sign_items": "Dobropis má položky obou znamének (například vrácené zboží záporně a kladný storno poplatek). Evidence DPH každou položku dobropisu vykáže záporně, takže kladný řádek by snížil odpočet místo zvýšení — vystav ho prosím samostatným dokladem.",
+      "credit_note_mixed_sign_items": "Dobropis má položky obou znamének (například vrácené zboží záporně a kladný storno poplatek). Evidence DPH každou položku dobropisu vykáže záporně, takže kladný řádek by snížil odpočet místo zvýšení. Zkontroluj znaménka podle dokladu od dodavatele; kladnou část je potřeba evidovat samostatným dokladem.",
       "vendor_non_payer_deduction": "Dodavatel je neplátce DPH, ale je uplatněn nárok na odpočet. Od neplátce nelze DPH odpočítat — zkontroluj nastavení odpočtu.",
       "reverse_charge_forced_by_classification": "Položka má klasifikaci v režimu přenesené povinnosti (reverse charge), proto byl na dokladu automaticky zapnut příznak reverse charge — hlavička a položky si jinak odporovaly."
     },
@@ -2083,6 +2083,7 @@
     "dic_valid": "{dic} je platné — {name}",
     "dic_valid_group": "{dic} je platné — skupinová registrace DPH (ověřeno v registru plátců DPH)",
     "dic_valid_no_name": "{dic} je platné (registr nevrátil název subjektu)",
+    "dic_check_unavailable": "Ověření DIČ se teď nepodařilo — registr neodpověděl. Zkus to prosím za chvíli; zadané DIČ zůstává beze změny.",
     "dic_invalid": "{dic} není platné nebo neexistuje",
     "duplicate_ic": "Klient s tímto IČO již existuje:",
     "duplicate_dic": "Klient s tímto DIČ již existuje:",

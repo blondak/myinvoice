@@ -209,8 +209,11 @@ final class VatLedgerService
                    -- i ten kladný řádek. Rozlišit to dnes nejde: `document_kind` zná jen
                    -- credit_note, vrubopis (opravný doklad se zvýšením) jako typ
                    -- neexistuje, takže znaménko položky nemá proti čemu ověřit. Doklad
-                   -- s položkami obou znamének proto hlásíme warningem už při uložení
-                   -- (`credit_note_mixed_sign_items` v PurchaseInvoiceValidation).
+                   -- s položkami obou znamének proto hlásíme warningem při uložení
+                   -- z editoru nebo přes API (`credit_note_mixed_sign_items`
+                   -- v PurchaseInvoiceValidation). Importní cesty warnings()
+                   -- nevolají — u nich se smíšenost typicky ani nedochová
+                   -- (AiPdfExtractor znaménka dobropisu sjednocuje).
                    --
                    -- (Vydané dobropisy v `invoices` znaménko NEnormalizujeme —
                    -- viz komentář ve fetchSales.)

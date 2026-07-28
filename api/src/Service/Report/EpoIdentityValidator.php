@@ -117,7 +117,9 @@ final class EpoIdentityValidator
      * podáním, uživatele nezastavujeme — jen ho upozorníme.
      *
      * @param array<string,mixed> $supplier
-     * @return list<array{field:string, label:string, why:string}>
+     * @return list<array{field:string, label:string, why:string, kind?:string}>
+     *         kind='invalid' = pole je vyplněné, ale hodnota nesedí (expirovaný/neznámý
+     *         kód číselníku); jinak jde o chybějící pole.
      */
     public function recommended(array $supplier, string $doc): array
     {
@@ -144,7 +146,9 @@ final class EpoIdentityValidator
                 }
             }
         }
-        if (self::blank($supplier['phone'] ?? null)) {
+        // Stejně jako e-mail: DPHSHV atribut c_telef ve schématu nemá a builder
+        // ho tam neemituje (fillVetaP s includeContact: false).
+        if ($doc !== self::DOC_DPHSHV && self::blank($supplier['phone'] ?? null)) {
             $out[] = ['field' => 'phone', 'label' => 'Telefon',
                       'why' => 'Doporučený kontakt pro FÚ (atribut c_telef) — urychluje řešení výzev.'];
         }

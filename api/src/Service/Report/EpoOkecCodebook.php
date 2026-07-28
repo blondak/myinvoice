@@ -47,12 +47,22 @@ final class EpoOkecCodebook
      * Normalizuje vstup („73.11", „7311", „62020", „731100", „01480", …) na
      * kanonický kód číselníku a řekne, jak na tom je s platností.
      *
-     * Kandidáti se zkoušejí numericky v pořadí: (1) vstup tak, jak je
-     * (pokrývá kanonické hodnoty vč. bez-nulových „14800"), (2) doplnění
-     * nulami zprava na 6 míst (transformace ČSÚ zápisu: třída 7311 → 731100,
-     * podtřída 62020 → 620200). Preferuje se kandidát platný k $at; když
-     * žádný platný není, vrací se existující expirovaný (s valid_to); když
-     * kód v číselníku není vůbec, vrací se doplněná podoba se STATUS_UNKNOWN.
+     * Kandidáti se zkoušejí NUMERICKY v pořadí: (1) doplnění nulami zprava na
+     * 6 míst — hierarchický zápis ČSÚ, který posílá ARES i uživatelé (7311 →
+     * 731100, 31000 = 31.00.0 → 310000, 01480 = 01.48.0 → 014800 → int 14800),
+     * (2) vstup tak, jak je — kanonické hodnoty číselníku, u sekcí 01–09 bez
+     * vodicí nuly („14800" = 01.48.00; doplnění zprava dá 148000, což
+     * v číselníku není, takže se propadne sem).
+     *
+     * Na pořadí ZÁLEŽÍ: 5místná hodnota je dvojznačná — „31000" je současně
+     * ČSÚ zápis třídy 31.00 (výroba nábytku → 310000) i kanonický kód sekce
+     * 03.10.00 (rybolov → 31000). Vyhrává ČSÚ výklad, protože přesně ten
+     * produkuje ARES prefill i ruční zápis; kdo myslí rybolov, píše kód
+     * s vodicí nulou (03.10.0 → 031000 → int 31000), a ten se trefí taky.
+     *
+     * Preferuje se kandidát platný k $at; když žádný platný není, vrací se
+     * existující expirovaný (s datem konce platnosti); když kód v číselníku
+     * není vůbec, vrací se doplněná podoba se STATUS_UNKNOWN.
      *
      * @return array{code: string, status: string, name: ?string, valid_to: ?string}|null
      *         null = po odstranění nečíslic méně než 4 číslice (oddíl z ARES)
@@ -71,30 +81,31 @@ final class EpoOkecCodebook
         $atStr = $at->format('Y-m-d');
 
         $padded = str_pad($digits, 6, '0', STR_PAD_RIGHT);
-        $candidates = array_unique([(int) $digits, (int) $padded]);
+        $candidates = array_unique([(int) $padded, (int) $digits]);
 
         $expired = null;
         foreach ($candidates as $value) {
             foreach (self::index()[$value] ?? [] as $entry) {
-                $fromOk = $entry['from'] === '' || $entry['from'] <= $atStr;
-                $toOk = $entry['to'] === '' || $entry['to'] >= $atStr;
-                if ($fromOk && $toOk) {
-                    return [
-                        'code' => $entry['code'],
-                        'status' => self::STATUS_ACTIVE,
-                        'name' => $entry['name'],
-                        'valid_to' => $entry['to'] !== '' ? $entry['to'] : null,
-                    ];
+                // Expirovaný = má vyplněné d_ukopl v minulosti. Záznam, jehož
+                // platnost teprve začne, za expirovaný NEpovažujeme — jinak by
+                // se uživateli hlásilo prázdné datum konce platnosti.
+                if ($entry['to'] !== '' && $entry['to'] < $atStr) {
+                    if ($expired === null || $entry['to'] > $expired['valid_to']) {
+                        $expired = [
+                            'code' => $entry['code'],
+                            'status' => self::STATUS_EXPIRED,
+                            'name' => $entry['name'],
+                            'valid_to' => $entry['to'],
+                        ];
+                    }
+                    continue;
                 }
-                // Nejpozději končící expirovaný záznam jako fallback pro hlášku.
-                if ($expired === null || $entry['to'] > $expired['valid_to']) {
-                    $expired = [
-                        'code' => $entry['code'],
-                        'status' => self::STATUS_EXPIRED,
-                        'name' => $entry['name'],
-                        'valid_to' => $entry['to'],
-                    ];
-                }
+                return [
+                    'code' => $entry['code'],
+                    'status' => self::STATUS_ACTIVE,
+                    'name' => $entry['name'],
+                    'valid_to' => $entry['to'] !== '' ? $entry['to'] : null,
+                ];
             }
         }
         if ($expired !== null) {

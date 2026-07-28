@@ -179,8 +179,10 @@ final class PurchaseInvoiceValidation
                 // Smíšený opravný doklad (např. vrácení zboží záporně + kladný storno
                 // poplatek): evidence DPH normalizuje KAŽDOU položku přes -ABS(), takže
                 // kladný řádek se vykáže záporně. Rozlišit to nejde — `document_kind`
-                // vrubopis nezná. Upozorníme aspoň při uložení, ať uživatel ví, že má
-                // kladnou část vystavit samostatným dokladem.
+                // vrubopis nezná. Pozn.: warnings() volají jen Create/Update akce, takže
+                // upozornění dostane ruční pořízení a API; importní cesty (ISDOC, iDoklad,
+                // Fakturoid, AI) jdou přes repozitář mimo ně a navíc si znaménka zpravidla
+                // samy sjednotí.
                 $warn[] = 'credit_note_mixed_sign_items';
             }
         }

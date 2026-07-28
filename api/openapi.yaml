@@ -6345,21 +6345,31 @@ components:
 
     ViesLookupResult:
       type: object
+      description: |
+        Výsledek ověření DIČ. Pozor: české DIČ skupinové registrace (CZ699…) VIES
+        nezná, takže se ověřuje v registru plátců DPH (`source: crpdph`) — ten
+        vrací platnost, ale NE název ani adresu subjektu (`name`/`address` prázdné,
+        `parsed` null). Nedostupný registr/VIES je měkká chyba: `valid: false`
+        se `source: error` (neznamená neplatné DIČ).
       properties:
         valid: { type: boolean }
-        vat_id: { type: string, example: "DE123456789" }
-        country_code: { type: string, example: "DE" }
+        vat_number: { type: string, example: "DE123456789" }
+        country: { type: string, example: "DE" }
         name: { type: [string, "null"] }
         address: { type: [string, "null"] }
-        consultation_number:
-          type: [string, "null"]
-          description: |
-            VIES consultation number — důkazní záznam pro daňovou kontrolu, že DIČ
-            byl k danému datu platný.
-        request_date: { type: string, format: date-time }
+        parsed:
+          type: [object, "null"]
+          description: Rozparsovaná adresa, pokud ji zdroj vrátil.
+          properties:
+            street: { type: string }
+            city: { type: string }
+            zip: { type: string }
+        group_registration:
+          type: boolean
+          description: True u DIČ skupinové registrace (CZ699…), ověřeno v registru plátců DPH.
         source:
           type: string
-          enum: [fresh, cache]
+          enum: [cache, rest, soap, ares, crpdph, error]
 
     ActivityLogEntry:
       type: object

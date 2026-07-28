@@ -659,7 +659,7 @@
     },
     "warning": {
       "credit_note_positive_total": "Credit note has a positive total — it should have negative amounts. A negative sign on one side is enough (e.g. −1 pc × 1000, or 1 pc × −1000); if both quantity and price are negative, VAT/control-statement reports will add the amount instead of subtracting it. Please check the signs.",
-      "credit_note_mixed_sign_items": "The credit note has items with both signs (e.g. returned goods as negative and a positive cancellation fee). VAT records report every credit-note item as negative, so the positive line would decrease the deduction instead of increasing it — please issue it as a separate document.",
+      "credit_note_mixed_sign_items": "The credit note has items with both signs (e.g. returned goods as negative and a positive cancellation fee). VAT records report every credit-note item as negative, so the positive line would decrease the deduction instead of increasing it. Check the signs against the supplier's document; the positive part needs to be recorded as a separate document.",
       "vendor_non_payer_deduction": "The vendor is not a VAT payer, yet a VAT deduction is claimed. VAT cannot be deducted from a non-payer — please check the deduction setting.",
       "reverse_charge_forced_by_classification": "An item carries a reverse-charge VAT classification, so the reverse-charge flag was enabled on the document automatically — the header and items were contradictory otherwise."
     },
@@ -2083,6 +2083,7 @@
     "dic_valid": "{dic} is valid — {name}",
     "dic_valid_group": "{dic} is valid — VAT group registration (verified in the VAT payer register)",
     "dic_valid_no_name": "{dic} is valid (the register returned no entity name)",
+    "dic_check_unavailable": "The VAT ID check failed right now — the register did not respond. Please try again shortly; the entered VAT ID stays unchanged.",
     "dic_invalid": "{dic} is invalid or does not exist",
     "duplicate_ic": "A client with this Reg. No. already exists:",
     "duplicate_dic": "A client with this VAT ID already exists:",

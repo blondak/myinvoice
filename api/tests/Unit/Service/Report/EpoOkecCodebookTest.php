@@ -53,6 +53,39 @@ final class EpoOkecCodebookTest extends TestCase
         }
     }
 
+    /**
+     * Dvojznačná 5místná hodnota: „31000" je ČSÚ zápis třídy 31.00 (výroba
+     * nábytku) i kanonický kód sekce 03.10.00 (rybolov). Vyhrát musí ČSÚ
+     * výklad — přesně ten posílá ARES prefill (czNace ['31','310','31000']).
+     * Kdo myslí rybolov, zadá kód s vodicí nulou a trefí se taky.
+     */
+    public function testFiveDigitCsuNotationWinsOverBareSectionCode(): void
+    {
+        $furniture = EpoOkecCodebook::normalize('31000', self::at('2026-07-28'));
+        self::assertNotNull($furniture);
+        self::assertSame('310000', $furniture['code']);
+        self::assertSame(EpoOkecCodebook::STATUS_ACTIVE, $furniture['status']);
+        self::assertStringContainsStringIgnoringCase('nábytku', (string) $furniture['name']);
+
+        foreach (['03100', '031000', '03.10.0'] as $input) {
+            $fishing = EpoOkecCodebook::normalize($input, self::at('2026-07-28'));
+            self::assertNotNull($fishing, "vstup $input");
+            self::assertSame('31000', $fishing['code'], "vstup $input");
+            self::assertStringContainsStringIgnoringCase('rybolov', (string) $fishing['name'], "vstup $input");
+        }
+    }
+
+    /** Záznam, jehož platnost teprve začne, se nesmí hlásit jako expirovaný s prázdným datem. */
+    public function testNotYetValidRecordIsNotReportedAsExpired(): void
+    {
+        // 622000 platí od 2026-01-01 a nemá konec platnosti.
+        $r = EpoOkecCodebook::normalize('622000', self::at('2025-06-30'));
+        self::assertNotNull($r);
+        self::assertSame('622000', $r['code']);
+        self::assertSame(EpoOkecCodebook::STATUS_ACTIVE, $r['status']);
+        self::assertNull($r['valid_to']);
+    }
+
     public function testNace20CodeIsExpiredAfterSwitchToNace21(): void
     {
         // Přesně případ issue #157: 62020/620200 bylo do 31. 12. 2025 platné,

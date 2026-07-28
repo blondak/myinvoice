@@ -46,8 +46,11 @@ Detailní mapping všech polí v UI na XML atributy najdeš v sekci [Pole EPO / 
 > (třeba když je opisuješ do formuláře na portálu), jen se nad náhledem
 > vypíše, co doplnit. Pole, která jsou ve schématu volitelná (ÚzP, e-mail,
 > oprávněná osoba u PO), a dále telefon či CZ-NACE generování neblokují — jen
-> se zobrazí upozornění. Sekce Daňové nastavení prázdná pole zvýrazní: červeně
-> povinná, oranžově doporučená.
+> se zobrazí upozornění. Sekce Daňové nastavení má v záhlaví štítek shrnující
+> stav (červený, když chybí povinné pole; oranžový, když jen doporučené)
+> a u svých polí hint — červený u povinných, oranžový u doporučených. DIČ,
+> e-mail a telefon žijí v sekci Identifikace firmy, takže se hlásí jen tím
+> štítkem a výpisem nad náhledem výkazu.
 
 > [!NOTE]
 > **Právnické osoby (PO/s.r.o./a.s.) podávají Kontrolní hlášení VŽDY měsíčně** (§ 101e odst. 1 ZDPH).
@@ -367,10 +370,17 @@ reverse charge na hlavičce** a upozorní na to — hlavička a položky by si j
 odporovaly a doklad by se mohl zařadit do špatného období. Platí to pro uložení
 z editoru i pro API (POST/PUT přijaté faktury).
 
-Naopak **automaticky dosazená** klasifikace (zahraniční dodavatel s 0 % dostane
-default 24e/24) ani importy (ISDOC, iDoklad, Fakturoid) příznak nemění — když
-ho vědomě necháš vypnutý, zůstane vypnutý. Výkazy s tím počítají: zařazení do
-období i samovyměření reagují na příznak **nebo** na klasifikační kód položky.
+Naopak **importy** (ISDOC, iDoklad, Fakturoid, AI extrakce) příznak nemění:
+tam klasifikace na položkách vzniká automaticky (zahraniční dodavatel s 0 %
+dostane 24e/24) a přepisovat kvůli tomu příznak, který zdrojový systém uvedl,
+by bylo tiché přepisování dat. Výkazy s tím počítají — zařazení do období
+i samovyměření reagují na příznak **nebo** na klasifikační kód položky.
+
+Pozor na jednu hranici: jakmile takový importovaný doklad otevřeš v editoru
+a uložíš, kódy uložené na položkách se odešlou jako tvoje volba, takže se
+příznak zapne (s upozorněním). Chceš-li u dokladu příznak trvale vypnutý,
+zvol na položkách klasifikaci mimo režim přenesené povinnosti.
+
 Historická data s rozporem srovná skript
 `php api/bin/backfill-reverse-charge-consistency.php` (výchozí režim dry-run,
 zápis až s `--apply`) — ten ale kód zadaný ručně od defaultovaného nerozliší,
