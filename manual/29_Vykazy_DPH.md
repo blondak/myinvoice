@@ -69,7 +69,7 @@ odmítne nebo bude generovat formálně neúplný výkaz.
 |---|---|---|---|
 | **Kód finančního úřadu** | `c_ufo` | Číselný kód územního finančního orgánu | např. `451` Praha 1, `463` Jihomoravský kraj. Najdeš na posledním podaném přiznání nebo v EPO. |
 | **Kód územního pracoviště** | `c_pracufo` | Konkrétní pracoviště v rámci FÚ | např. `3203` pracoviště Brno III. Volitelné, ale EPO ho někdy vyžaduje. |
-| **CZ-NACE kód (`cz_nace_code`)** | `c_okec` | Hlavní podnikatelská činnost (NACE) | Kód číselníku ČINNOSTI Daňového portálu ([rozhraní číselníků](https://adisspr.mfcr.cz/pmd/dokumentace/ciselniky)), např. `731100` (reklamní agentury). Zadat lze i `73.11` — kód se dohledá v číselníku a uloží v jeho kanonické podobě (kódy sekcí 01–09 číselník vede bez vodicí nuly, např. `14800` = 01.48). Pozor: číselník přešel k 1. 1. 2026 na NACE rev. 2.1 — expirovaný kód (např. `620200`, dnes `622000`) aplikace uloží, ale upozorní, že ho EPO odmítne chybou 30. Dvoumístný oddíl z ARES (např. `74`) číselník nezná a aplikace ho neuloží. Prázdné/neúplné → atribut se vynechá a EPO nahlásí propustnou chybu 30. |
+| **CZ-NACE kód (`cz_nace_code`)** | `c_okec` | Hlavní podnikatelská činnost (NACE) | Vybírá se **našeptávačem** nad číselníkem ČINNOSTI Daňového portálu ([rozhraní číselníků](https://adisspr.mfcr.cz/pmd/dokumentace/ciselniky)) — hledej podle názvu činnosti („reklamní") nebo podle kódu (`73`, `73.11`, u sekcí 01–09 i `01.48`). Nabízejí se **jen kódy platné k dnešku**; uloží se kanonická podoba číselníku (`731100`, u sekcí 01–09 bez vodicí nuly, tedy `14800` = 01.48.00). Kód mimo číselník lze zvolit taky (poslední položka nabídky) — uloží se s upozorněním. Pozor: číselník přešel k 1. 1. 2026 na NACE rev. 2.1, takže klasifikace převzatá z ARES může být expirovaná (např. `620200`, dnes `622000`) — pole to hlásí hned při otevření Nastavení. Prázdné/neúplné → atribut se vynechá a EPO nahlásí propustnou chybu 30. |
 
 ### Typ plátce a perioda
 
@@ -211,13 +211,18 @@ sekci VetaD/VetaP. Alternativně zavolej na svůj FÚ nebo se podívej na
 [seznam FÚ](https://www.financnisprava.cz/cs/financni-sprava/organy-financni-spravy/uzemni-pracoviste).
 
 **„EPO hlásí propustnou chybu 30 — Hlavní ekonomická činnost neodpovídá číselníku"**
-→ Vyplň `cz_nace_code` v Daňovém nastavení kódem z číselníku ČINNOSTI
-Daňového portálu (např. `731100`; lze zadat i `73.11`, kód se dohledá
-automaticky). Dvě časté příčiny chyby 30: **(1)** dvoumístný oddíl převzatý
-z ARES (např. `74`) — číselník ho nezná, aplikace ho neuloží a do XML
-nepropíše; **(2)** kód platný do 31. 12. 2025, který přechodem číselníku na
-NACE rev. 2.1 expiroval (např. `620200` → dnes `622000`) — aplikace ho při
-uložení i v náhledu přiznání označí upozorněním s datem konce platnosti.
+→ Otevři **Nastavení → Daňové nastavení → CZ-NACE klasifikace** a vyber činnost
+z našeptávače (nabízí jen kódy platné k dnešku, hledá i podle názvu). Dvě časté
+příčiny chyby 30: **(1)** dvoumístný oddíl převzatý z ARES (např. `74`) —
+číselník ho nezná, aplikace ho neuloží a do XML nepropíše; **(2)** kód platný
+do 31. 12. 2025, který přechodem číselníku na NACE rev. 2.1 expiroval
+(např. `620200` → dnes `622000`) — aplikace ho označí upozorněním s datem konce
+platnosti hned u pole, takže stačí vybrat nástupce ze seznamu.
+
+> 🛈 Číselník je v aplikaci uložený jako snapshot (`api/resources/ciselniky/okec.txt`).
+> Zastaralý snapshot nic neblokuje (kód mimo něj se uloží i odešle, jen s upozorněním);
+> aktualizuje se skriptem `cmd/download-okec.{cmd,sh}` — stáhne aktuální číselník
+> z Daňového portálu, ověří formát a soubor přepíše.
 
 **„EPO hlásí propustnou chybu 49 na ř. 40/41 — daň neodpovídá základu"**
 → Nejde o chybu dat: EPO si daň dopočítává ze zaokrouhleného základu, zatímco

@@ -2329,6 +2329,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /api/v1/settings/nace-codes:
+    get:
+      tags: [Settings]
+      summary: Našeptávač CZ-NACE (číselník ČINNOSTI)
+      description: |
+        Vyhledávání v číselníku ČINNOSTI (zkratka OKEC) Daňového portálu, proti
+        kterému EPO validuje atribut `c_okec` v přiznání k DPH. Vrací **jen kódy
+        platné k dnešku**: číselník se k 1. 1. 2026 překlopil na NACE rev. 2.1 a
+        starším kódům nastavil konec platnosti, takže klasifikace převzatá z ARES
+        (rev. 2) může být už neplatná a portál ji odmítne propustnou chybou 30.
+
+        Hledá se podle čísel v dotazu jako **prefix kódu** (`73`, `73.11`,
+        i `01.48` pro sekce 01–09, které číselník vede bez vodicí nuly), jinak
+        podle **názvu činnosti** bez ohledu na velikost písmen a diakritiku.
+        Prázdný `q` vrátí první stránku číselníku.
+
+        Hodnota `code` je to, co se ukládá do `cz_nace_code` dodavatele.
+      parameters:
+        - { in: query, name: q, schema: { type: string }, description: 'Prefix kódu nebo část názvu činnosti' }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Nalezené položky číselníku
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/NaceCode' }
+
   /api/v1/settings/supplier/logo:
     parameters:
       - $ref: '#/components/parameters/SupplierIdHeader'
@@ -6911,6 +6943,11 @@ components:
         taxpayer_type: { type: [string, "null"], enum: [fo, po, null], description: "Fyzická / právnická osoba (EPO výkazy)" }
         vat_period: { type: [string, "null"], enum: [monthly, quarterly, null] }
         financial_office_code: { type: [string, "null"], description: "Kód FÚ pro EPO (= CRPDPH cisloFu)" }
+        cz_nace_code: { type: [string, "null"], description: "Hlavní ekonomická činnost (c_okec v DPHDP3) v kanonické podobě číselníku ČINNOSTI — ukládá se přes PUT /api/v1/settings/supplier, vstup se kanonizuje (73.11 → 731100)" }
+        cz_nace_resolved:
+          allOf:
+            - $ref: '#/components/schemas/NaceResolved'
+          description: "Read-only překlad `cz_nace_code` přes číselník ČINNOSTI (název činnosti + platnost); null u prázdného kódu."
         flat_tax_band: { type: string, enum: [none, band1, band2, band3], description: "Pásmo paušální daně" }
         email_branding_enabled: { type: boolean }
         email_accent_color: { type: string, example: "#3B2D83" }
@@ -6931,6 +6968,35 @@ components:
           example: { documents: cc, approvals: bcc }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    NaceCode:
+      type: object
+      description: Položka číselníku ČINNOSTI (OKEC) platná k dnešku — výsledek našeptávače CZ-NACE.
+      properties:
+        code:
+          type: string
+          example: "731100"
+          description: |
+            Kanonická hodnota číselníku — tohle se ukládá do `cz_nace_code`
+            a posílá jako `c_okec`. Sekce 01–09 vede číselník numericky bez
+            vodicí nuly (`14800` = 01.48.00).
+        display: { type: string, example: "73.11.00", description: "Čitelný zápis třídy NACE" }
+        name: { type: string, example: "Činnosti reklamních agentur" }
+        valid_from: { type: string, format: date, example: "2026-01-01", description: "Začátek platnosti položky v číselníku" }
+
+    NaceResolved:
+      type: object
+      description: |
+        Uložený CZ-NACE přeložený přes číselník ČINNOSTI. `expired` znamená, že
+        kód po přechodu číselníku na NACE rev. 2.1 (1. 1. 2026) skončil a EPO
+        na něj nahlásí propustnou chybu 30; `unknown` = kód není ve snapshotu
+        číselníku (může jít o novou hodnotu). Ani jedno podání neblokuje.
+      properties:
+        code: { type: string, example: "620200" }
+        display: { type: string, example: "62.02.00" }
+        name: { type: [string, "null"], example: "Poradenství v oblasti informačních technologií" }
+        status: { type: string, enum: [active, expired, unknown] }
+        valid_to: { type: [string, "null"], format: date, example: "2025-12-31" }
 
     ProjectsPagination:
       type: object

@@ -126,4 +126,103 @@ final class EpoOkecCodebookTest extends TestCase
         self::assertNull(EpoOkecCodebook::normalize('7.4', self::at('2026-07-28')));
         self::assertNull(EpoOkecCodebook::normalize('', self::at('2026-07-28')));
     }
+
+    // ── describe() — podklad pro UI (název činnosti + stav platnosti) ──────────
+
+    public function testDescribeAddsReadableDisplayAndName(): void
+    {
+        $r = EpoOkecCodebook::describe('73.11', self::at('2026-07-28'));
+        self::assertNotNull($r);
+        self::assertSame('731100', $r['code']);
+        self::assertSame('73.11.00', $r['display']);
+        self::assertSame('Činnosti reklamních agentur', $r['name']);
+        self::assertSame(EpoOkecCodebook::STATUS_ACTIVE, $r['status']);
+    }
+
+    public function testDescribeSectionCodeShowsLeadingZeroInDisplay(): void
+    {
+        // Číselník vede sekce 01–09 bez vodicí nuly („14800"), uživateli ale
+        // musíme ukázat čitelnou třídu 01.48.00.
+        $r = EpoOkecCodebook::describe('14800', self::at('2026-07-28'));
+        self::assertNotNull($r);
+        self::assertSame('14800', $r['code']);
+        self::assertSame('01.48.00', $r['display']);
+    }
+
+    public function testDescribeReportsExpiredCodeWithEndOfValidity(): void
+    {
+        $r = EpoOkecCodebook::describe('62020', self::at('2026-07-28'));
+        self::assertNotNull($r);
+        self::assertSame(EpoOkecCodebook::STATUS_EXPIRED, $r['status']);
+        self::assertSame('2025-12-31', $r['valid_to']);
+    }
+
+    public function testDescribeEmptyInputIsNull(): void
+    {
+        self::assertNull(EpoOkecCodebook::describe(null));
+        self::assertNull(EpoOkecCodebook::describe('  '));
+        self::assertNull(EpoOkecCodebook::describe('74')); // oddíl z ARES
+    }
+
+    // ── search() — našeptávač v Nastavení ────────────────────────────────────
+
+    public function testSearchByCodePrefixReturnsOnlyMatchingClasses(): void
+    {
+        $hits = EpoOkecCodebook::search('73.1', 50, self::at('2026-07-28'));
+        self::assertNotSame([], $hits);
+        foreach ($hits as $h) {
+            self::assertStringStartsWith('731', $h['code']);
+        }
+        self::assertContains('731100', array_column($hits, 'code'));
+    }
+
+    public function testSearchByNameIgnoresCaseAndDiacritics(): void
+    {
+        $hits = EpoOkecCodebook::search('ucetni', 50, self::at('2026-07-28'));
+        self::assertNotSame([], $hits);
+        foreach ($hits as $h) {
+            self::assertStringContainsString('četni', mb_strtolower($h['name']));
+        }
+    }
+
+    /**
+     * Klíčová vlastnost našeptávače: expirovaný kód se NENABÍZÍ. Kdyby ano,
+     * naváděl by uživatele přesně na propustnou chybu 30, kvůli které vznikl
+     * (620200 „poradenství v IT" skončilo 2025-12-31, nástupce je 622000).
+     */
+    public function testSearchOffersOnlyCodesValidAtGivenDate(): void
+    {
+        $codes = array_column(EpoOkecCodebook::search('6202', 50, self::at('2026-07-28')), 'code');
+        self::assertNotContains('620200', $codes);
+
+        $before = array_column(EpoOkecCodebook::search('6202', 50, self::at('2025-06-30')), 'code');
+        self::assertContains('620200', $before);
+    }
+
+    public function testSearchFindsSectionCodeByLeadingZeroPrefix(): void
+    {
+        // Uživatel i ARES píšou „01.48", číselník má „14800" — musí se potkat.
+        $codes = array_column(EpoOkecCodebook::search('01.48', 50, self::at('2026-07-28')), 'code');
+        self::assertContains('14800', $codes);
+    }
+
+    public function testSearchRespectsLimitAndEmptyQueryReturnsFirstPage(): void
+    {
+        $hits = EpoOkecCodebook::search('', 5, self::at('2026-07-28'));
+        self::assertCount(5, $hits);
+        foreach ($hits as $h) {
+            self::assertArrayHasKey('display', $h);
+            self::assertNotSame('', $h['name']);
+        }
+    }
+
+    public function testSearchWithNoMatchReturnsEmptyList(): void
+    {
+        self::assertSame([], EpoOkecCodebook::search('xyzzy nic takového', 20, self::at('2026-07-28')));
+    }
+
+    public function testHumanizeNameTurnsCodebookCapsIntoSentence(): void
+    {
+        self::assertSame('Činnosti reklamních agentur', EpoOkecCodebook::humanizeName('ČINNOSTI REKLAMNÍCH AGENTUR'));
+    }
 }

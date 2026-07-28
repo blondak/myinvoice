@@ -649,6 +649,13 @@ final class SettingsAction
             // Přijaté faktury nemají cfg fallback — výchozí je vestavěná šablona generátoru.
             'purchase'    => \MyInvoice\Repository\PurchaseInvoiceRepository::PURCHASE_DEFAULT_TEMPLATE,
         ];
+        // Uložený CZ-NACE kód přeložený přes číselník ČINNOSTI (název činnosti +
+        // stav platnosti). Díky tomu UI ukáže u pole, co kód znamená, a případnou
+        // expiraci po přechodu na NACE rev. 2.1 vidí uživatel hned při načtení
+        // Nastavení, ne až po uložení nebo z náhledu přiznání.
+        $row['cz_nace_resolved'] = \MyInvoice\Service\Report\EpoOkecCodebook::describe(
+            $row['cz_nace_code'] ?? null
+        );
         return Json::ok($response, array_merge($row, $extra));
     }
 

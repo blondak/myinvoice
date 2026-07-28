@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { settingsApi, type Supplier, type SelfCopyType, type SelfCopyMode } from '@/api/settings'
+import { settingsApi, type Supplier, type SelfCopyType, type SelfCopyMode, type NaceCode, type NaceResolved } from '@/api/settings'
 import { adminApi, type SampleDataStatus } from '@/api/admin'
 import { clientsApi } from '@/api/clients'
 import { useSupplierStore } from '@/stores/supplier'
 import { useToast } from '@/composables/useToast'
 import { renderVarsymbolTemplate, hasCounterPlaceholder } from '@/utils/varsymbol'
+import { formatDate } from '@/composables/useFormat'
 import BrandingProfilesSettings from '@/components/settings/BrandingProfilesSettings.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -154,24 +156,64 @@ const epoRecommendedLocal = computed<string[]>(() => {
   return fields.filter((f) => epoFieldEmpty(s[f]))
 })
 
-// CZ-NACE (BUG 7) — stejné pravidlo jako backend: po odstranění nečíslic musí
-// zbýt aspoň 4místná třída (73.11), jinak EPO číselník kód nezná (chyba 30).
-const czNaceError = computed<string>(() => {
-  const raw = ((supplier.value as any)?.cz_nace_code ?? '').toString().trim()
-  if (raw === '') return ''
-  const digits = raw.replace(/\D/g, '')
-  return digits.length < 4 ? t('settings.cz_nace_too_short') : ''
+// CZ-NACE — našeptávač nad číselníkem ČINNOSTI (backend `GET /settings/nace-codes`
+// vrací jen kódy platné k dnešku). Důvod: ARES eviduje klasifikaci ještě podle
+// NACE rev. 2, jenže číselník EPO se k 1. 1. 2026 překlopil na rev. 2.1 a starým
+// kódům nastavil konec platnosti — prefill z ARES tak často přinese kód, který
+// portál odmítne propustnou chybou 30, a tady si uživatel najde nástupce.
+const naceItems = ref<NaceCode[]>([])
+const naceLoading = ref(false)
+// Kód zadaný ručně mimo číselník — nabízí se jako poslední volba, viz searchNace().
+const naceTyped = ref<string | null>(null)
+// Stav vybraného kódu: po načtení ze serveru (`cz_nace_resolved`), po výběru
+// z našeptávače (vždy platný) nebo po ručním zadání kódu mimo číselník.
+const naceResolved = ref<NaceResolved | null>(null)
+
+type NaceOption = { value: string; label: string; secondary?: string }
+const naceOptions = computed<NaceOption[]>(() => {
+  const opts: NaceOption[] = naceItems.value.map(c => ({ value: c.code, label: `${c.display} · ${c.name}` }))
+  if (naceTyped.value !== null) {
+    opts.push({ value: naceTyped.value, label: naceTyped.value, secondary: t('settings.cz_nace_use_as_typed') })
+  }
+  return opts
 })
-// Na blur jen odstraníme nečíslice a ořízneme na 6 — kanonizaci proti číselníku
-// (73.11 → 731100, 01480 → 14800) dělá backend při uložení a vrátí uloženou
-// podobu; případný warning číselníku (expirovaný/neznámý kód) přijde v odpovědi
-// jako cz_nace_warning a zobrazí se pod polem.
-const czNaceServerWarning = ref('')
-function normalizeCzNace() {
+const naceSelected = computed(() => {
+  const code = ((supplier.value as any)?.cz_nace_code ?? '').toString()
+  if (!code) return null
+  const r = naceResolved.value
+  return { value: code, label: r && r.code === code && r.name ? `${r.display} · ${r.name}` : code }
+})
+
+async function searchNace(q: string) {
+  naceLoading.value = true
+  try {
+    const items = await settingsApi.searchNaceCodes(q, 25)
+    // Kód mimo snapshot číselníku musí jít zadat i tak — snapshot může zestárnout
+    // a backend takový kód uloží (jen upozorní na propustnou chybu 30). Bez téhle
+    // volby by se uživatel dostal do situace „platný kód nejde vybrat".
+    const digits = q.replace(/\D/g, '').slice(0, 6)
+    naceItems.value = items
+    naceTyped.value = digits.length >= 4 && !items.some(i => i.code === digits) ? digits : null
+  } catch {
+    naceItems.value = []
+    naceTyped.value = null
+  } finally {
+    naceLoading.value = false
+  }
+}
+
+function pickNace(code: string | null) {
   const s = supplier.value as any
   if (!s) return
-  const digits = (s.cz_nace_code ?? '').toString().replace(/\D/g, '')
-  if (digits.length >= 4) s.cz_nace_code = digits.slice(0, 6)
+  s.cz_nace_code = code
+  const hit = code !== null ? naceItems.value.find(i => i.code === code) : undefined
+  // Našeptávač nabízí jen platné kódy; u ručně zadaného ověří stav až backend
+  // při uložení a vrátí ho v `cz_nace_resolved`.
+  naceResolved.value = code === null
+    ? null
+    : hit
+      ? { code, display: hit.display, name: hit.name, status: 'active', valid_to: null }
+      : { code, display: code, name: null, status: 'unknown', valid_to: null }
 }
 
 // Kopie odchozích e-mailů dodavateli (migrace 0102) — UI stav 'inherit' znamená
@@ -209,6 +251,9 @@ async function load() {
   loading.value = true
   try {
     supplier.value = await settingsApi.getSupplier()
+    // Stav uloženého CZ-NACE proti číselníku dopočítává backend — díky tomu je
+    // expirovaný kód vidět hned při načtení, ne až po uložení nebo z náhledu přiznání.
+    naceResolved.value = supplier.value.cz_nace_resolved ?? null
     bumpPreview()
   } finally { loading.value = false }
   loadSampleStatus()
@@ -330,10 +375,12 @@ async function saveSupplier() {
       opr_postaveni: (supplier.value as any).opr_postaveni ?? null,
     })
     syncSupplierStore(supplier.value)
-    // Warning číselníku CZ-NACE (expirovaný/neznámý kód) — server ho vrací
-    // vedle uloženého supplier objektu; uložení neblokuje.
-    czNaceServerWarning.value = (supplier.value as any)?.cz_nace_warning ?? ''
-    if (czNaceServerWarning.value) toast.warning(czNaceServerWarning.value)
+    // CZ-NACE: server vrací uloženou kanonickou podobu + stav proti číselníku
+    // (`cz_nace_resolved` kreslíme pod polem) a u expirovaného/neznámého kódu
+    // i hotovou hlášku `cz_nace_warning`. Uložení to neblokuje.
+    naceResolved.value = supplier.value.cz_nace_resolved ?? null
+    const naceWarning = supplier.value.cz_nace_warning ?? ''
+    if (naceWarning) toast.warning(naceWarning)
     toast.success(t('common.saved'))
     bumpPreview()
   } catch (e: any) {
@@ -785,14 +832,29 @@ async function removeLogo() {
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.cz_nace_code') }}</label>
-              <input v-model="supplier.cz_nace_code" type="text" maxlength="8" placeholder="731100"
-                @blur="normalizeCzNace"
-                class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+              <!-- Našeptávač nad číselníkem ČINNOSTI: nabízí jen kódy platné k dnešku,
+                   ale ručně zadaný kód mimo snapshot jde vybrat taky (viz searchNace). -->
+              <SearchableSelect
+                :model-value="supplier.cz_nace_code ?? null"
+                remote
+                :loading="naceLoading"
+                :options="naceOptions"
+                :selected-option="naceSelected"
+                :placeholder="t('settings.cz_nace_placeholder')"
+                :no-results-label="t('settings.cz_nace_no_results')"
+                :loading-label="t('common.loading') + '…'"
+                @search="searchNace"
+                @update:model-value="pickNace"
+              />
               <p class="text-xs text-neutral-500 mt-1">{{ t('settings.cz_nace_hint') }}</p>
-              <!-- Stejné pravidlo jako backend (BUG 7): pod 4 číslice = oddíl z ARES, EPO chyba 30 -->
-              <p v-if="czNaceError" class="text-xs text-danger-500 mt-1">{{ czNaceError }}</p>
-              <!-- Warning číselníku ze serveru (expirovaný kód po přechodu na NACE 2.1 / kód mimo číselník) -->
-              <p v-else-if="czNaceServerWarning" class="text-xs text-warning-600 mt-1">{{ czNaceServerWarning }}</p>
+              <!-- Stav kódu proti číselníku: expirovaný po přechodu na NACE rev. 2.1
+                   (chyba 30), nebo kód, který ve snapshotu není. Nic z toho neblokuje. -->
+              <p v-if="naceResolved?.status === 'expired'" class="text-xs text-warning-600 mt-1">
+                {{ t('settings.cz_nace_expired', { code: naceResolved.display, date: formatDate(naceResolved.valid_to) }) }}
+              </p>
+              <p v-else-if="naceResolved?.status === 'unknown'" class="text-xs text-warning-600 mt-1">
+                {{ t('settings.cz_nace_unknown', { code: naceResolved.code }) }}
+              </p>
               <p v-else-if="epoFieldEmpty(supplier.cz_nace_code)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
             <div>
