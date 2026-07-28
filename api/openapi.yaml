@@ -3553,12 +3553,15 @@ paths:
         - { in: query, name: quarter, schema: { type: integer, minimum: 1, maximum: 4 }, description: 'Pro kvartální periodu' }
       responses:
         '200':
-          description: JSON summary (lines 1-29 + 40+, totals, deadline)
+          description: |
+            JSON summary (lines 1-29 + 40+, totals, deadline) + warnings[] (doporučená
+            pole identifikace, propustné chyby EPO) + missing[] (chybějící XSD-povinná
+            pole identifikace). Náhled se nikdy neblokuje — missing[] jen znamená, že
+            stažení XML vrátí 422.
           content:
             application/json:
               schema: { type: object }
         '403': { description: Pouze admin/accountant }
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
 
   /api/v1/reports/dphdp3:
     get:
@@ -3579,7 +3582,7 @@ paths:
           content:
             application/xml: {}
         '400': { description: Neplatná forma podání nebo chybějící/neplatné d_zjist }
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
         '403': { description: Pouze admin/accountant }
 
   /api/v1/reports/dphkh1/preview:
@@ -3593,9 +3596,8 @@ paths:
         - { in: query, name: year,  required: true, schema: { type: integer } }
         - { in: query, name: month, required: true, schema: { type: integer, minimum: 1, maximum: 12 } }
       responses:
-        '200': { description: Summary s counts sekcí A.1/A.2/A.4/A.5/B.1/B.2/B.3 }
+        '200': { description: 'Summary s counts sekcí A.1/A.2/A.4/A.5/B.1/B.2/B.3 + warnings[] + missing[] (chybějící XSD-povinná pole identifikace; náhled se neblokuje, stažení XML vrátí 422)' }
         '403': { description: Pouze admin/accountant }
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
 
   /api/v1/reports/dphkh1:
     get:
@@ -3615,7 +3617,7 @@ paths:
           content:
             application/xml: {}
         '400': { description: Neplatná forma podání nebo chybějící/neplatné d_zjist }
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
 
   /api/v1/reports/dphshv/preview:
     get:
@@ -3629,8 +3631,7 @@ paths:
         - { in: query, name: year,  required: true, schema: { type: integer } }
         - { in: query, name: month, required: true, schema: { type: integer } }
       responses:
-        '200': { description: "Summary s řádky (country, vat_id, sh_type, amount, count)" }
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
+        '200': { description: "Summary s řádky (country, vat_id, sh_type, amount, count) + warnings[] + missing[] (chybějící XSD-povinná pole identifikace; náhled se neblokuje, stažení XML vrátí 422)" }
 
   /api/v1/reports/dphshv:
     get:
@@ -3645,7 +3646,7 @@ paths:
           description: XML download
           content:
             application/xml: {}
-        '422': { description: 'epo_identity_incomplete — chybí povinná EPO identifikace daňového subjektu (tělo obsahuje missing[] a settings_url)' }
+        '422': { description: 'epo_identity_incomplete — chybí XSD-povinná EPO identifikace (kód FÚ, DIČ, typ poplatníka); tělo obsahuje missing[] a settings_url' }
 
   /api/v1/reports/income-tax/preview:
     get:

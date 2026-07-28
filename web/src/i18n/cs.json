@@ -3157,6 +3157,8 @@
     "workplace_code_hint": "Najdeš na mojedane.gov.cz nebo v hlavičce dřívějšího podání jako c_pracufo. Např. 2005 = ÚzP pro Prahu 5.",
     "epo_incomplete_badge": "Nekompletní — EPO podání selže",
     "epo_required_hint": "Povinné pro EPO podání",
+    "epo_recommended_hint": "Doporučené pro EPO podání — bez něj se XML vygeneruje, ale FÚ pole očekává",
+    "epo_recommended_badge": "Chybí doporučená pole",
     "cz_nace_code": "CZ-NACE klasifikace",
     "cz_nace_hint": "Kód CZ-NACE dle číselníku ČINNOSTI Daňového portálu (např. 731100 = činnosti reklamních agentur). Zadat lze i 73.11 — kód se dohledá v číselníku; expirovaný nebo neznámý kód uložení nezablokuje, jen zobrazí upozornění.",
     "cz_nace_too_short": "CZ-NACE musí být alespoň 4místný kód třídy (např. 73.11). Dvoumístný oddíl z ARES nestačí, EPO ho v číselníku nenajde.",
@@ -3598,8 +3600,8 @@
       "d_zjist": "Datum zjištění"
     },
     "epo": {
-      "incomplete_title": "Nelze vygenerovat XML — chybí povinné údaje pro EPO",
-      "incomplete_body": "Doplň následující pole v daňovém nastavení; bez nich EPO portál podání odmítne:",
+      "incomplete_title": "XML nelze stáhnout — chybí povinné údaje pro EPO",
+      "incomplete_body": "Náhled níže je kompletní, ale stažení XML je zablokované: bez následujících polí by podání neprošlo ani validací schématu. Doplň je v daňovém nastavení:",
       "open_settings": "Otevřít daňové nastavení"
     },
     "oss": {

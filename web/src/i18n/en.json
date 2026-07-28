@@ -3157,6 +3157,8 @@
     "workplace_code_hint": "Find at mojedane.gov.cz or in the header of an earlier submission as c_pracufo. E.g. 2005 = workplace for Prague 5.",
     "epo_incomplete_badge": "Incomplete — EPO submission will fail",
     "epo_required_hint": "Required for EPO submission",
+    "epo_recommended_hint": "Recommended for EPO submission — the XML is generated without it, but the tax office expects the field",
+    "epo_recommended_badge": "Recommended fields missing",
     "cz_nace_code": "CZ-NACE classification",
     "cz_nace_hint": "CZ-NACE code from the Tax portal ACTIVITIES codebook (e.g. 731100 = advertising agency activities). You can also enter 73.11 — the code is looked up in the codebook; an expired or unknown code does not block saving, it only shows a warning.",
     "cz_nace_too_short": "CZ-NACE must be at least a 4-digit class code (e.g. 73.11). A two-digit division from ARES is not enough — EPO will not find it in the codebook.",
@@ -3598,8 +3600,8 @@
       "d_zjist": "Discovery date"
     },
     "epo": {
-      "incomplete_title": "Cannot generate the XML — required EPO identification fields are missing",
-      "incomplete_body": "Fill in the following fields in the tax settings; without them the EPO portal will reject the submission:",
+      "incomplete_title": "Cannot download the XML — required EPO identification fields are missing",
+      "incomplete_body": "The preview below is complete, but the XML download is blocked: without the following fields the submission would not even pass schema validation. Fill them in the tax settings:",
       "open_settings": "Open tax settings"
     },
     "oss": {

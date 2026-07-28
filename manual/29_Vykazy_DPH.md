@@ -24,24 +24,30 @@ V **Nastavení → Daňové nastavení** vyplň:
 
 1. **Typ poplatníka** — FO (OSVČ) nebo PO (s.r.o., a.s.)
 2. **Perioda DPH přiznání** — Měsíční nebo Kvartální
-3. **Kód finančního úřadu** (např. 451 = Praha 1)
-4. **Kód územního pracoviště (ÚzP)** — najdeš na mojedane.gov.cz nebo v hlavičce dřívějšího podání jako `c_pracufo` (např. 2005 = ÚzP pro Prahu 5)
-5. **DIČ** a **e-mail** v Identifikaci firmy (povinné)
-6. U právnické osoby **oprávněnou osobu** (jméno, příjmení, postavení — typicky jednatel)
-7. Volitelně: telefon, CZ-NACE, datová schránka, sestavitel přiznání
-8. Volitelně pro OSS: OSS režim, země identifikace a měna podání
+3. **Kód finančního úřadu** (např. 451 = Praha 1) — povinné
+4. **DIČ** v Identifikaci firmy — povinné
+5. **Kód územního pracoviště (ÚzP)** — doporučené; najdeš na mojedane.gov.cz nebo v hlavičce dřívějšího podání jako `c_pracufo` (např. 2005 = ÚzP pro Prahu 5)
+6. **E-mail** v Identifikaci firmy — doporučený kontakt pro FÚ
+7. U právnické osoby **oprávněná osoba** (jméno, příjmení, postavení — typicky jednatel) — doporučené
+8. Volitelně: telefon, CZ-NACE, datová schránka, sestavitel přiznání
+9. Volitelně pro OSS: OSS režim, země identifikace a měna podání
 
 Detailní mapping všech polí v UI na XML atributy najdeš v sekci [Pole EPO / VetaP](#pole-epo-vetap) níže.
 
 > [!IMPORTANT]
-> **Bez povinných polí se XML nevygeneruje.** Aplikace před sestavením výkazu
-> kontroluje úplnost identifikace: kód FÚ, kód ÚzP, DIČ, typ poplatníka a e-mail
-> (u PO navíc oprávněnou osobu). Chybí-li něco, stránka výkazu zobrazí výčet
-> chybějících polí s odkazem do nastavení — dřív se vygenerovalo validně
+> **Bez povinných polí XML nestáhneš.** Aplikace před sestavením výkazu
+> kontroluje identifikaci daňového subjektu. Tvrdě blokují jen pole, která mají
+> v EPO schématu `use="required"` — **kód FÚ, DIČ a typ poplatníka**; bez nich
+> by podání neprošlo ani validací schématu, takže stažení XML vrátí chybu
+> s výčtem chybějících polí a odkazem do nastavení. Dřív se vygenerovalo validně
 > vypadající XML, které EPO odmítl až při podání, typicky v den lhůty.
-> Chybějící telefon nebo CZ-NACE generování neblokuje, jen se zobrazí upozornění.
-> Sekce Daňové nastavení sama zvýrazní prázdná povinná pole a nekompletnost
-> ohlásí štítkem v záhlaví.
+>
+> **Náhled výkazu se nikdy neblokuje** — čísla vidíš i s neúplným nastavením
+> (třeba když je opisuješ do formuláře na portálu), jen se nad náhledem
+> vypíše, co doplnit. Pole, která jsou ve schématu volitelná (ÚzP, e-mail,
+> oprávněná osoba u PO), a dále telefon či CZ-NACE generování neblokují — jen
+> se zobrazí upozornění. Sekce Daňové nastavení prázdná pole zvýrazní: červeně
+> povinná, oranžově doporučená.
 
 > [!NOTE]
 > **Právnické osoby (PO/s.r.o./a.s.) podávají Kontrolní hlášení VŽDY měsíčně** (§ 101e odst. 1 ZDPH).
@@ -105,7 +111,7 @@ Naše DB tyto sloupce drží separátně (`supplier.street`, `street_number_pop`
 
 PO (právnické osoby) tyto pole nevyplňují — místo nich se použije `zkrobchjm` z firmy.
 
-### Oprávněná osoba k podpisu — POVINNÉ pro PO
+### Oprávněná osoba k podpisu — doporučené pro PO
 
 Pole `opr_*` identifikují fyzickou osobu, která je u právnické osoby oprávněná
 přiznání podepsat (typicky jednatel, předseda představenstva).
@@ -117,6 +123,10 @@ přiznání podepsat (typicky jednatel, předseda představenstva).
 | **Postavení** (`opr_postaveni`) | `opr_postaveni` | Funkce, typicky `jednatel`, `majitel`, `předseda představenstva` |
 
 U FO (OSVČ) zůstávají prázdná — fallback je `jmeno` + `prijmeni`.
+
+V EPO schématech jsou atributy `opr_*` deklarované jako `use="optional"`, takže
+generování XML neblokují — aplikace jen upozorní, že je u PO nemáš vyplněné.
+Finanční úřad je ale u právnických osob fakticky očekává, tak je doplň.
 
 ### Sestavitel přiznání (sest_*)
 

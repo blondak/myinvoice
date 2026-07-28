@@ -485,8 +485,9 @@ final class SettingsAction
         }
         $this->log($request, 'supplier.updated', $id, ['fields' => array_keys(array_intersect_key($body, array_flip($allowed)))]);
         // EPO připravenost (informativně, uložení neblokuje): plátce-PO dostane
-        // v odpovědi epo_ready + seznam chybějících povinných polí pro EPO podání
-        // (kód FÚ/ÚzP, DIČ, e-mail, oprávněná osoba) — UI z toho staví hint/badge.
+        // v odpovědi epo_ready + seznam chybějících XSD-povinných polí pro EPO
+        // podání (kód FÚ, DIČ, typ poplatníka) — UI z toho staví hint/badge.
+        // Doporučená pole (ÚzP, e-mail, opr_*) sem nepatří, ta podání neblokují.
         $extra = [];
         $cur = $this->db->pdo()->prepare('SELECT taxpayer_type, is_vat_payer FROM supplier WHERE id = ?');
         $cur->execute([$id]);

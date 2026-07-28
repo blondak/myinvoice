@@ -136,13 +136,20 @@ const creditNoteFormatError = computed(() => validateAndPreview(supplier.value?.
 const purchasePreview       = computed(() => validateAndPreview(supplier.value?.purchase_invoice_number_format ?? null).preview)
 const purchaseFormatError   = computed(() => validateAndPreview(supplier.value?.purchase_invoice_number_format ?? null).error)
 
-// EPO — klientská kontrola povinných polí pro elektronická podání (DPH/KH/DPFO/DPPO).
-// Prázdné = po trimu prázdný řetězec; při PO navíc povinná oprávněná osoba.
+// EPO — klientská kontrola polí pro elektronická podání (DPH/KH/DPFO/DPPO).
+// Sada musí zůstat shodná s EpoIdentityValidator na backendu: POVINNÁ jsou jen
+// pole, která mají v EPO schématech use="required" (blokují stažení XML),
+// ostatní jsou doporučená (v XSD optional — jen upozornění).
 const epoFieldEmpty = (v: unknown) => !(v ?? '').toString().trim()
 const epoMissingLocal = computed<string[]>(() => {
   const s = supplier.value as any
   if (!s) return []
-  const fields = ['financial_office_code', 'workplace_code', 'dic', 'taxpayer_type', 'email']
+  return ['financial_office_code', 'dic', 'taxpayer_type'].filter((f) => epoFieldEmpty(s[f]))
+})
+const epoRecommendedLocal = computed<string[]>(() => {
+  const s = supplier.value as any
+  if (!s) return []
+  const fields = ['workplace_code', 'email']
   if (s.taxpayer_type === 'po') fields.push('opr_jmeno', 'opr_prijmeni', 'opr_postaveni')
   return fields.filter((f) => epoFieldEmpty(s[f]))
 })
@@ -698,7 +705,9 @@ async function removeLogo() {
 
       <!-- Daňové nastavení (EPO výkazy DPH/KH/DPFO/DPPO) — samostatný box -->
       <section id="epo" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.tax_section') }}<span v-if="epoMissingLocal.length > 0" class="ml-2 px-2 py-0.5 text-xs rounded-full bg-danger-50 text-danger-600 border border-danger-500/40 align-middle">{{ t('settings.epo_incomplete_badge') }}</span></h2>
+        <!-- Červený badge jen při chybějících POVINNÝCH polích (blokují stažení XML);
+             chybějící doporučená hlásíme smířlivěji — podání s nimi projde. -->
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.tax_section') }}<span v-if="epoMissingLocal.length > 0" class="ml-2 px-2 py-0.5 text-xs rounded-full bg-danger-50 text-danger-600 border border-danger-500/40 align-middle">{{ t('settings.epo_incomplete_badge') }}</span><span v-else-if="epoRecommendedLocal.length > 0" class="ml-2 px-2 py-0.5 text-xs rounded-full bg-warning-50 text-warning-700 border border-warning-500/40 align-middle">{{ t('settings.epo_recommended_badge') }}</span></h2>
         <div>
           <h3 class="sr-only">{{ t('settings.tax_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-3">{{ t('settings.tax_hint') }}</p>
@@ -772,7 +781,7 @@ async function removeLogo() {
               <input v-model="supplier.workplace_code" type="text" maxlength="8" placeholder="2005"
                 class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
               <p class="text-xs text-neutral-500 mt-1">{{ t('settings.workplace_code_hint') }}</p>
-              <p v-if="epoFieldEmpty(supplier.workplace_code)" class="text-xs text-danger-500 mt-1">{{ t('settings.epo_required_hint') }}</p>
+              <p v-if="epoFieldEmpty(supplier.workplace_code)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.cz_nace_code') }}</label>
@@ -810,19 +819,19 @@ async function removeLogo() {
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.opr_jmeno') }}</label>
               <input v-model="supplier.opr_jmeno" type="text" maxlength="60"
                 class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
-              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_jmeno)" class="text-xs text-danger-500 mt-1">{{ t('settings.epo_required_hint') }}</p>
+              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_jmeno)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.opr_prijmeni') }}</label>
               <input v-model="supplier.opr_prijmeni" type="text" maxlength="60"
                 class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
-              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_prijmeni)" class="text-xs text-danger-500 mt-1">{{ t('settings.epo_required_hint') }}</p>
+              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_prijmeni)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.opr_postaveni') }}</label>
               <input v-model="supplier.opr_postaveni" type="text" maxlength="60" placeholder="jednatel"
                 class="w-full h-9 px-3 border border-neutral-300 rounded-md text-sm" />
-              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_postaveni)" class="text-xs text-danger-500 mt-1">{{ t('settings.epo_required_hint') }}</p>
+              <p v-if="supplier.taxpayer_type === 'po' && epoFieldEmpty(supplier.opr_postaveni)" class="text-xs text-warning-600 mt-1">{{ t('settings.epo_recommended_hint') }}</p>
             </div>
           </div>
 
