@@ -393,8 +393,9 @@ export const reportsApi = {
     const params = new URLSearchParams({ year: String(year), month: String(month) })
     if (period) params.set('period', period)
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
-    // Forma podání (B řádné / O opravné / D dodatečné) + datum zjištění důvodů
-    // pro dodatečné přiznání (DD.MM.YYYY, povinné u D) — viz DphPriznaniAction.
+    // Forma podání (B řádné / O opravné; dodatečné D/E backend odmítá do
+    // implementace dopočtu rozdílů dle § 141/2 DŘ) + volitelné datum zjištění
+    // důvodů u O (DD.MM.YYYY) — viz DphPriznaniAction.
     if (form && form !== 'B') {
       params.set('form', form)
       if (dZjist) params.set('d_zjist', dZjist)

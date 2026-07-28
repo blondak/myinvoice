@@ -246,7 +246,9 @@ final class DphPriznaniAction
         if ($epo['missing'] !== []) {
             return $this->epoIdentityError($response, $epo['missing']);
         }
-        // Forma podání (B/O/D/E) + datum zjištění důvodů pro dodatečné přiznání (§ 141 DŘ).
+        // Forma podání (B/O; dodatečné D/E dočasně nepodporováno — § 141/2 DŘ
+        // vyžaduje vykázání rozdílů, viz DphPriznaniBuilder::FORMS) + volitelné
+        // datum zjištění důvodů u O.
         $fp = \MyInvoice\Service\Report\ReportFormParams::fromQuery(
             $q,
             \MyInvoice\Service\Report\DphPriznaniBuilder::FORMS,

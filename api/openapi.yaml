@@ -3569,10 +3569,10 @@ paths:
         - { in: query, name: year, required: true, schema: { type: integer } }
         - { in: query, name: month, schema: { type: integer } }
         - { in: query, name: quarter, schema: { type: integer } }
-        - { in: query, name: form, schema: { type: string, enum: [B, O, D, E], default: B },
-            description: 'Forma podání (dapdph_forma): B řádné, O opravné, D dodatečné, E dodatečné/opravné (§ 138, § 141 DŘ)' }
+        - { in: query, name: form, schema: { type: string, enum: [B, O], default: B },
+            description: 'Forma podání (dapdph_forma): B řádné, O opravné (§ 138 DŘ). Dodatečné D/E dočasně nepodporováno — § 141/2 DŘ vyžaduje vykázání rozdílů proti poslední známé dani a builder umí jen plné hodnoty období.' }
         - { in: query, name: d_zjist, schema: { type: string, pattern: '^\d{2}\.\d{2}\.\d{4}$' },
-            description: 'Datum zjištění důvodů pro podání (DD.MM.YYYY) — povinné u form=D/E, volitelné u O' }
+            description: 'Datum zjištění důvodů pro podání (DD.MM.YYYY) — volitelné u O' }
       responses:
         '200':
           description: XML download

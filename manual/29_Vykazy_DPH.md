@@ -220,9 +220,15 @@ hlášení — **neupravuj ji**. Náhled přiznání rozdíl dopředu vypíše v
 
 - **Toggle Měsíčně / Kvartálně** — override podle `supplier.vat_period`
 - **Month / Year picker** — pro měsíční; **Q1/Q2/Q3/Q4 picker** pro kvartální
-- **Forma podání** — Řádné (výchozí) / Opravné (§ 138 DŘ) / Dodatečné (§ 141 DŘ).
-  U dodatečného je povinné **Datum zjištění** důvodů pro podání (date picker se
-  zobrazí u ne-řádných forem) — do XML se propíše jako `dapdph_forma` + `d_zjist`.
+- **Forma podání** — Řádné (výchozí) / Opravné (§ 138 DŘ — nahrazuje řádné
+  před uplynutím lhůty). **Datum zjištění** důvodů je u opravného volitelné —
+  do XML se propíše jako `dapdph_forma` + `d_zjist`.
+  **Dodatečné přiznání (§ 141 DŘ) aplikace zatím negeneruje:** podává se pouze
+  v **rozdílech** proti poslední známé dani (§ 141 odst. 2 DŘ) a dopočet
+  rozdílů není implementován — plné hodnoty za období by byly věcně špatně
+  (v neprospěch poplatníka). Pro dodatečné přiznání použij formulář na portálu
+  EPO / MOJE daně, hodnoty rozdílů spočítej z porovnání s posledním podaným
+  přiznáním.
 - **Stáhnout XML** — generuje DPHDP3 verze 03.01 pro EPO portál
 
 #### 4 KPI karty
