@@ -361,12 +361,20 @@ default předpokládá **službu** a náhled Kontrolního hlášení u takového
 zobrazí adresné upozornění. Jde-li o **pořízení zboží z EU**, zvol ručně kód
 **23** (ř. 3); u **dovozu zboží ze 3. země** kód **25** (ř. 7).
 
-Má-li položka klasifikaci v režimu přenesené povinnosti (24e/23/24/25/5…),
-aplikace při uložení **automaticky zapne příznak reverse charge na hlavičce**
-dokladu (s upozorněním) — hlavička a položky si jinak odporují a doklad by se
-mohl zařadit do špatného období. Historická data srovná skript
+Vybereš-li na položce **výslovně** klasifikaci v režimu přenesené povinnosti
+(24e/23/24/25/5…), aplikace při uložení dokladu **automaticky zapne příznak
+reverse charge na hlavičce** a upozorní na to — hlavička a položky by si jinak
+odporovaly a doklad by se mohl zařadit do špatného období. Platí to pro uložení
+z editoru i pro API (POST/PUT přijaté faktury).
+
+Naopak **automaticky dosazená** klasifikace (zahraniční dodavatel s 0 % dostane
+default 24e/24) ani importy (ISDOC, iDoklad, Fakturoid) příznak nemění — když
+ho vědomě necháš vypnutý, zůstane vypnutý. Výkazy s tím počítají: zařazení do
+období i samovyměření reagují na příznak **nebo** na klasifikační kód položky.
+Historická data s rozporem srovná skript
 `php api/bin/backfill-reverse-charge-consistency.php` (výchozí režim dry-run,
-zápis až s `--apply`).
+zápis až s `--apply`) — ten ale kód zadaný ručně od defaultovaného nerozliší,
+takže výpis před zápisem projdi.
 
 U vystavených řádků se sazbou **0 %** se klasifikace záměrně nedoplňuje automaticky.
 Nulová sazba sama nerozlišuje osvobození bez nároku, vývoz, plnění mimo předmět
