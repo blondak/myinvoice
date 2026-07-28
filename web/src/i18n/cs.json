@@ -659,6 +659,7 @@
     },
     "warning": {
       "credit_note_positive_total": "Dobropis má kladný součet — má mít záporné částky. Záporné znaménko stačí na jedné straně (např. −1 ks × 1000, nebo 1 ks × −1000); pokud jsou záporné množství i cena zároveň, výkazy DPH/KH plnění přičtou místo odečtení. Zkontroluj prosím znaménka.",
+      "credit_note_mixed_sign_items": "Dobropis má položky obou znamének (například vrácené zboží záporně a kladný storno poplatek). Evidence DPH každou položku dobropisu vykáže záporně, takže kladný řádek by snížil odpočet místo zvýšení — vystav ho prosím samostatným dokladem.",
       "vendor_non_payer_deduction": "Dodavatel je neplátce DPH, ale je uplatněn nárok na odpočet. Od neplátce nelze DPH odpočítat — zkontroluj nastavení odpočtu.",
       "reverse_charge_forced_by_classification": "Položka má klasifikaci v režimu přenesené povinnosti (reverse charge), proto byl na dokladu automaticky zapnut příznak reverse charge — hlavička a položky si jinak odporovaly."
     },
@@ -1691,7 +1692,7 @@
     "unlock_c_audit": "Akce se zapisuje do auditního logu včetně rozdílu změněných polí.",
     "unlock_ack": "Rozumím následkům a chci doklad odemknout.",
     "rebuild_snapshots": "Obnovit údaje klienta",
-    "rebuild_snapshots_confirm": "Přepsat na dokladu {varsymbol} uložené údaje klienta a dodavatele aktuálními daty? Částky, stav ani číslo dokladu se nezmění. Akce se audituje.",
+    "rebuild_snapshots_confirm": "Přepsat na dokladu {varsymbol} uložené údaje klienta, dodavatele i bankovního spojení aktuálními daty? Stávající PDF se zneplatní (stará verze se archivuje) a vygeneruje znovu — u dokladu v už podaném období se tak nové PDF může lišit od verze doručené klientovi. Na kontrolní hlášení ani přiznání DPH akce vliv nemá (výkazy čtou DIČ z živé karty klienta). Částky, stav ani číslo dokladu se nezmění. Akce se audituje.",
     "rebuild_snapshots_done": "Údaje klienta na dokladu byly obnoveny.",
     "edit_issued_warning": "Editace vystavené faktury (admin)",
     "edit_issued_body": "Upravuješ fakturu {varsymbol} ve stavu {status}. Změny přepíšou snapshoty a mohou rozsynchronizovat doklad s evidencí klienta. Akce je auditována. Pro klienta doporučujeme raději vystavit dobropis.",
@@ -2080,6 +2081,8 @@
     "vat_payer_vies_source": "Zdroj: VIES (Evropská komise), načteno na vyžádání.",
     "lookup_in_registries": "Načtení z registrů",
     "dic_valid": "{dic} je platné — {name}",
+    "dic_valid_group": "{dic} je platné — skupinová registrace DPH (ověřeno v registru plátců DPH)",
+    "dic_valid_no_name": "{dic} je platné (registr nevrátil název subjektu)",
     "dic_invalid": "{dic} není platné nebo neexistuje",
     "duplicate_ic": "Klient s tímto IČO již existuje:",
     "duplicate_dic": "Klient s tímto DIČ již existuje:",

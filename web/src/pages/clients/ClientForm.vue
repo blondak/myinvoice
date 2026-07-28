@@ -484,7 +484,12 @@ async function submit() {
             </div>
           </div>
           <div v-if="viesResult" class="mt-2 text-xs">
-            <span v-if="viesResult.valid" class="text-primary-700">✓ {{ t('client.dic_valid', { dic: t('client.dic'), name: viesResult.name }) }}</span>
+            <!-- Registr plátců DPH (skupinová registrace CZ699…) ověří platnost, ale
+                 název subjektu nevrací — bez tohohle rozlišení by hláška končila
+                 visící pomlčkou („DIČ je platné — "). -->
+            <span v-if="viesResult.valid && viesResult.name" class="text-primary-700">✓ {{ t('client.dic_valid', { dic: t('client.dic'), name: viesResult.name }) }}</span>
+            <span v-else-if="viesResult.valid && viesResult.group_registration" class="text-primary-700">✓ {{ t('client.dic_valid_group', { dic: t('client.dic') }) }}</span>
+            <span v-else-if="viesResult.valid" class="text-primary-700">✓ {{ t('client.dic_valid_no_name', { dic: t('client.dic') }) }}</span>
             <span v-else class="text-danger-500">✗ {{ t('client.dic_invalid', { dic: t('client.dic') }) }}</span>
           </div>
 

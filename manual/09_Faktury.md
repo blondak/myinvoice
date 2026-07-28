@@ -61,10 +61,15 @@ V každé skupině jsou faktury seřazené podle data vystavení (nejnovější 
 >    může být nutné následné hlášení) a zaškrtnutím checkboxu. Odemčení platí
 >    jen do obnovení stránky. Do auditního logu se zapíše `invoice.force_edit`
 >    včetně seznamu změněných polí a starého/nového snapshotu.
-> 2. **Obnovit údaje klienta** (detail faktury → Pokročilé) — lehčí operace pro
->    typický případ „klientovi se změnilo DIČ / přešel do skupinové registrace":
->    přepíše POUZE snapshoty z aktuálních dat, částky, stav i číslo zůstávají.
->    Audit `invoice.rebuild_snapshots`.
+> 2. **Obnovit údaje klienta** (detail faktury → Pokročilé) — lehčí operace:
+>    přepíše POUZE snapshoty (klienta, **dodavatele i bankovního spojení**)
+>    z aktuálních dat; částky, stav i číslo zůstávají. Stávající PDF se zneplatní
+>    (stará verze se archivuje) a vygeneruje znovu — u dokladu v už podaném
+>    období se nové PDF může lišit od verze, kterou odběratel dostal.
+>    Pozor: akce **nemá vliv na kontrolní hlášení ani přiznání DPH** — výkazy
+>    čtou DIČ protistrany vždy z živé karty klienta, takže po změně DIČ nebo
+>    přechodu do skupinové registrace jsou správně i bez ní. Projeví se jen
+>    v PDF a v exportech (ISDOC, Pohoda). Audit `invoice.rebuild_snapshots`.
 
 ## 9.3 Hromadné akce
 

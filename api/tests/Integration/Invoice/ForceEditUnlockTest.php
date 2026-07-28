@@ -229,6 +229,14 @@ final class ForceEditUnlockTest extends TestCase
         self::assertStringNotContainsString('ZASTARALÝ SNAPSHOT', (string) $after['client_snapshot'],
             'Snapshot klienta byl obnoven z live dat.');
         self::assertNotSame($before['client_snapshot'], $after['client_snapshot']);
+        // Přepisuje se i dodavatel a bankovní spojení, ne jen klient — na to
+        // upozorňuje potvrzovací dialog (review PR #245, poznámka ke snapshotům).
+        self::assertNotSame('', (string) $after['supplier_snapshot']);
+        self::assertNotSame('', (string) $after['bank_snapshot']);
+        // …a PDF se zneplatní, takže se při dalším stažení vygeneruje z NOVÝCH
+        // snapshotů — u dokladu v podaném období se může lišit od doručené verze.
+        self::assertNull($after['pdf_path'] ?? null, 'rebuild-snapshots invaliduje cached PDF.');
+        self::assertNull($after['pdf_generated_at'] ?? null);
 
         // Audit invoice.rebuild_snapshots existuje.
         $count = (int) $pdo->query(

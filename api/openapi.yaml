@@ -1766,11 +1766,15 @@ paths:
       tags: [InvoiceOps]
       summary: Obnoví snapshoty klienta/dodavatele na dokladu z aktuálních live dat (admin)
       description: |
-        Lehčí alternativa k odemčení celého formuláře (typicky změna DIČ odběratele
-        nebo přesun do skupinové registrace): přepíše POUZE `client_snapshot` /
-        `supplier_snapshot` / `bank_snapshot`, a to i u uzamčeného (issued/sent/paid)
-        dokladu. Částky, stav, datumy ani varsymbol se nemění. Auditováno jako
+        Lehčí alternativa k odemčení celého formuláře: přepíše POUZE `client_snapshot` /
+        `supplier_snapshot` / `bank_snapshot` z aktuálních live dat, a to i u uzamčeného
+        (issued/sent/paid) dokladu, a zneplatní vygenerované PDF (stará verze se
+        archivuje). Částky, stav, datumy ani varsymbol se nemění. Auditováno jako
         `invoice.rebuild_snapshots` se starým i novým snapshotem.
+
+        Akce NEMÁ vliv na kontrolní hlášení ani přiznání DPH — výkazy čtou DIČ
+        protistrany z živé tabulky `clients`, nikoli ze snapshotů. Projeví se jen
+        v obsahu PDF a exportů (ISDOC/Pohoda/Stereo).
       responses:
         '200':
           description: Aktualizovaná faktura
@@ -4857,7 +4861,8 @@ paths:
                 properties:
                   id: { type: integer, format: int64 }
                   is_vat_payer: { type: boolean }
-                  source: { type: string, enum: [ares, vies, unknown] }
+                  source: { type: string, enum: [ares, vies, crpdph, unknown],
+                            description: 'crpdph = skupinová registrace (CZ699…) ověřená v registru plátců DPH, VIES ji nezná' }
                   ic: { type: [string, "null"] }
                   dic: { type: [string, "null"] }
         '404':

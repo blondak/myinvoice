@@ -100,8 +100,12 @@ export interface ProjectSummary {
 export interface VatStatusResult {
   id: number
   is_vat_payer: boolean
-  /** Zdroj výsledku: 'ares' (CZ dle IČO), 'vies' (zahr. dle DIČ), 'unknown' (nezjištěno → uložený příznak). */
-  source: 'ares' | 'vies' | 'unknown'
+  /**
+   * Zdroj výsledku: 'ares' (CZ dle IČO), 'vies' (zahr. dle DIČ), 'crpdph'
+   * (skupinová registrace CZ699… ověřená v registru plátců DPH — VIES ji nezná),
+   * 'unknown' (nezjištěno → uložený příznak).
+   */
+  source: 'ares' | 'vies' | 'crpdph' | 'unknown'
   ic: string | null
   dic: string | null
 }
