@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.52.0] — 2026-07-28
+
 ### Added
 
 - **Omezení uživatele na vybrané firmy.** V *Systém → Uživatelé* je u každého účtu nová sekce **Přístup k firmám** — zaškrtnutím dodavatelů omezíš, co uživatel v instalaci vidí. Typický případ: externí účetní nebo auditor má vidět jen jednu z firem, které v aplikaci vedeš. Dokud správce nikomu nic nezaškrtne, chová se aplikace přesně jako dosud — prázdný výběr znamená přístup ke všem firmám, takže se stávajících instalací upgrade nedotkne. Role `admin` je z omezení vyjmutá vždy, instalaci proto nelze „vyzamknout". (#246)
