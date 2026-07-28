@@ -2436,10 +2436,17 @@ paths:
   /api/v1/suppliers:
     get:
       tags: [Settings]
-      summary: Seznam všech dodavatelů, ke kterým má token přístup
+      summary: Seznam dodavatelů, ke kterým má token přístup
       description: |
         Užitečné pro klienta, který chce zjistit `id` supplier-ů (pro X-Supplier-Id
         header u tokenu bez bind, nebo pro multi-supplier reporting).
+
+        **Přístup k firmám (`user_suppliers`):** pokud má uživatel alespoň jedno
+        přiřazení, vrací se JEN přiřazené firmy. Uživatel bez přiřazení (typicky
+        vlastník jednofiremní instalace) a role `admin` vidí všechny firmy —
+        zpětně kompatibilní chování. Požadavek s `X-Supplier-Id` mimo přiřazené
+        firmy vrací `403` s kódem `forbidden_supplier`; stejně tak token vázaný
+        (bound) na nepovolenou firmu.
       responses:
         '200':
           description: OK
@@ -2451,6 +2458,8 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/SupplierBrief' }
+        '403':
+          description: "Firma mimo přiřazené (`forbidden_supplier`)"
 
   /api/v1/suppliers/{id}:
     parameters:
@@ -2461,12 +2470,17 @@ paths:
     get:
       tags: [Settings]
       summary: Detail konkrétního dodavatele
+      description: |
+        Firma mimo přiřazené (`user_suppliers`) vrací `404` — konvence pro cizí
+        entity, neleakuje existenci.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SupplierFull' }
+        '404':
+          description: Dodavatel nenalezen (nebo mimo přiřazené firmy)
 
   /api/v1/settings/currencies:
     parameters:

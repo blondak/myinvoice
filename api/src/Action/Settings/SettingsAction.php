@@ -40,6 +40,7 @@ final class SettingsAction
         private readonly Config $config,
         private readonly \MyInvoice\Service\Ares\SupplierRegistryEnricher $enricher,
         private readonly \MyInvoice\Service\Report\EpoIdentityValidator $epoValidator,
+        private readonly \MyInvoice\Repository\UserSupplierRepository $userSuppliers,
     ) {}
 
     /** Aktuální supplier (z X-Supplier-Id middleware). */
@@ -56,18 +57,28 @@ final class SettingsAction
         return $this->updateSupplierById($request, $response, ['id' => (string) $id]);
     }
 
-    /** GET /api/suppliers — list všech (pro switcher). */
+    /** GET /api/suppliers — list pro switcher. Uživatel s membership vidí jen přiřazené firmy. */
     public function listSuppliers(Request $request, Response $response): Response
     {
-        $rows = $this->db->pdo()->query(
+        $allowed = $this->allowedSupplierIds($request);
+        $where   = '';
+        $params  = [];
+        if ($allowed !== []) {
+            $where  = ' WHERE s.id IN (' . implode(',', array_fill(0, count($allowed), '?')) . ')';
+            $params = $allowed;
+        }
+        $stmt = $this->db->pdo()->prepare(
             'SELECT s.id, s.company_name, s.display_name, s.ic, s.dic, s.is_vat_payer,
                     s.email, c.iso2 AS country_iso,
                     (SELECT COUNT(*) FROM clients cl  WHERE cl.supplier_id  = s.id) AS clients_count,
                     (SELECT COUNT(*) FROM invoices i  WHERE i.supplier_id   = s.id) AS invoices_count
                FROM supplier s
-               JOIN countries c ON c.id = s.country_id
-           ORDER BY s.id'
-        )->fetchAll(\PDO::FETCH_ASSOC);
+               JOIN countries c ON c.id = s.country_id'
+            . $where .
+            ' ORDER BY s.id'
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['id']             = (int) $r['id'];
             $r['is_vat_payer']   = (bool) $r['is_vat_payer'];
@@ -77,10 +88,36 @@ final class SettingsAction
         return Json::ok($response, $rows);
     }
 
-    /** GET /api/suppliers/{id}. */
+    /** GET /api/suppliers/{id}. Firma mimo membership → 404 (konvence pro cizí entity). */
     public function getSupplierById(Request $request, Response $response, array $args): Response
     {
-        return $this->respondSupplier($response, (int) ($args['id'] ?? 0));
+        $id = (int) ($args['id'] ?? 0);
+        if ($this->membershipDenies($request, $id)) {
+            return Json::error($response, 'not_found', 'Supplier nenalezen.', 404);
+        }
+        return $this->respondSupplier($response, $id);
+    }
+
+    /**
+     * Povolené firmy uživatele z requestu; prázdné pole = bez omezení.
+     * Globální admin vidí všechny firmy (konzistentně se SupplierAccessResolver,
+     * který adminy z membershipu vyjímá — jinak by si adminovi s membershipem
+     * ořízlo přepínač firem).
+     *
+     * @return list<int>
+     */
+    private function allowedSupplierIds(Request $request): array
+    {
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        if (($user['role'] ?? '') === 'admin') return [];
+        return $this->userSuppliers->allowedSupplierIds((int) ($user['id'] ?? 0));
+    }
+
+    /** True = uživatel má neprázdné membership a $supplierId v něm není. Globální admin nikdy (vidí vše). */
+    private function membershipDenies(Request $request, int $supplierId): bool
+    {
+        $allowed = $this->allowedSupplierIds($request);
+        return $allowed !== [] && !in_array($supplierId, $allowed, true);
     }
 
     /** POST /api/suppliers — nový supplier (admin). */
@@ -214,6 +251,9 @@ final class SettingsAction
         if (!$this->guard($request, $response, $err)) return $err;
         $id = (int) ($args['id'] ?? 0);
         if ($id <= 0) return Json::error($response, 'validation_failed', 'Neplatné id.', 400);
+        if ($this->membershipDenies($request, $id)) {
+            return Json::error($response, 'not_found', 'Supplier nenalezen.', 404);
+        }
 
         $body = (array) ($request->getParsedBody() ?? []);
         if (!$this->supplierHasColumn('oss_enabled')) {
@@ -508,6 +548,9 @@ final class SettingsAction
         if (!$this->guard($request, $response, $err)) return $err;
         $id = (int) ($args['id'] ?? 0);
         if ($id <= 0) return Json::error($response, 'validation_failed', 'Neplatné id.', 400);
+        if ($this->membershipDenies($request, $id)) {
+            return Json::error($response, 'not_found', 'Supplier nenalezen.', 404);
+        }
 
         $pdo = $this->db->pdo();
         $count = (int) $pdo->query("SELECT COUNT(*) FROM supplier")->fetchColumn();
@@ -537,6 +580,10 @@ final class SettingsAction
             try {
                 $pdo->prepare('DELETE FROM invoice_counters WHERE supplier_id = ?')->execute([$id]);
                 $pdo->prepare('DELETE FROM currencies WHERE supplier_id = ?')->execute([$id]);
+                // Membership (migrace 0148) má ON DELETE CASCADE, ale s vypnutým
+                // FOREIGN_KEY_CHECKS se NEPROVEDE — musíme uklidit ručně. Jinak by
+                // omezenému uživateli zůstal v setu neexistující dodavatel.
+                $this->userSuppliers->deleteForSupplier($id);
                 $pdo->prepare('DELETE FROM supplier WHERE id = ?')->execute([$id]);
             } finally {
                 $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');

@@ -22,6 +22,7 @@ final class MeAction
         private readonly Connection $db,
         private readonly Config $config,
         private readonly PasskeyCredentialRepository $credentials,
+        private readonly \MyInvoice\Repository\UserSupplierRepository $userSuppliers,
         private readonly MfaPolicyService $mfaPolicy,
         private readonly SessionLockPolicy $lockPolicy,
         private readonly ClockInterface $clock,
@@ -33,16 +34,30 @@ final class MeAction
         $session = (array) $request->getAttribute(AuthMiddleware::ATTR_SESSION, []);
         $currentSupplierId = (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0);
 
+        // Membership filtr (zrcadlí SettingsAction::listSuppliers) — přepínač firem
+        // smí nabídnout jen přiřazené firmy. Globální admin a uživatel bez
+        // membershipu vidí všechny (BC).
+        $allowed = ($user['role'] ?? '') === 'admin'
+            ? []
+            : $this->userSuppliers->allowedSupplierIds((int) ($user['id'] ?? 0));
+        $where  = '';
+        $params = [];
+        if ($allowed !== []) {
+            $where  = ' WHERE id IN (' . implode(',', array_fill(0, count($allowed), '?')) . ')';
+            $params = $allowed;
+        }
+
         $ossSelect = $this->db->hasColumn('supplier', 'oss_enabled') ? 'oss_enabled' : '0 AS oss_enabled';
-        $supplierStatement = $this->db->pdo()->query(
+        $supplierStatement = $this->db->pdo()->prepare(
             'SELECT id, company_name, ic, is_vat_payer, is_identified, ' . $ossSelect . ', taxpayer_type,
                     default_payment_due_days, default_payment_due_unit, default_prices_include_vat,
                     auto_send_reminders, payment_thanks_enabled, payment_thanks_default_checked
-               FROM supplier ORDER BY id'
+               FROM supplier' . $where . ' ORDER BY id'
         );
         if ($supplierStatement === false) {
             throw new \RuntimeException('Seznam dodavatelů se nepodařilo načíst.');
         }
+        $supplierStatement->execute($params);
         $suppliers = $supplierStatement->fetchAll(\PDO::FETCH_ASSOC);
         foreach ($suppliers as &$s) {
             $s['id']                       = (int) $s['id'];

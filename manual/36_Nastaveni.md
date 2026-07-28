@@ -181,6 +181,33 @@ Tabulka uživatelů, kteří se mohou přihlásit. Tlačítko **+ Nový uživate
 > jsi sám admin a zkusíš si snížit roli, vrátí 409. Musí být minimálně 1
 > admin v systému.
 
+### 36.2.3 Přístup k firmám
+
+V editaci uživatele je sekce **Přístup k firmám** se seznamem dodavatelů
+zavedených v instalaci. Slouží k tomu, aby externí účetní nebo auditor viděl
+jen jednu z firem, které v aplikaci vedeš.
+
+| Stav | Co uživatel vidí |
+|---|---|
+| **Nic nezaškrtnuto** | Všechny firmy (výchozí stav — po upgradu se nic nemění) |
+| **Zaškrtnuté firmy** | Jen vybrané firmy — v přepínači i v datech |
+
+U každé zaškrtnuté firmy lze navíc zvolit **roli pro tuto firmu**. Prázdná
+volba (*— globální role —*) znamená, že platí role uživatele z formuláře výše;
+konkrétní volba ji pro danou firmu přepíše. Typicky: globální **accountant**,
+který má být v jedné z firem jen **readonly**.
+
+> 🛈 Role **admin** je celoinstanční — přiřazení firem se u ní neuplatní a admin
+> vidí vždy všechny firmy. Proto se instalace nedá „vyzamknout". Ze stejného
+> důvodu nejde per-firmu nastavit role `admin`, jen `accountant` a `readonly`.
+
+Omezení hlídá server, ne jen UI:
+
+- doklad či seznam pod cizí firmou vrátí `403` (`forbidden_supplier`),
+- detail cizí firmy vrátí `404` (neprozrazuje, že existuje),
+- **API token** vázaný na firmu mimo přiřazené se nevytvoří a nefunguje,
+- po odebrání firmy si aplikace sama přepne na první povolenou.
+
 ## 36.3 Můj profil
 
 **Pravý horní roh → klik na jméno → Můj profil**. Stejná obrazovka jako
