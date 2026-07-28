@@ -3158,7 +3158,7 @@
     "epo_incomplete_badge": "Incomplete — EPO submission will fail",
     "epo_required_hint": "Required for EPO submission",
     "cz_nace_code": "CZ-NACE classification",
-    "cz_nace_hint": "6-digit CZ-NACE code (e.g. 731100 = advertising agency activities). You can also enter 73.11 — it is completed automatically.",
+    "cz_nace_hint": "CZ-NACE code from the Tax portal ACTIVITIES codebook (e.g. 731100 = advertising agency activities). You can also enter 73.11 — the code is looked up in the codebook; an expired or unknown code does not block saving, it only shows a warning.",
     "cz_nace_too_short": "CZ-NACE must be at least a 4-digit class code (e.g. 73.11). A two-digit division from ARES is not enough — EPO will not find it in the codebook.",
     "data_box_id": "Data box ID",
     "street_number_pop": "Building number",

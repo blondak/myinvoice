@@ -335,18 +335,42 @@ final class SettingsAction
                 }
             }
         }
-        // CZ-NACE (c_okec v DPHDP3, BUG 7): normalizace na 6místný kód číselníku
-        // MFČR (73.11 → 731100, 7311 → 731100, 62020 → 620200). Dvoumístný oddíl
-        // z ARES („74") v číselníku neexistuje → EPO propustná chyba 30; takový
-        // vstup se NEUKLÁDÁ.
-        if (array_key_exists('cz_nace_code', $body) && $body['cz_nace_code'] !== null) {
-            $normalizedNace = \MyInvoice\Service\Report\EpoSupplierBlockBuilder::normalizeCzNaceInput((string) $body['cz_nace_code']);
-            if ($normalizedNace === null) {
+        // CZ-NACE (c_okec v DPHDP3, BUG 7): kanonizace proti snapshotu číselníku
+        // ČINNOSTI (OKEC) Daňového portálu — viz EpoOkecCodebook. Zápis dle ČSÚ
+        // se dohledá doplněním nul zprava (73.11 / 7311 → 731100), kanonické
+        // hodnoty číselníku vč. bez-nulových kódů sekcí 01–09 („14800") projdou
+        // beze změny. Dvoumístný oddíl z ARES („74") v číselníku neexistuje →
+        // EPO propustná chyba 30; takový vstup se NEUKLÁDÁ. Kód expirovaný
+        // (přechod číselníku na NACE rev. 2.1 k 1. 1. 2026) nebo neznámý se
+        // ukládá — snapshot může zestárnout, neblokujeme — ale odpověď nese
+        // `cz_nace_warning`, které UI zobrazí u pole.
+        $czNaceWarning = null;
+        if (array_key_exists('cz_nace_code', $body) && $body['cz_nace_code'] !== null
+            && trim((string) $body['cz_nace_code']) !== ''
+        ) {
+            $resolvedNace = \MyInvoice\Service\Report\EpoOkecCodebook::normalize((string) $body['cz_nace_code']);
+            if ($resolvedNace === null) {
                 return Json::error($response, 'validation_failed',
                     'CZ-NACE musí být alespoň 4místný kód třídy (např. 73.11). Dvoumístný oddíl z ARES nestačí, EPO ho v číselníku nenajde.',
                     422);
             }
-            $body['cz_nace_code'] = $normalizedNace; // '' spadne níž na NULL
+            $body['cz_nace_code'] = $resolvedNace['code'];
+            if ($resolvedNace['status'] === \MyInvoice\Service\Report\EpoOkecCodebook::STATUS_EXPIRED) {
+                $czNaceWarning = sprintf(
+                    'Kód CZ-NACE %s (%s) měl v číselníku EPO platnost do %s — číselník přešel na NACE rev. 2.1. '
+                    . 'Kód se uložil, ale EPO by podání odmítlo propustnou chybou 30; vyber aktuální kód činnosti '
+                    . '(Daňový portál → Dokumentace → Rozhraní číselníků → ČINNOSTI).',
+                    $resolvedNace['code'],
+                    mb_strtolower((string) $resolvedNace['name']),
+                    (new \DateTimeImmutable((string) $resolvedNace['valid_to']))->format('j. n. Y')
+                );
+            } elseif ($resolvedNace['status'] === \MyInvoice\Service\Report\EpoOkecCodebook::STATUS_UNKNOWN) {
+                $czNaceWarning = sprintf(
+                    'Kód CZ-NACE %s není ve snapshotu číselníku EPO. Kód se uložil — pokud jde o novou hodnotu '
+                    . 'číselníku, je vše v pořádku; jinak hrozí při podání propustná chyba 30.',
+                    $resolvedNace['code']
+                );
+            }
         }
         // Empty string → null pro tax fields (NULL = nevyplněno)
         foreach (['taxpayer_type', 'vat_period', 'financial_office_code', 'workplace_code',
@@ -470,6 +494,9 @@ final class SettingsAction
         if (($curRow['taxpayer_type'] ?? null) === 'po' && !empty($curRow['is_vat_payer'])) {
             $epo = $this->epoValidator->forSupplier($id, \MyInvoice\Service\Report\EpoIdentityValidator::DOC_DPHDP3);
             $extra = ['epo_ready' => $epo['missing'] === [], 'missing' => $epo['missing']];
+        }
+        if ($czNaceWarning !== null) {
+            $extra['cz_nace_warning'] = $czNaceWarning;
         }
         return $this->respondSupplier($response, $id, $extra);
     }

@@ -105,7 +105,7 @@ final class EpoIdentityGuardTest extends TestCase
             'taxpayer_type'         => 'po',
             'email'                 => 'epo-test@example.com',
             'phone'                 => '+420722944990',
-            'cz_nace_code'          => '620200',
+            'cz_nace_code'          => '622000', // aktivní kód číselníku (NACE 2.1); 620200 expirovalo 2025-12-31
             'opr_jmeno'             => 'Jan',
             'opr_prijmeni'          => 'Testovací',
             'opr_postaveni'         => 'jednatel',

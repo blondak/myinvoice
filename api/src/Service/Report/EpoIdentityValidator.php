@@ -132,12 +132,32 @@ final class EpoIdentityValidator
         if ($doc === self::DOC_DPHDP3) {
             // BUG 7: warning i pro NEÚPLNÝ kód (jen oddíl z ARES, např. „74") —
             // builder ho do XML nepropíše (chyba 30 by podání nezastavila, ale
-            // FÚ ji hlásí jako propustnou chybu a žádá opravu).
+            // FÚ ji hlásí jako propustnou chybu a žádá opravu). Kompletní kód
+            // se navíc ověřuje proti snapshotu číselníku ČINNOSTI: expirovaný
+            // (přechod na NACE rev. 2.1 k 1. 1. 2026) nebo neznámý kód build
+            // neblokuje, ale uživatel se to dozví dopředu, ne až z chyby 30.
             $nace = (string) ($supplier['cz_nace_code'] ?? '');
             $naceDigits = preg_replace('/\D/', '', $nace) ?? '';
             if (self::blank($nace) || strlen($naceDigits) < 4) {
                 $out[] = ['field' => 'cz_nace_code', 'label' => 'CZ-NACE kód',
-                          'why' => 'c_okec se v přiznání nevyplní a EPO nahlásí propustnou chybu 30 („Hlavní ekonomická činnost by měla odpovídat nějaké hodnotě z číselníku"). Doplň 6místný kód, např. 731100.'];
+                          'why' => 'c_okec se v přiznání nevyplní a EPO nahlásí propustnou chybu 30 („Hlavní ekonomická činnost by měla odpovídat nějaké hodnotě z číselníku"). Doplň kód třídy dle číselníku, např. 731100.'];
+            } else {
+                $resolved = EpoOkecCodebook::normalize($nace);
+                if ($resolved !== null && $resolved['status'] === EpoOkecCodebook::STATUS_EXPIRED) {
+                    $out[] = ['field' => 'cz_nace_code', 'label' => 'CZ-NACE kód',
+                              'why' => sprintf(
+                                  'Kód %s (%s) měl v číselníku EPO platnost do %s — číselník přešel na NACE rev. 2.1. EPO nahlásí propustnou chybu 30; vyber v Nastavení aktuální kód činnosti.',
+                                  $resolved['code'],
+                                  mb_strtolower((string) $resolved['name']),
+                                  (new \DateTimeImmutable((string) $resolved['valid_to']))->format('j. n. Y')
+                              )];
+                } elseif ($resolved !== null && $resolved['status'] === EpoOkecCodebook::STATUS_UNKNOWN) {
+                    $out[] = ['field' => 'cz_nace_code', 'label' => 'CZ-NACE kód',
+                              'why' => sprintf(
+                                  'Kód %s není ve snapshotu číselníku EPO — pokud nejde o novou hodnotu číselníku, EPO nahlásí propustnou chybu 30.',
+                                  $resolved['code']
+                              )];
+                }
             }
         }
         return $out;

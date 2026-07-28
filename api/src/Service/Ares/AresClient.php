@@ -156,7 +156,9 @@ final class AresClient
      * činnosti. Je-li i nejdelší kód kratší než 4 číslice (jen oddíl, např. „74"),
      * vrací '' — takový kód číselník MFČR pro c_okec nezná (EPO propustná chyba 30)
      * a uživatel musí doplnit konkrétní třídu ručně (viz naceNote()).
-     * Výsledek se normalizuje na 6 míst (7311 → 731100).
+     * Výsledek se kanonizuje proti snapshotu číselníku ČINNOSTI (EpoOkecCodebook):
+     * zápis dle ČSÚ se dohledá doplněním nul zprava (7311 → 731100), kanonické
+     * hodnoty číselníku projdou beze změny.
      */
     private static function primaryNace(array $raw): string
     {

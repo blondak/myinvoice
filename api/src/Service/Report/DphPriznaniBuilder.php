@@ -133,9 +133,10 @@ final class DphPriznaniBuilder
         $vetaD->setAttribute('dokument', 'DP3');   // identifikace typu výkazu
         // P = plátce DPH (default), I = identifikovaná osoba (S = skupina, N = neplátce)
         $vetaD->setAttribute('typ_platce', $isIdentified ? 'I' : 'P');
-        // CZ-NACE klasifikace (hlavní ekonomická činnost, 6-digit) — vyplňuje se
-        // z `supplier.cz_nace_code`. Hodnotu očekávanou EPO ověřuje uživatel
-        // proti číselníku https://mojedane.gov.cz/pmd/dokumentace/ciselniky/ukazka/okec.
+        // CZ-NACE klasifikace (hlavní ekonomická činnost) — vyplňuje se
+        // z `supplier.cz_nace_code`, kanonizuje se proti snapshotu číselníku
+        // ČINNOSTI (viz EpoOkecCodebook); expirace/neznámý kód se hlásí
+        // ve warnings completeness checku, build neblokuje.
         $okec = EpoSupplierBlockBuilder::normalizeOkec((string) ($supplier['cz_nace_code'] ?? ''));
         if ($okec !== null) {
             $vetaD->setAttribute('c_okec', $okec);
