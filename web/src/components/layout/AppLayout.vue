@@ -691,6 +691,13 @@ onMounted(async () => {
           <span aria-hidden="true">·</span>
           <button type="button" @click="featureOpen = true"
                   class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.feature_link') }}</button>
+          <a href="https://myucto.cz/" target="_blank" rel="noopener"
+             class="ml-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm hover:bg-primary-700 hover:shadow transition-colors">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+            <span>{{ t('support.myucto_link') }}</span>
+          </a>
         </footer>
       </div>
     </div>

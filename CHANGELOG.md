@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.52.2] — 2026-07-29
+
+### Changed
+
+- **V patičce aplikace je nově výrazný odkaz na MyÚčto.cz.** Za odkazem „Chcete jinou funkci?" přibylo zvýrazněné tlačítko **„MyÚčto — přejděte na kompletní účetní systém"** vedoucí na [myucto.cz](https://myucto.cz/). Těžiště vývoje se přesunulo do sesterského projektu MyÚčto, kde veškerá funkcionalita MyInvoice zůstává zdarma a komerční je jen účetní nadstavba (podvojné účetnictví, majetek, sklad, EPO podání) — odkaz na to upozorňuje přímo v aplikaci, ne jen v README. Čistě vizuální doplněk, žádná změna chování ani dat.
+
 ## [4.52.1] — 2026-07-28
 
 ### Fixed
