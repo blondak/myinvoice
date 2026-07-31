@@ -41,7 +41,7 @@ databáze MariaDB 10.6+ (doporučeno 11.x).
 
 - `api/` — PHP backend (Slim, autowired actions, services, repositories); `api/bin/` = CLI skripty, `api/tests/` = PHPUnit
 - `web/` — Vue 3 + TS frontend; zdrojáky ve `web/src/`, lokalizace ve `web/src/i18n/`
-- `dist/` — produkční build frontendu (commitovaný — uživatelé testují přes něj)
+- `web/dist/` — produkční build frontendu; **gitignorovaný**, staví se lokálně a v CI do release bundlu
 - `db/migrations/` — SQL migrace (číslované, idempotentní)
 - `manual/` — uživatelský manuál (Markdown, česky); `manual/generated/` = vyrenderované HTML
 - `source/` — vývojářská spec a plány
@@ -51,7 +51,7 @@ databáze MariaDB 10.6+ (doporučeno 11.x).
 ## Příkazy
 
 ```bash
-# Frontend — build (NUTNÉ po každé změně web/src, dist/ se commituje)
+# Frontend — build (NUTNÉ po každé změně web/src; web/dist/ se necommituje)
 cd web && pnpm build            # = vue-tsc --noEmit && vite build (npm run build funguje též)
 cd web && pnpm type-check       # jen typová kontrola
 
@@ -105,7 +105,9 @@ php tools/exportManualToPdf.php
 - Citlivé údaje (hesla, API klíče, connection stringy) nikdy do kódu, testů ani dokumentace.
 
 ### Frontend
-- Po každé změně ve `web/src` spusť `pnpm build` — `dist/` je to, co se nasazuje a testuje; samotný `vue-tsc` nestačí.
+- Po každé změně ve `web/src` spusť `pnpm build` — aplikace běží z `web/dist/`, takže bez buildu
+  změnu neuvidíš ani neotestuješ; samotný `vue-tsc` nestačí. `web/dist/` je gitignorovaný a do
+  release balíčku jej znovu staví CI (`.github/workflows/docker-publish.yml`).
 - Drž se existujícího design language (sjednocené boxy, status badges, mobile cards) — před vymýšlením nového vzoru se podívej, jak to dělají sousední stránky.
 
 ## Testy
@@ -131,4 +133,4 @@ php tools/exportManualToPdf.php
   jen v tom, co vidí uživatel (UI texty, e-maily, dokumentace, loga).
 - Commit messages česky, conventional-commits styl: `feat(scope): …`, `fix(scope): …`, `release: X.Y.Z — …` (viz `git log`).
 - Změny v `CHANGELOG.md` a `VERSION` dělá maintainer při release — v běžném PR na ně nesahej.
-- Necommituj vygenerované artefakty mimo zavedené výjimky (`dist/`, `manual/generated/` jsou commitované záměrně).
+- Necommituj vygenerované artefakty (`web/dist/`, `manual/generated/`, `manual/manual.pdf` jsou gitignorované).
