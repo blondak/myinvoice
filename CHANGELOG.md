@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.53.1] — 2026-08-01
+
+### Fixed
+
+- **Úvodní průvodce uměl zamknout admina na obrazovce, ze které se nedalo pokračovat.** V kroku „vyžadovat silné MFA" se daly zaškrtnout povolené metody; odškrtnutí přístupového klíče zapsalo do konfigurace `auth.allowed_mfa_methods = ['totp']`, ale stránka pro dokončení MFA nabídla přesto i registraci klíče — ta pak skončila hláškou „Registrace passkey není v této instalaci povolená" a jedinou cestou dál bylo odhlášení. Výběr metod z průvodce zmizel: po instalaci jsou povolené obě, zúžení zůstává vědomým zásahem do `cfg.php` (`auth.allowed_mfa_methods`) nebo do ENV. Stránka `/setup-mfa` navíc povolené metody bere výhradně ze serveru, takže nikdy nenabídne postup, který API vzápětí odmítne, a když není povolená žádná použitelná metoda, řekne to místo zobrazení nefunkčního formuláře. Průvodce už také nezapisuje seznam metod do `cfg.local.php`, pokud si ho instalace vysloveně nevyžádá — čerstvá instalace tím nedostane skrytý per-instance override.
+- **Ukázková data se při povinném MFA nevygenerovala.** Zaškrtnutí „vygenerovat ukázková data" v průvodci nemělo žádný efekt, pokud se zároveň zapnulo vyžadování silného MFA: session vzniklá setupem smí do dokončení MFA jen přesně vyjmenované endpointy a generátor ukázkových dat mezi nimi chyběl. Průvodce dostal `403` a chybu ukázal jen nenápadně na závěrečné obrazovce, takže to vypadalo, že se data prostě nevytvořila. Endpoint je nově součástí povoleného seznamu; vlastní kontroly zůstávají beze změny — pustí ho jen admin a jen do systému, ve kterém ještě nejsou žádná data.
+- **Nezobrazený dialog pro přístupový klíč vypadal jako zatuhlá aplikace.** Systémové okno se umí otevřít za oknem prohlížeče, na druhém monitoru, nebo si volání převezme správce hesel a jeho okno se nevykreslí. Tlačítko v tu chvíli zůstalo neaktivní až do vypršení ceremonie (~2 minuty) a interní zrušení čekající požadavek neukončilo, jen ho označilo za zastaralý — kdo čekal, čekal dál. Zrušení je nově okamžité a po pár sekundách marného čekání se ukáže panel **Čekám na potvrzení bezpečnostního dialogu** s nápovědou, kde dialog hledat (a zvlášť pojmenovaným případem, kdy WebAuthn obsluhuje rozšíření prohlížeče), a s tlačítkem *Zrušit čekání*. Vysvětlující hlášku po vypršení ceremonie nově ukazují všechna místa s přístupovými klíči — přihlášení, odemčení zámku, správa klíčů i vydání API tokenu — ne jen přihlašovací obrazovka.
+
 ## [4.53.0] — 2026-07-30
 
 ### Added
