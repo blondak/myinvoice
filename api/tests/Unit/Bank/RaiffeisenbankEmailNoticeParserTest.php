@@ -14,6 +14,8 @@ final class RaiffeisenbankEmailNoticeParserTest extends TestCase
     public function testParsesSanitizedNoticeSample(): void
     {
         $text = <<<TEXT
+Vážená klientko, vážený kliente,
+na účtě byla provedena následující příchozí platba:
 Datum a čas
 01. 06. 2026 10:15
 Na účet
@@ -65,6 +67,8 @@ TEXT;
     public function testParsesOutgoingNoticeWithOwnAccountInFromField(): void
     {
         $text = <<<TEXT
+Vážená klientko, vážený kliente,
+na účtě byla provedena následující odchozí platba:
 Datum a čas
 02. 08. 2026 16:07
 Z účtu

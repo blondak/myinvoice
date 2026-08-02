@@ -79,7 +79,7 @@ final class RaiffeisenbankEmailNoticeParser extends AbstractBankEmailNoticeParse
         $note = $this->optional($text, '/Zpráva\s+pro\s+příjemce\s*(?<value>.*?)Disponibilní\s+zůstatek/isu');
         $balance = $this->optional($text, '/Disponibilní\s+zůstatek(?:\s+po\s+pohybu)?\s*(?<value>[+\-]?[0-9][0-9 .]*,[0-9]{2})/iu');
 
-        $isOutgoing = $amount < 0;
+        $isOutgoing = $this->isOutgoingTransfer($text, $amount);
         if ($isOutgoing && $from === null) {
             throw new \RuntimeException('Raiffeisenbank parser nenašel vlastní účet plátce.');
         }
@@ -100,6 +100,20 @@ final class RaiffeisenbankEmailNoticeParser extends AbstractBankEmailNoticeParse
             message: $note,
             balance: $balance !== null ? $this->parseAmount($balance) : null,
         );
+    }
+
+    private function isOutgoingTransfer(string $text, float $amount): bool
+    {
+        $folded = mb_strtolower($this->foldDiacritics($text));
+        if (preg_match(
+            '/na\s+ucte\s+byla\s+provedena\s+nasledujici\s+(?<direction>prichozi|odchozi)\s+platba/u',
+            $folded,
+            $match,
+        ) === 1) {
+            return $match['direction'] === 'odchozi';
+        }
+
+        return $amount < 0;
     }
 
 }
