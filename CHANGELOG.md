@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.53.2] — 2026-08-05
+
+### Fixed
+
+- **Vystavený doklad nešlo odemknout k editaci.** Dialog „Odemknout doklad k editaci" ukázal varování i potvrzovací zaškrtávátko, ale obě tlačítka pod ním chyběla — zaškrtnutí tedy nevedlo nikam a jediným východiskem bylo zavřít okno křížkem, čímž se rozdělaný stav zahodil. Příčina byla ve sdílené komponentě modálních oken: vykreslovala jen tělo dialogu a patičku s akčními tlačítky tiše zahazovala. Patička se nově vykreslí vždy, když ji dialog nabízí — mimo scrollovanou oblast, s odděleným pruhem a tlačítky vpravo. Ostatní dialogy v aplikaci vypadají stejně jako dosud. (#260)
+- **Jméno a příjmení klienta se nedalo zadat ani nikde nebylo vidět.** Databáze i API tato pole vedou dlouho (používá je export do Stereo, veřejný náhled dokladu i snapshot na faktuře), ve formuláři klienta ale chyběla — u fyzické osoby nebo kontaktní osoby firmy tak nebylo kam je vyplnit a u naimportovaných klientů se hodnota nedala ani zkontrolovat. Formulář klienta má nově dvojici polí **Jméno** a **Příjmení** hned pod názvem firmy a v detailu klienta se jméno zobrazuje pod hlavičkou. Beze změny dat i API — jde čistě o zpřístupnění existujících polí v UI.
+
 ## [4.53.1] — 2026-08-01
 
 ### Fixed
