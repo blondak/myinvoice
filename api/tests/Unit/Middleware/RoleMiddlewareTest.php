@@ -257,6 +257,42 @@ final class RoleMiddlewareTest extends TestCase
         self::assertSame(403, $response->getStatusCode());
     }
 
+    public function testAccountantCanMutateRecurringTemplates(): void
+    {
+        foreach ([
+            ['POST', '/api/recurring'],
+            ['PUT', '/api/recurring/5'],
+            ['DELETE', '/api/recurring/5'],
+            ['POST', '/api/recurring/5/pause'],
+            ['POST', '/api/recurring/5/resume'],
+            ['POST', '/api/recurring/5/run-now'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'accountant'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $response->getStatusCode(), "accountant $method $path");
+        }
+    }
+
+    public function testReadonlyCannotMutateRecurringTemplates(): void
+    {
+        foreach ([
+            ['POST', '/api/recurring'],
+            ['PUT', '/api/recurring/5'],
+            ['DELETE', '/api/recurring/5'],
+            ['POST', '/api/recurring/5/pause'],
+            ['POST', '/api/recurring/5/resume'],
+            ['POST', '/api/recurring/5/run-now'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'readonly'),
+                $this->okHandler(),
+            );
+            self::assertSame(403, $response->getStatusCode(), "readonly $method $path");
+        }
+    }
+
     public function testAccountantCanReadImportJobStatusAndSigningSettings(): void
     {
         foreach (['/api/admin/imports/42', '/api/settings/signing'] as $path) {
@@ -277,7 +313,7 @@ final class RoleMiddlewareTest extends TestCase
     private function middleware(): RoleMiddleware
     {
         // Bez membershipu = žádný per-supplier override (BC větev resolveru).
-        $resolver = $this->createMock(\MyInvoice\Service\Tenant\SupplierAccessResolver::class);
+        $resolver = $this->createStub(\MyInvoice\Service\Tenant\SupplierAccessResolver::class);
         $resolver->method('resolve')->willReturn(
             new \MyInvoice\Service\Tenant\SupplierAccess(0, false, null),
         );
