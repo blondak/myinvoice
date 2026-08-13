@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.53.3] — 2026-08-13
+
+### Fixed
+
+- **Účetní nemohl spravovat pravidelnou fakturaci.** Uživatel s rolí *účetní* si šablonu pravidelné faktury otevřel i vyplnil, ale uložení skončilo hláškou o chybějícím oprávnění — a stejně dopadlo pozastavení, obnovení, smazání i ruční spuštění. Server totiž u pravidelné fakturace povoloval účetnímu jen čtení, přestože aplikace i manuál tuhle agendu účetnímu přiznávají. Nově s ní účetní pracuje v plném rozsahu, práva správce ani role *jen pro čtení* se nemění. (#263, díky @blondak)
+- **Přílohy přijatých faktur se z Fakturoidu nikdy nestáhly.** Import s volbou „stahovat přílohy" u přijatých faktur (výdajů) doklad založil, ale originální PDF od dodavatele k němu nepřiložil. Chyba byla navíc tichá — import skončil bez jediné chyby v protokolu, takže to vypadalo, že přílohy prostě nejsou. MyInvoice hledal přílohu na místě, které Fakturoid ve své odpovědi neposílá; nově ji bere ze správného seznamu příloh včetně původního názvu souboru. Přijaté faktury z Fakturoidu tak dorazí i s dokladem, stejně jako u iDokladu. (#261, díky @judzi)
+- **Účetní nemohl spustit import dokladů.** Nahrání dávky Pohoda XML / ISDOC / PDF, sken složky s přijatými fakturami, spuštění importu z iDokladu nebo Fakturoidu i zrušení běžícího importu — všechno účetnímu skončilo na chybějícím oprávnění, ačkoliv manuál import účetnímu slibuje. Import je práce s daty, ne konfigurace, takže ho účetní nově spouští i řídí a v menu na něj má odkaz (*Prodej → Import vystavených*, *Nákup → Import přijatých*). Nastavení integrací, tedy API klíče k iDokladu, Fakturoidu a AI, zůstává vyhrazené správci; role *jen pro čtení* k importům nemá přístup dál.
+
+### Security
+
+- **Přílohy z Fakturoidu se stahují jen z adres Fakturoidu.** Odkaz na přílohu bere MyInvoice z odpovědi Fakturoid API a stahuje ho s přihlašovacím údajem účtu. Kdyby taková adresa mířila jinam, odešel by přístupový token na cizí server. Nově se stahuje výhradně přes zabezpečené spojení a jen z domény `fakturoid.cz`; cokoliv jiného se odmítne a zapíše do protokolu.
+
 ## [4.53.2] — 2026-08-05
 
 ### Fixed
