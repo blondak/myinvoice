@@ -607,15 +607,16 @@ final class FakturoidImportService
     }
 
     /**
-     * Stáhne přílohu výdaje (originální doklad od dodavatele) z Fakturoid `attachment`
-     * URL a uloží jako PDF přijaté faktury. Symetrické k iDokladu.
+     * Stáhne přílohu výdaje (originální doklad od dodavatele) z Fakturoid a uloží
+     * jako PDF přijaté faktury. Symetrické k iDokladu. Viz issue #261 —
+     * Fakturoid vrací přílohy v poli `attachments`, ne ve skalárním `attachment`.
      */
     private function archiveExpensePdf(int $supplierId, int $purchaseInvoiceId, array $exp): void
     {
-        $url = (string) ($exp['attachment'] ?? '');
-        if ($url === '') return; // výdaj bez přílohy
+        $attachment = FakturoidExpenseAttachment::resolve($exp);
+        if ($attachment === null) return; // výdaj bez přílohy
 
-        $pdf = $this->fakturoid->downloadAttachment($supplierId, $url);
+        $pdf = $this->fakturoid->downloadAttachment($supplierId, $attachment['download_url']);
         if ($pdf === null) return;
 
         $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
@@ -630,8 +631,7 @@ final class FakturoidImportService
         if (!is_file($diskPath)) @file_put_contents($diskPath, $pdf);
 
         $relPath = \MyInvoice\Service\Import\PurchaseInvoicePdfArchiver::shardedRelPath($supplierId, $sha);
-        $name = ((string) ($exp['number'] ?? 'expense')) . '.pdf';
-        $this->purchaseRepo->setPdfMetadata($purchaseInvoiceId, $supplierId, $relPath, $sha, strlen($pdf), $name);
+        $this->purchaseRepo->setPdfMetadata($purchaseInvoiceId, $supplierId, $relPath, $sha, strlen($pdf), $attachment['filename']);
     }
 
     private function loadBookmark(int $supplierId): ?string
