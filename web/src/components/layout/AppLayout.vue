@@ -148,6 +148,8 @@ const ICONS = {
 
 const navSections = computed<NavSection[]>(() => {
   const isAdmin = auth.user?.role === 'admin'
+  // Import dokladů smí i účetní (readonly ne) — konfigurace integrací zůstává admin-only.
+  const canWrite = auth.canWrite
   // Daňový optimalizátor (paušál vs standardní režim) je jen pro OSVČ (fyzická osoba).
   const isOsvc = supplierStore.currentSupplier?.taxpayer_type === 'fo'
   // OSS se nabízí až po registraci do režimu (Nastavení → firma). Default je vypnuto,
@@ -169,7 +171,7 @@ const navSections = computed<NavSection[]>(() => {
         ...(isAdmin ? [{ to: '/admin/approvals',          label: t('nav.approvals'),         icon: ICONS.approvals }] : []),
         // Export vidí všichni vč. readonly (export dat = čtení), daňové výkazy taktéž (sekce Daně níže).
         { to: '/admin/export',  label: t('nav.exports'),           icon: ICONS.exports   },
-        ...(isAdmin ? [{ to: '/admin/import?tab=issued',  label: t('nav.imports_issued'),    icon: ICONS.imports   }] : []),
+        ...(canWrite ? [{ to: '/admin/import?tab=issued',  label: t('nav.imports_issued'),    icon: ICONS.imports   }] : []),
       ],
     },
     {
@@ -180,7 +182,7 @@ const navSections = computed<NavSection[]>(() => {
         { to: '/clients?role=vendors',       label: t('nav.vendors'),            icon: ICONS.suppliers, newTo: '/clients/new?role=vendor' },
         { to: '/purchase-invoices/payment-orders', label: t('nav.payment_orders'), icon: ICONS.payment_orders },
         { to: '/purchase-invoices/export',   label: t('nav.purchase_export'),    icon: ICONS.exports },
-        ...(isAdmin ? [{ to: '/admin/import?tab=purchase',  label: t('nav.imports_purchase'), icon: ICONS.imports }] : []),
+        ...(canWrite ? [{ to: '/admin/import?tab=purchase',  label: t('nav.imports_purchase'), icon: ICONS.imports }] : []),
         ...(isAdmin ? [{ to: '/admin/integrations?tab=ai',  label: t('nav.ai_import'),        icon: ICONS.ai }] : []),
       ],
     },

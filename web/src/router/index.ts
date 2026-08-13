@@ -62,7 +62,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/codebooks',        name: 'admin-codebooks', component: () => import('@/pages/admin/Codebooks.vue'),  meta: { adminOnly: true } },
       { path: 'admin/electronic-signatures', name: 'admin-electronic-signatures', component: () => import('@/pages/admin/ElectronicSignatures.vue'), meta: { requiresWrite: true, signingProfiles: true } },
       { path: 'admin/export',           name: 'admin-export',    component: () => import('@/pages/admin/Export.vue') },
-      { path: 'admin/import',           name: 'admin-import',    component: () => import('@/pages/admin/Imports.vue'),    meta: { adminOnly: true } },
+      // Import dokladů (upload Pohoda/ISDOC/PDF + sken inboxu) je práce s daty, ne
+      // konfigurace → účetní ano, readonly ne. Konfigurace integrací zůstává v
+      // admin-only Integracích.
+      { path: 'admin/import',           name: 'admin-import',    component: () => import('@/pages/admin/Imports.vue'),    meta: { requiresWrite: true, requiresSupplier: true } },
       { path: 'admin/integrations',     name: 'admin-integrations', component: () => import('@/pages/admin/Integrations.vue'), meta: { adminOnly: true } },
       { path: 'crm',                    name: 'crm-dashboard',      component: () => import('@/pages/crm/CrmDashboard.vue') },
       { path: 'reports/dph',            name: 'reports-dph',        component: () => import('@/pages/reports/DphPriznaniReport.vue') },

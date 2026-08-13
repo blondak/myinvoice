@@ -310,6 +310,70 @@ final class RoleMiddlewareTest extends TestCase
         self::assertSame(403, $response->getStatusCode());
     }
 
+    /**
+     * Import dokladů = data, ne konfigurace. Action vrstva (ImportAction,
+     * Start*ImportAction, AiExtractPdfAction, Cancel/DeleteImportJobAction) povoluje
+     * admin|accountant — middleware ho tam musí vůbec pustit.
+     */
+    public function testAccountantCanRunImports(): void
+    {
+        foreach ([
+            ['POST', '/api/admin/import'],
+            ['POST', '/api/admin/imports/idoklad/start'],
+            ['POST', '/api/admin/imports/fakturoid/start'],
+            ['POST', '/api/admin/imports/ai-extract-pdf'],
+            ['POST', '/api/admin/imports/42/cancel'],
+            ['DELETE', '/api/admin/imports/42'],
+            ['GET', '/api/admin/imports/anthropic/credentials'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'accountant'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $response->getStatusCode(), "accountant $method $path");
+        }
+    }
+
+    /** Konfigurace integrací (API klíče) zůstává admin-only. */
+    public function testAccountantCannotManageIntegrationCredentials(): void
+    {
+        foreach ([
+            ['PUT', '/api/admin/imports/idoklad/credentials'],
+            ['DELETE', '/api/admin/imports/idoklad/credentials'],
+            ['PUT', '/api/admin/imports/fakturoid/credentials'],
+            ['DELETE', '/api/admin/imports/fakturoid/credentials'],
+            ['PUT', '/api/admin/imports/anthropic/credentials'],
+            ['DELETE', '/api/admin/imports/anthropic/credentials'],
+            ['GET', '/api/admin/imports/idoklad/credentials'],
+            ['GET', '/api/admin/imports/fakturoid/credentials'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'accountant'),
+                $this->okHandler(),
+            );
+            self::assertSame(403, $response->getStatusCode(), "accountant $method $path");
+        }
+    }
+
+    public function testReadonlyCannotRunImports(): void
+    {
+        foreach ([
+            ['POST', '/api/admin/import'],
+            ['POST', '/api/admin/imports/idoklad/start'],
+            ['POST', '/api/admin/imports/fakturoid/start'],
+            ['POST', '/api/admin/imports/ai-extract-pdf'],
+            ['POST', '/api/admin/imports/42/cancel'],
+            ['DELETE', '/api/admin/imports/42'],
+            ['GET', '/api/admin/imports/anthropic/credentials'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'readonly'),
+                $this->okHandler(),
+            );
+            self::assertSame(403, $response->getStatusCode(), "readonly $method $path");
+        }
+    }
+
     private function middleware(): RoleMiddleware
     {
         // Bez membershipu = žádný per-supplier override (BC větev resolveru).
