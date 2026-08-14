@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.54.0] — 2026-08-14
+
+### Changed
+
+- **Odkaz na MyÚčto v patičce nově nejdřív vysvětlí, o co jde.** Tlačítko *MyÚčto — přejděte na novější systém* dosud odesílalo rovnou na cizí web, aniž by kdekoliv zaznělo, co MyÚčto je a proč by k němu měl uživatel jít. Nově se otevře okno, které řekne, že MyÚčto je přímý nástupce MyInvoice od stejného autora s přibližně trojnásobkem funkcí — a hlavně že **všechno, co je zdarma v MyInvoice, zůstává zdarma i tam**. Vypíše, v čem je MyÚčto dál (modernější rozhraní, více AI poskytovatelů na výběr, AI integrace přes MCP server, úplnější dokumentace, lépe ověřené DPH, kontrolní i souhrnné hlášení) i co je za volitelný poplatek navíc (podvojné účetnictví, sklady, e-shop; mzdy se připravují). Teprve z tohoto okna vedou odkazy na GitHub a MyÚčto.cz. Česky i anglicky.
+
+### Removed
+
+- **Odkaz „Chcete jinou funkci?" z patičky zmizel.** Okno s nabídkou zakázkového vývoje od MyWebdesign.cz se z aplikace odstranilo včetně odkazu v patičce — poptávky vyřizuje web studia. V patičce tak zůstává *Podpořte autora* a odkaz na MyÚčto.
+
 ## [4.53.3] — 2026-08-13
 
 ### Fixed
