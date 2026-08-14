@@ -28,7 +28,7 @@ const toast = useToast()
 const mobileOpen = ref(false)
 const quickOpen = ref(false)
 const supportOpen = ref(false)
-const featureOpen = ref(false)
+const myuctoOpen = ref(false)
 const accountantSigningProfilesEnabled = ref(false)
 const logoutBusy = ref(false)
 const canLockSession = computed(() => sessionSecurity.state?.session_state === 'active'
@@ -700,16 +700,13 @@ onMounted(async () => {
           <span aria-hidden="true">·</span>
           <button type="button" @click="supportOpen = true"
                   class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.author_link') }}</button>
-          <span aria-hidden="true">·</span>
-          <button type="button" @click="featureOpen = true"
-                  class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.feature_link') }}</button>
-          <a href="https://myucto.cz/" target="_blank" rel="noopener"
-             class="ml-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm hover:bg-primary-700 hover:shadow transition-colors">
+          <button type="button" @click="myuctoOpen = true"
+                  class="cursor-pointer ml-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm hover:bg-primary-700 hover:shadow transition-colors">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
             <span>{{ t('support.myucto_link') }}</span>
-          </a>
+          </button>
         </footer>
       </div>
     </div>
@@ -752,25 +749,45 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ── MODÁL: Chcete jinou funkci? ── -->
-    <div v-if="featureOpen" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-y-auto"
-         @click.self="featureOpen = false">
-      <div class="bg-surface rounded-xl shadow-lg max-w-md w-full my-8">
+    <!-- ── MODÁL: MyÚčto ── -->
+    <div v-if="myuctoOpen" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-y-auto"
+         @click.self="myuctoOpen = false">
+      <div class="bg-surface rounded-xl shadow-lg max-w-lg w-full my-8">
         <header class="px-5 py-4 border-b border-neutral-200 flex items-baseline justify-between gap-3">
-          <h3 class="text-lg font-semibold">{{ t('support.feature_title') }}</h3>
-          <button @click="featureOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-2xl leading-none">&times;</button>
+          <h3 class="text-lg font-semibold">{{ t('support.myucto_title') }}</h3>
+          <button @click="myuctoOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-2xl leading-none">&times;</button>
         </header>
         <div class="p-5 space-y-3 text-sm text-neutral-700">
-          <p>{{ t('support.feature_intro') }}</p>
-          <p>{{ t('support.feature_text') }}</p>
-          <p class="rounded-md bg-primary-50 border border-primary-500/30 text-primary-800 font-medium px-3 py-2.5">{{ t('support.feature_text2') }}</p>
-          <p class="text-xs text-neutral-500 border-t border-neutral-200 pt-3">{{ t('support.feature_highlights') }}</p>
+          <p>{{ t('support.myucto_intro') }}</p>
+          <p class="rounded-md bg-primary-50 border border-primary-500/30 text-primary-800 font-medium px-3 py-2.5">{{ t('support.myucto_free') }}</p>
+          <div>
+            <p class="font-medium text-neutral-800 mb-1.5">{{ t('support.myucto_better_title') }}</p>
+            <ul class="space-y-1 list-disc pl-5">
+              <li>{{ t('support.myucto_better_ui') }}</li>
+              <li>{{ t('support.myucto_better_ai') }}</li>
+              <li>{{ t('support.myucto_better_mcp') }}</li>
+              <li>{{ t('support.myucto_better_docs') }}</li>
+              <li>{{ t('support.myucto_better_vat') }}</li>
+            </ul>
+          </div>
+          <div>
+            <p class="font-medium text-neutral-800 mb-1.5">{{ t('support.myucto_paid_title') }}</p>
+            <p>{{ t('support.myucto_paid_text') }}</p>
+          </div>
+          <p class="text-xs text-neutral-500 border-t border-neutral-200 pt-3">{{ t('support.myucto_highlights') }}</p>
         </div>
-        <footer class="px-5 py-4 border-t border-neutral-200 flex justify-end gap-2">
-          <button @click="featureOpen = false"
+        <footer class="px-5 py-4 border-t border-neutral-200 flex flex-wrap justify-end gap-2">
+          <button @click="myuctoOpen = false"
                   class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface">{{ t('support.close') }}</button>
-          <a href="https://mywebdesign.cz/#kontakt" target="_blank" rel="noopener" @click="featureOpen = false"
-             class="cursor-pointer px-4 h-9 inline-flex items-center text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium">{{ t('support.feature_cta') }}</a>
+          <a href="https://github.com/radekhulan/myucto" target="_blank" rel="noopener" @click="myuctoOpen = false"
+             class="cursor-pointer px-4 h-9 inline-flex items-center gap-1.5 text-sm rounded-md border border-neutral-300 text-neutral-700 hover:bg-surface font-medium">
+            <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span>{{ t('support.myucto_github') }}</span>
+          </a>
+          <a href="https://myucto.cz/" target="_blank" rel="noopener" @click="myuctoOpen = false"
+             class="cursor-pointer px-4 h-9 inline-flex items-center text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium">{{ t('support.myucto_cta') }}</a>
         </footer>
       </div>
     </div>
