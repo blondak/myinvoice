@@ -141,12 +141,24 @@ final class NativeUpdateService
      * Ověří, že nativní update na `$target` má smysl zkoušet. Blockery update
      * neumožní, warnings jsou informativní.
      *
-     * @return array{ok:bool, supported:bool, blockers:list<string>, warnings:list<string>}
+     * Vedle nich vrací `checks` — jednotlivé kontroly VČETNĚ těch, které
+     * dopadly dobře. UI z nich staví checklist, protože „nic nebrání" není
+     * před nevratnou operací dost: člověk chce vidět, co se ověřilo a s jakou
+     * naměřenou hodnotou.
+     *
+     * @return array{
+     *     ok:bool,
+     *     supported:bool,
+     *     blockers:list<string>,
+     *     warnings:list<string>,
+     *     checks:list<array{id:string, label:string, status:string, actual:string, expected:string}>
+     * }
      */
     public function preflight(string $target): array
     {
         $blockers = [];
         $warnings = [];
+        $checks   = [];
 
         if (!self::isValidVersion($target)) {
             $blockers[] = 'Cílová verze „' . $target . '" není platný semver (X.Y.Z).';
@@ -158,26 +170,51 @@ final class NativeUpdateService
         if (!function_exists('curl_init') && !filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
             $blockers[] = 'Není dostupné ani cURL, ani allow_url_fopen — bundle nelze stáhnout.';
         }
-        if (PhpCliLocator::resolve() === null) {
+        $cli = PhpCliLocator::resolve();
+        $checks[] = $this->preflightCheck(
+            'php_cli',
+            'PHP CLI pro worker a migrace',
+            $cli !== null,
+            $cli ?? 'nenalezena (PHP_BINARY=' . PHP_BINARY . ')',
+            'spustitelná binárka',
+        );
+        if ($cli === null) {
             $blockers[] = 'Nenalezena PHP CLI binárka (PHP_BINARY=' . PHP_BINARY . ') — nelze spustit worker ani migrace.';
         }
 
+        $unwritable = [];
         foreach (['', 'api', 'web', 'manual'] as $sub) {
             $dir = $sub === '' ? $this->rootDir : $this->rootDir . '/' . $sub;
             if (!is_dir($dir)) {
                 continue;
             }
             if (!$this->isDirWritable($dir)) {
+                $unwritable[] = $sub === '' ? '(root instalace)' : $sub;
                 $blockers[] = 'Adresář ' . ($sub === '' ? '(root instalace)' : $sub) . ' není zapisovatelný pro uživatele webserveru.';
             }
         }
+        $checks[] = $this->preflightCheck(
+            'writable_paths',
+            'Práva zápisu do instalace',
+            $unwritable === [],
+            $unwritable === [] ? 'zapisovatelné' : 'nelze zapsat: ' . implode(', ', $unwritable),
+            'root, api, web, manual',
+        );
 
         if (!$this->canReplaceFiles()) {
             $blockers[] = 'Existující soubory nelze přepsat (rename/unlink selhal) — zkontroluj práva a zámky souborů.';
         }
 
         $free = @disk_free_space($this->stateDir);
-        if (is_float($free) && $free < self::MIN_FREE_BYTES) {
+        $freeOk = !is_float($free) || $free >= self::MIN_FREE_BYTES;
+        $checks[] = $this->preflightCheck(
+            'disk_space',
+            'Volné místo na disku',
+            $freeOk,
+            is_float($free) ? $this->humanBytes((int) $free) : 'nezjištěno',
+            '>= ' . $this->humanBytes(self::MIN_FREE_BYTES),
+        );
+        if (!$freeOk) {
             $blockers[] = 'Na disku je jen ' . $this->humanBytes((int) $free)
                 . ' volného místa; bundle + záloha potřebují aspoň ' . $this->humanBytes(self::MIN_FREE_BYTES) . '.';
         }
@@ -198,11 +235,30 @@ final class NativeUpdateService
         $blockers = array_merge($blockers, $req['blockers']);
         $warnings = array_merge($warnings, $req['warnings']);
 
+        // Požadavky cíle napřed: to je to, co člověk před přechodem řeší.
+        // Prostředí updatu (práva, místo, CLI) je až za nimi.
+        $checks = array_merge($req['checks'], $checks);
+
         return [
             'ok'        => $blockers === [],
             'supported' => true,
             'blockers'  => $blockers,
             'warnings'  => $warnings,
+            'checks'    => $checks,
+        ];
+    }
+
+    /**
+     * @return array{id:string, label:string, status:string, actual:string, expected:string}
+     */
+    private function preflightCheck(string $id, string $label, bool $ok, string $actual, string $expected): array
+    {
+        return [
+            'id'       => $id,
+            'label'    => $label,
+            'status'   => $ok ? 'ok' : 'fail',
+            'actual'   => $actual,
+            'expected' => $expected,
         ];
     }
 

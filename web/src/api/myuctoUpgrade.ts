@@ -52,11 +52,24 @@ export interface MyuctoUpgradeStatus {
   steps: string[]
 }
 
+/** Jedna kontrola prostředí — vrací se i ta, která dopadla dobře. */
+export interface MyuctoUpgradeCheck {
+  id: string
+  /** Co se ověřovalo; text chodí česky ze serveru, stejně jako blockery. */
+  label: string
+  status: 'ok' | 'fail'
+  /** Naměřená hodnota. */
+  actual: string
+  /** Co se od ní čeká. */
+  expected: string
+}
+
 export interface MyuctoUpgradePreflight {
   ok: boolean
   supported: boolean
   blockers: string[]
   warnings: string[]
+  checks: MyuctoUpgradeCheck[]
 }
 
 export interface MyuctoUpgradeTriggerResponse {

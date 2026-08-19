@@ -1121,6 +1121,10 @@
     "manual_link": "Details in the manual — § 40 Updates"
   },
   "myucto_upgrade": {
+    "checks_title": "Environment check",
+    "checks_intro": "What MyÚčto needs and how this installation compares. The upgrade will not start until everything matches.",
+    "checks_expected": "expected",
+    "checks_pending": "The environment check runs as soon as the MyÚčto version is known.",
     "title": "Upgrade to MyÚčto",
     "subtitle": "Move to the successor of MyInvoice, by the same author, for free.",
     "no_admin": "Only an administrator can start the upgrade to MyÚčto.",

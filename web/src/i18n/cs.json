@@ -1121,6 +1121,10 @@
     "manual_link": "Detaily v manuálu — § 40 Aktualizace"
   },
   "myucto_upgrade": {
+    "checks_title": "Kontrola prostředí",
+    "checks_intro": "Co MyÚčto potřebuje a jak na tom tahle instalace je. Dokud něco nesedí, přechod se nespustí.",
+    "checks_expected": "očekáváno",
+    "checks_pending": "Kontrola prostředí proběhne, jakmile bude známá verze MyÚčta.",
     "title": "Přechod na MyÚčto",
     "subtitle": "Přejděte zdarma na nástupce MyInvoice od stejného autora.",
     "no_admin": "Přechod na MyÚčto může spustit jen administrátor.",

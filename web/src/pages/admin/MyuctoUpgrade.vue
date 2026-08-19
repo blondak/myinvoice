@@ -289,6 +289,33 @@ function stepLabel(step: string): string {
           </ul>
         </section>
 
+        <!-- ── Kontrola prostředí ──
+             Ukazuje se i když všechno sedí: před nevratnou operací je „co se
+             ověřilo a s jakou hodnotou" ta informace, podle které se člověk
+             rozhoduje. Samotné mlčení by znamenalo důvěřovat bez důkazu. -->
+        <section v-if="!status.in_progress" class="rounded-lg border border-neutral-300 bg-surface p-5">
+          <h2 class="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+            <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+            {{ t('myucto_upgrade.checks_title') }}
+          </h2>
+          <p class="text-sm text-neutral-600 mt-1.5">{{ t('myucto_upgrade.checks_intro') }}</p>
+
+          <ul v-if="preflight?.checks?.length" class="mt-3 divide-y divide-neutral-200 border-y border-neutral-200">
+            <li v-for="c in preflight.checks" :key="c.id"
+              class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2 text-sm">
+              <span class="shrink-0" :class="c.status === 'ok' ? 'text-success-600' : 'text-danger-600'" aria-hidden="true">
+                {{ c.status === 'ok' ? '✓' : '✗' }}
+              </span>
+              <span class="font-medium text-neutral-800">{{ c.label }}</span>
+              <span class="font-mono text-xs" :class="c.status === 'ok' ? 'text-neutral-700' : 'text-danger-700 font-semibold'">
+                {{ c.actual }}
+              </span>
+              <span class="text-xs text-neutral-500">({{ t('myucto_upgrade.checks_expected') }}: {{ c.expected }})</span>
+            </li>
+          </ul>
+          <p v-else class="mt-3 text-sm text-neutral-600">{{ t('myucto_upgrade.checks_pending') }}</p>
+        </section>
+
         <!-- ── Záloha (povinná) ── -->
         <section v-if="!status.in_progress" class="rounded-lg border border-warning-300 bg-warning-50/40 p-5">
           <h2 class="text-lg font-semibold text-warning-900 flex items-center gap-2">

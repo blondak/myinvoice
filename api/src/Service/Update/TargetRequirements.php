@@ -32,49 +32,97 @@ final class TargetRequirements
     private function __construct() {}
 
     /**
-     * @return array{blockers:list<string>, warnings:list<string>}
+     * Vrací vedle blockerů i JEDNOTLIVÉ kontroly, a to včetně těch, které
+     * dopadly dobře. Samotné „nic nebrání" totiž není informace, se kterou by
+     * se dalo rozhodnout: člověk před nevratnou operací chce vidět, co přesně
+     * se ověřilo a s jakou naměřenou hodnotou — stejně jako v Diagnostice.
+     * Tvar položky odpovídá tamnímu `EnvironmentCheckService`.
+     *
+     * @return array{
+     *     blockers:list<string>,
+     *     warnings:list<string>,
+     *     checks:list<array{id:string, label:string, status:string, actual:string, expected:string}>
+     * }
      */
     public static function check(ReleaseChannel $channel, string $rootDir): array
     {
         $blockers = [];
         $warnings = [];
+        $checks   = [];
 
         $minPhp = $channel->minPhpVersion;
-        if ($minPhp !== null && version_compare(PHP_VERSION, $minPhp, '<')) {
-            $blockers[] = $channel->productName . ' vyžaduje PHP ' . $minPhp . ' nebo novější, tahle instalace běží na '
-                . PHP_VERSION . '. Povyš PHP dřív, než přechod spustíš — po výměně kódu už aplikace nenaběhne.';
-        }
-
-        $missing = [];
-        foreach ($channel->requiredExtensions as $ext) {
-            if (!extension_loaded($ext)) {
-                $missing[] = $ext;
+        if ($minPhp !== null) {
+            $ok = version_compare(PHP_VERSION, $minPhp, '>=');
+            $checks[] = self::check_('php_version', 'Verze PHP', $ok, PHP_VERSION, '>= ' . $minPhp);
+            if (!$ok) {
+                $blockers[] = $channel->productName . ' vyžaduje PHP ' . $minPhp . ' nebo novější, tahle instalace běží na '
+                    . PHP_VERSION . '. Povyš PHP dřív, než přechod spustíš — po výměně kódu už aplikace nenaběhne.';
             }
         }
-        if ($missing !== []) {
-            $blockers[] = $channel->productName . ' vyžaduje PHP rozšíření, která tady chybí: '
-                . implode(', ', $missing) . '. Doinstaluj je (php.ini) a zkus to znovu.';
+
+        if ($channel->requiredExtensions !== []) {
+            $missing = [];
+            foreach ($channel->requiredExtensions as $ext) {
+                if (!extension_loaded($ext)) {
+                    $missing[] = $ext;
+                }
+            }
+            $checks[] = self::check_(
+                'php_extensions',
+                'Rozšíření PHP',
+                $missing === [],
+                $missing === []
+                    ? 'všech ' . count($channel->requiredExtensions) . ' dostupných'
+                    : 'chybí ' . implode(', ', $missing),
+                implode(', ', $channel->requiredExtensions),
+            );
+            if ($missing !== []) {
+                $blockers[] = $channel->productName . ' vyžaduje PHP rozšíření, která tady chybí: '
+                    . implode(', ', $missing) . '. Doinstaluj je (php.ini) a zkus to znovu.';
+            }
         }
 
         $minDb = $channel->minMariaDbVersion;
         if ($minDb !== null) {
             [$server, $version] = self::databaseVersion($rootDir);
+            $expected = 'MariaDB >= ' . $minDb;
+
             if ($server === null) {
                 // Bez databáze nemá přechod smysl začínat — migrace jsou jeho
                 // druhá polovina a bez spojení by skončil hned po swapu.
+                $checks[] = self::check_('db_version', 'Verze databáze', false, 'nedostupná', $expected);
                 $blockers[] = 'Nepodařilo se zjistit verzi databáze (spojení selhalo). '
                     . $channel->productName . ' vyžaduje MariaDB ' . $minDb . ' nebo novější.';
             } elseif ($server !== 'MariaDB') {
+                $checks[] = self::check_('db_version', 'Verze databáze', false, $server . ' ' . $version, $expected);
                 $blockers[] = $channel->productName . ' běží jen na MariaDB ' . $minDb . ' a novější; '
                     . 'tahle instalace používá ' . $server . ' ' . $version . '.';
-            } elseif (version_compare($version, $minDb, '<')) {
-                $blockers[] = $channel->productName . ' vyžaduje MariaDB ' . $minDb . ' nebo novější, tahle instalace má '
-                    . $version . '. Migrace nástupce používají novější syntaxi a na starší MariaDB spadnou '
-                    . 'uprostřed — povyš databázi dřív, než přechod spustíš.';
+            } else {
+                $ok = version_compare($version, $minDb, '>=');
+                $checks[] = self::check_('db_version', 'Verze databáze', $ok, 'MariaDB ' . $version, $expected);
+                if (!$ok) {
+                    $blockers[] = $channel->productName . ' vyžaduje MariaDB ' . $minDb . ' nebo novější, tahle instalace má '
+                        . $version . '. Migrace nástupce používají novější syntaxi a na starší MariaDB spadnou '
+                        . 'uprostřed — povyš databázi dřív, než přechod spustíš.';
+                }
             }
         }
 
-        return ['blockers' => $blockers, 'warnings' => $warnings];
+        return ['blockers' => $blockers, 'warnings' => $warnings, 'checks' => $checks];
+    }
+
+    /**
+     * @return array{id:string, label:string, status:string, actual:string, expected:string}
+     */
+    private static function check_(string $id, string $label, bool $ok, string $actual, string $expected): array
+    {
+        return [
+            'id'       => $id,
+            'label'    => $label,
+            'status'   => $ok ? 'ok' : 'fail',
+            'actual'   => $actual,
+            'expected' => $expected,
+        ];
     }
 
     /**

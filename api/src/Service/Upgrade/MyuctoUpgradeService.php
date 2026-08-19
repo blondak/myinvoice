@@ -196,7 +196,13 @@ final class MyuctoUpgradeService
     // ---------- preflight --------------------------------------------------
 
     /**
-     * @return array{ok:bool, supported:bool, blockers:list<string>, warnings:list<string>}
+     * @return array{
+     *     ok:bool,
+     *     supported:bool,
+     *     blockers:list<string>,
+     *     warnings:list<string>,
+     *     checks:list<array{id:string, label:string, status:string, actual:string, expected:string}>
+     * }
      */
     public function preflight(?string $targetVersion = null): array
     {
@@ -209,6 +215,7 @@ final class MyuctoUpgradeService
                         . 'Spusť ho na hostu podle příkazů níž.',
                 ],
                 'warnings'  => [],
+                'checks'    => [],
             ];
         }
 
@@ -219,6 +226,7 @@ final class MyuctoUpgradeService
                 'supported' => true,
                 'blockers'  => ['Není známá verze MyÚčta — spusť nejdřív kontrolu dostupné verze.'],
                 'warnings'  => [],
+                'checks'    => [],
             ];
         }
 
