@@ -451,25 +451,57 @@ final class MyuctoUpgradeService
     }
 
     /** @return array<string,mixed> */
+    /**
+     * Postup pro hosta. Skript je preferovaná cesta, ale nesmí se předpokládat,
+     * že ho instalace vůbec má: kdo nasazoval podle manuálu z GHCR, stáhl si
+     * jen `docker-compose.production.yml` a `cfg.sample.php` — žádné `cmd/`
+     * u sebe nemá. Proto se nabízí i stažení skriptu, a to z tagu právě běžící
+     * verze, ne z master: skript má odpovídat produktu, který ho spouští.
+     *
+     * Ruční varianta je záměrně kompletní včetně kroků, které skript dělá za
+     * uživatele — kontroly MariaDB a vypnutí účetnictví. Neúplný ruční postup
+     * je horší než žádný: vypadá hotově a tiše přeskočí to podstatné.
+     */
     private function dockerInstructions(string $target): array
     {
+        $version = $this->getCurrentVersion();
+        $ref     = $version !== 'unknown' ? 'v' . $version : 'master';
+        $rawBase = 'https://raw.githubusercontent.com/radekhulan/myinvoice/' . $ref . '/cmd/';
+
+        $dbExec = 'docker compose exec -T db sh -c ';
+
         return [
             'status'         => 'manual_required',
             'environment'    => 'docker',
             'target_version' => $target,
             'message'        => 'V Dockeru přechod provede host — kontejner nemůže přepsat vlastní image. '
-                . 'Skript zazálohuje databázi, přepne image na MyÚčto a dojede migrace:',
+                . 'Skript ověří požadavky, zazálohuje databázi, přepne image na MyÚčto a dojede migrace. '
+                . 'MyÚčto vyžaduje MariaDB 11.8 nebo novější; na starší se skript zastaví dřív, '
+                . 'než na cokoliv sáhne.',
             'blockers'       => [],
             'instructions'   => [
                 '# Na hostu, v adresáři s docker-compose.yml',
                 'bash cmd/docker-upgrade-to-myucto.sh',
                 '',
-                '# Nebo ručně:',
+                '# Windows host (PowerShell 7):',
+                'pwsh cmd/docker-upgrade-to-myucto.ps1',
+                '',
+                '# Nemáš-li u sebe repozitář (instalace z GHCR), stáhni si skript:',
+                'curl -fsSL ' . $rawBase . 'docker-upgrade-to-myucto.sh -o docker-upgrade-to-myucto.sh',
+                'bash docker-upgrade-to-myucto.sh',
+                '',
+                '# Nebo ručně, krok po kroku:',
+                $dbExec . '\'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "SELECT VERSION()"\'  # >= 11.8',
                 'docker compose exec -T app php api/bin/cron-backup.php',
                 'docker compose stop app',
-                "sed -i 's#radekhulan/myinvoice#radekhulan/myucto#' .env docker-compose*.yml",
+                'sed -i \'s#radekhulan/myinvoice#radekhulan/myucto#\' .env docker-compose*.yml',
                 'docker compose pull app',
                 'docker compose up -d app   # entrypoint sám dojede migrace',
+                '',
+                '# Po naběhnutí: instalace přišla z MyInvoice, kde se neúčtovalo, takže se',
+                '# účetnictví vypne. Zapneš ho v Nastavení → Licenční moduly i s volbou režimu.',
+                $dbExec . '\'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"'
+                    . ' -e "UPDATE supplier SET accounting_enabled = 0"\'',
             ],
         ];
     }

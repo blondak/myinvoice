@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.55.0] — 2026-08-19
+
+### Added
+
+- **Přechod na MyÚčto jedním tlačítkem (Systém → Přechod na MyÚčto).** MyÚčto.cz je nástupce MyInvoice od téhož autora, postavený na stejném základu, a jeho migrace číslované 1000+ navazují na schéma MyInvoice. Přechod je proto **in-place**: vymění se kód a nad stávající databází se dojedou zbylé migrace. Data se nikam nekopírují a druhá databáze se nezakládá. Stránka nejdřív vysvětlí, co MyÚčto je a co zůstává zdarma, vyžádá si vědomé potvrzení zálohy — tohle je jediná operace v aplikaci, kterou nelze vzít zpět jinak než obnovou dumpu — a teprve pak pustí přechod na pozadí s průběhem po krocích. V Dockeru přechod provádí host, protože kontejner nemůže přepsat vlastní image; aplikace pro něj vypíše přesné příkazy.
+- **Kontrola prostředí před přechodem.** Preflight dosud ověřoval jen to, jestli update *proběhne* (zlib, práva, místo na disku), ne jestli výsledek *poběží*. U nástupce s vyššími nároky je to rozdíl mezi „nespustí se" a „skončí půl na půl": soubory by se vyměnily, migrace spadly a instalace zůstala s novým kódem nad starým schématem. Stránka teď ukazuje checklist s naměřenými hodnotami — verze PHP, sada rozšíření, verze MariaDB, PHP CLI, práva zápisu, volné místo — a to i když všechno sedí. Před nevratnou operací je „co se ověřilo a s jakou hodnotou" ta informace, podle které se člověk rozhoduje.
+- **`cmd/docker-upgrade-to-myucto.ps1`** — PowerShell varianta přechodového skriptu pro Windows hosty bez bashe. Dělá totéž a ve stejném pořadí jako `.sh`.
+
+### Changed
+
+- **Účetnictví se po přechodu vypne.** MyÚčto zavádí přepínač „Vést účetnictví" s defaultem zapnuto, což je správně pro firmu, která v MyÚčtu účtuje, ale ne pro instalaci, která právě přišla z MyInvoice a účetnictví nikdy nevedla. Ta by dostala plné účetní menu a k tomu režim „daňová evidence", tedy default sloupce — u s.r.o. rovnou špatně, protože ta vede podvojné účetnictví ze zákona. Přechod agendu skryje a volbu (vést/nevést a v jakém režimu) nechá na vědomém rozhodnutí. Platí pro nativní i Docker cestu.
+- **Přechod si zjistí nejnovější verzi MyÚčta až při spuštění.** Dosud četl z cache, která se plní ruční kontrolou a jednou za den — instalace, která se dívala včera, tak nasadila včerejší verzi a o novější se dozvěděla až po nevratné operaci. Když se ověření nepovede, jede se dál z cache, ale řekne se to.
+- **Docker: `mariadb:11.8` místo plovoucího `mariadb:11`** a `max_allowed_packet` 64 MB. MyÚčto vyžaduje MariaDB 11.8 a výš; plovoucí tag dnes vede na 11.8, ale instalace založená loni běží klidně na 11.4 a `docker compose up` na už stažený image nesáhne. Default `max_allowed_packet` 16 MB navíc neunese dump databáze ani přílohu do 50 MB — kontrola prostředí to hlásila jako nález.
+
+### Fixed
+
+- **Okno výměny souborů a migrací odpovídá 503, ne fatálem.** Aktualizace vyměňuje přes deset tisíc souborů in-place nad běžící instalací a hned poté posouvá schéma. Celé to okno trvá jednotky minut a instalace je po tu dobu vnitřně nekonzistentní — nový kód odkazuje na třídu, jejíž soubor ještě nedorazil, nebo se ptá na tabulku, kterou založí až migrace. Každý request, který do toho okna spadl, končil hláškou „Backend selhal při startu". Nově se před výměnou zakládá značka údržby a requesty dostanou 503 „probíhá aktualizace"; značka expiruje, aby spadlý worker nedržel instalaci dole navěky, a maže se i po neúspěchu, takže 503 nepřežije rollback.
+- **Stránka přechodu pozná, že pod ní aplikace zmizela.** Průběh se čte pollingem, jenže od výměny souborů se není koho ptát: nejdřív brána údržby vrací 503 a pak zmizí i celá routa, protože nástupce ji nemá. Stránka proto zůstávala viset na posledním kroku („krok 5 z 9") a vypadalo to jako zásek, přestože přechod v pořádku doběhl. Nově se obě fáze pojmenují a po dokončení nabídne stránka přechod do MyÚčta — na přehled, ne reloadem adresy, kterou už nástupce nemá.
+- **Migrace 1137 neshodí přechod z MyInvoice.** `ALTER TABLE supplier MODIFY COLUMN data_box_type` nemá variantu `IF EXISTS`, jenže MyInvoice ten sloupec zahodil vlastní migrací 0140. Na instalaci přicházející z MyInvoice migrace spadla na chybu 1054 a upgrade se zastavil uprostřed. (Opraveno na straně MyÚčta, vydáno v 5.16.0.)
+- **Health check přechodu nezávisí na překladu cest.** Na Windows v Git Bash končil `curl -o /dev/null` chybou zápisu, i když server odpověděl 200 — skript pak po pěti minutách ohlásil, že aplikace nenaběhla, a nedošel na krok, který vypíná účetnictví.
+
 ## [4.54.0] — 2026-08-14
 
 ### Changed
