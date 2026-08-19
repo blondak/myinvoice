@@ -1121,6 +1121,11 @@
     "manual_link": "Detaily v manuálu — § 40 Aktualizace"
   },
   "myucto_upgrade": {
+    "handover_running_title": "Vyměňují se soubory",
+    "handover_running_desc": "Aplikace je po dobu výměny a migrací nedostupná, takže o průběhu nemá kdo informovat — proto se tady průběh zastavil. Nech stránku otevřenou, sama se ozve, jakmile bude MyÚčto připravené.",
+    "handover_done_title": "Přechod dokončen",
+    "handover_done_desc": "Instalace už běží na MyÚčtu. Tahle stránka je poslední kus MyInvoice, který ti zůstal v prohlížeči — načti ji znovu a jsi v novém rozhraní.",
+    "handover_reload": "Načíst MyÚčto",
     "checks_title": "Kontrola prostředí",
     "checks_intro": "Co MyÚčto potřebuje a jak na tom tahle instalace je. Dokud něco nesedí, přechod se nespustí.",
     "checks_expected": "očekáváno",

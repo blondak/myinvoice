@@ -33,6 +33,31 @@ const backupConfirmed = ref(false)
 
 const pollingEnabled = ref(true)
 
+/**
+ * Fáze, ve které aplikace pod stránkou mizí.
+ *
+ * Progres se čte pollingem, jenže od okamžiku swapu se není koho ptát:
+ * nejdřív brána údržby vrací na všechno 503 `maintenance`, a jakmile se
+ * vymění kód, zmizí i routa `/admin/myucto-upgrade/*` — nástupce ji nemá,
+ * je to funkce předchůdce. Bez ošetření stránka zůstane viset na posledním
+ * úspěšném pollu (typicky „krok 5 z 9 — Rozbaluji bundle") a vypadá to jako
+ * zásek, přestože přechod v pořádku doběhl.
+ *
+ * `maintenance` = běží swap a migrace, pollujeme dál.
+ * `done`        = odpovídá už nástupce, stránka je poslední kus MyInvoice
+ *                 v prohlížeči a jediné rozumné, co nabídnout, je reload.
+ */
+const handover = ref<null | 'maintenance' | 'done'>(null)
+
+/** Přechod jsme spustili my, nebo jsme ho zastihli běžet — viz `handover`. */
+const upgradeSeenRunning = ref(false)
+
+/** @return HTTP status a kód chyby z axios chyby, bez závislosti na jejím typu. */
+function errorInfo(e: unknown): { status?: number; code?: string } {
+  const r = (e as { response?: { status?: number; data?: { error?: { code?: string } } } })?.response
+  return { status: r?.status, code: r?.data?.error?.code }
+}
+
 const isAdmin = computed(() => auth.user?.role === 'admin')
 
 /** Zvládne to instalace sama? Docker jede přes host, ne přes aplikaci. */
@@ -65,6 +90,13 @@ async function load(signal?: AbortSignal) {
     const next = await myuctoUpgradeApi.status(signal)
     status.value = next
 
+    // Backend zase odpovídá — okno údržby tedy skončilo a je to pořád tenhle
+    // produkt (nástupce tuhle routu nemá). Bez vynulování by panel „vyměňují
+    // se soubory" zůstal viset i po zrušeném nebo neúspěšném přechodu.
+    if (handover.value === 'maintenance') {
+      handover.value = null
+    }
+
     // Prázdná / stará cache → dotáhni verzi na pozadí, ať uživatel nemusí
     // mačkat „Zkontrolovat". Tiché selhání je v pořádku, tlačítko zůstává.
     if (next.cache_stale && !checking.value) {
@@ -81,6 +113,26 @@ async function load(signal?: AbortSignal) {
       }
     }
   } catch (e: unknown) {
+    const { status: httpStatus, code } = errorInfo(e)
+
+    // Brána údržby: soubory se vyměňují, migrace běží. Není to chyba.
+    if (httpStatus === 503 && code === 'maintenance') {
+      handover.value = 'maintenance'
+      upgradeSeenRunning.value = true
+      errorMsg.value = null
+      return
+    }
+
+    // Routa zmizela (404), nebo nová aplikace neuznala session (401) —
+    // obojí znamená, že pod stránkou už běží nástupce. Hlásit „chyba" by
+    // bylo zavádějící: tohle je cíl operace, ne její selhání.
+    if (upgradeSeenRunning.value && (httpStatus === 404 || httpStatus === 401)) {
+      handover.value = 'done'
+      pollingEnabled.value = false
+      errorMsg.value = null
+      return
+    }
+
     errorMsg.value = (e as Error)?.message ?? 'Failed to load status'
   }
 }
@@ -123,6 +175,7 @@ async function startUpgrade() {
     triggerResult.value = r
     if (r.status === 'queued') {
       pollingEnabled.value = true
+      upgradeSeenRunning.value = true
     } else {
       await load()
     }
@@ -152,8 +205,18 @@ async function cancelStuck() {
 
 async function poll(signal: AbortSignal) {
   await load(signal)
+  if (handover.value === 'done') {
+    pollingEnabled.value = false
+    return
+  }
   const running = status.value?.in_progress === true
-  pollingEnabled.value = running
+  if (running) {
+    upgradeSeenRunning.value = true
+  }
+  // V režimu údržby backend neodpovídá, takže `in_progress` nemáme z čeho
+  // přečíst — polling ale musí běžet dál, jinak by se stránka o dokončení
+  // nedozvěděla.
+  pollingEnabled.value = running || handover.value === 'maintenance'
   // „Zařazeno" je jen překlenutí, než worker začne hlásit průběh — jakmile
   // doběhne, platný stav ukazuje panel s výsledkem.
   if (!running && triggerResult.value?.status === 'queued' && status.value?.last_result) {
@@ -162,6 +225,14 @@ async function poll(signal: AbortSignal) {
 }
 
 useSessionAwarePolling(poll, 5000, pollingEnabled)
+
+/**
+ * Tvrdý reload, ne router push: v prohlížeči běží SPA MyInvoice, kterou na
+ * disku nahradila SPA nástupce. Přejít se dá jen novým načtením dokumentu.
+ */
+function reloadIntoSuccessor(): void {
+  window.location.reload()
+}
 
 function fmtDate(s?: string | null): string {
   if (!s) return '—'
@@ -386,7 +457,31 @@ function stepLabel(step: string): string {
         </section>
 
         <!-- ── Průběh ── -->
-        <section v-if="status.in_progress" class="rounded-lg border border-primary-300 bg-primary-50/40 p-5">
+        <!-- ── Předání nástupci ──
+             Od swapu dál se progres nemá kde číst: nejdřív brána údržby vrací
+             503, pak zmizí celá routa. Bez těchhle dvou stavů by stránka
+             zůstala viset na posledním kroku a vypadala jako zásek. -->
+        <section v-if="handover === 'maintenance'" class="rounded-lg border border-primary-300 bg-primary-50/40 p-5">
+          <h2 class="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+            <svg class="w-5 h-5 animate-spin text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
+            {{ t('myucto_upgrade.handover_running_title') }}
+          </h2>
+          <p class="text-sm text-neutral-600 mt-1.5">{{ t('myucto_upgrade.handover_running_desc') }}</p>
+        </section>
+
+        <section v-else-if="handover === 'done'" class="rounded-lg border border-success-500/40 bg-success-50/50 p-5">
+          <h2 class="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+            <svg class="w-5 h-5 text-success-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+            {{ t('myucto_upgrade.handover_done_title') }}
+          </h2>
+          <p class="text-sm text-neutral-600 mt-1.5">{{ t('myucto_upgrade.handover_done_desc') }}</p>
+          <button type="button" @click="reloadIntoSuccessor"
+            class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+            {{ t('myucto_upgrade.handover_reload') }}
+          </button>
+        </section>
+
+        <section v-else-if="status.in_progress" class="rounded-lg border border-primary-300 bg-primary-50/40 p-5">
           <h2 class="text-lg font-semibold text-neutral-900 flex items-center gap-2">
             <svg class="w-5 h-5 animate-spin text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"/></svg>
             {{ t('myucto_upgrade.in_progress_title') }}

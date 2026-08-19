@@ -52,6 +52,12 @@ final class MyuctoUpgradeService
     /** Po jak dlouhém tichu považujeme běžící přechod za spadlý. */
     private const FLAG_TTL = 1800;
 
+    /**
+     * První verze MyÚčta, jejíž `api/public/index.php` umí režim údržby.
+     * Starší cíl okno po swapu nedohlídá — viz varování v {@see self::preflight()}.
+     */
+    private const FIRST_TARGET_WITH_MAINTENANCE_GATE = '5.17.0';
+
     /** Záloha starší než tohle už není důkaz, že uživatel zálohoval teď. */
     private const BACKUP_FRESH_SECONDS = 86400;
 
@@ -256,6 +262,18 @@ final class MyuctoUpgradeService
             $pf['ok'] = false;
         }
 
+        // Okno swapu drží nejdřív tenhle kód, ale jakmile swap vymění
+        // api/public/index.php, hlídá zbytek (migrace) už nástupce svým
+        // vlastním. Verze bez brány tedy okno dokončí bez ochrany a requesty
+        // v něm zase spadnou na fatál — ne kvůli chybě, ale protože ta verze
+        // to ještě neuměla. Říct to dopředu je lepší než překvapit v logu.
+        if (version_compare($target, self::FIRST_TARGET_WITH_MAINTENANCE_GATE, '<')) {
+            $pf['warnings'][] = 'MyÚčto ' . $target . ' ještě neumí režim údržby (přibyl v '
+                . self::FIRST_TARGET_WITH_MAINTENANCE_GATE . '). Po výměně souborů poběží migrace bez něj, '
+                . 'takže requesty v tu dobu skončí chybou místo hlášky „probíhá aktualizace". '
+                . 'Přechod tím netrpí, jen to na pár minut zvenku vypadá jako výpadek.';
+        }
+
         $backup = $this->latestBackup();
         if (!$backup['exists']) {
             $pf['warnings'][] = 'Ve storage/backup/ není žádná záloha. Přechod si jednu pořídí sám, '
@@ -273,6 +291,31 @@ final class MyuctoUpgradeService
     /** @return array<string,mixed> */
     public function trigger(?string $targetVersion, string $requestedByEmail, bool $backupConfirmed): array
     {
+        // Bez explicitní verze znamená „nasaď nejnovější", a to se musí zjistit
+        // TEĎ, ne z cache. Ta se plní jen ruční kontrolou a jednou za den, takže
+        // instalace, která se dívala včera, nasadí včerejší verzi — a protože
+        // přechod je nevratný, dozví se o novější až po něm. Přesně tak se
+        // stalo, že se místo 5.17.0 nasadila 5.16.0.
+        //
+        // Selhání sítě přechod nezastaví: spadne se zpátky na cache a řekne se
+        // to. Nedostupný GitHub je špatný důvod, proč nemoct pokračovat, ale
+        // mizerný důvod, proč o tom mlčet.
+        $staleFallback = null;
+        if ($targetVersion === null || $targetVersion === '') {
+            $before = (string) ($this->loadCache()['myucto_latest_version'] ?? '');
+            $this->refreshLatestVersion();
+            $cache = $this->loadCache();
+            $after = (string) ($cache['myucto_latest_version'] ?? '');
+
+            if (($cache['myucto_last_check_error'] ?? '') !== '') {
+                $staleFallback = 'Nepodařilo se ověřit nejnovější verzi MyÚčta ('
+                    . (string) $cache['myucto_last_check_error'] . '), nasazuji naposledy známou '
+                    . $after . '.';
+            } elseif ($before !== '' && $after !== '' && $before !== $after) {
+                $staleFallback = 'Mezitím vyšla novější verze — nasazuji ' . $after . ' místo ' . $before . '.';
+            }
+        }
+
         $target = $targetVersion ?: ($this->loadCache()['myucto_latest_version'] ?? null);
         if (!is_string($target) || $target === '') {
             return [
@@ -366,7 +409,9 @@ final class MyuctoUpgradeService
             'target_version' => $target,
             'message'        => 'Přechod na MyÚčto ' . $target . ' běží na pozadí: nejdřív se zazálohuje '
                 . 'databáze, pak se nasadí MyÚčto a dojedou migrace. Průběh se ukazuje níž.',
-            'warnings'       => $pf['warnings'],
+            'warnings'       => $staleFallback !== null
+                ? array_merge([$staleFallback], $pf['warnings'])
+                : $pf['warnings'],
         ];
     }
 

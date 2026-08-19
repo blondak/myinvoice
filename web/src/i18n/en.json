@@ -1121,6 +1121,11 @@
     "manual_link": "Details in the manual — § 40 Updates"
   },
   "myucto_upgrade": {
+    "handover_running_title": "Swapping files",
+    "handover_running_desc": "The application is unavailable while files are swapped and migrations run, so there is nobody left to report progress — that is why it stopped here. Keep this page open; it will tell you once MyÚčto is ready.",
+    "handover_done_title": "Upgrade finished",
+    "handover_done_desc": "The installation now runs MyÚčto. This page is the last piece of MyInvoice left in your browser — reload it to enter the new interface.",
+    "handover_reload": "Open MyÚčto",
     "checks_title": "Environment check",
     "checks_intro": "What MyÚčto needs and how this installation compares. The upgrade will not start until everything matches.",
     "checks_expected": "expected",
