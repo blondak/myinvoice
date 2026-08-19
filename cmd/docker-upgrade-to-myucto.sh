@@ -195,6 +195,27 @@ if [[ $ok -ne 1 ]]; then
   exit 1
 fi
 
+# --- 7. předání nástupci --------------------------------------------------
+# MyÚčto zavádí přepínač „Vést účetnictví" s defaultem zapnuto. To je správně
+# pro firmu, která v MyÚčtu účtuje, ale ne pro instalaci, která právě přišla
+# z MyInvoice a účetnictví nikdy nevedla: ta by dostala plné účetní menu a
+# k tomu režim „daňová evidence", tedy default sloupce — u s.r.o. rovnou
+# špatně, protože ta vede podvojné účetnictví ze zákona.
+#
+# Nativní přechod tohle řeší uvnitř aplikace (NativeUpdateService), jenže tudy
+# se nejde: v Dockeru se jen vymění image a migrace dojede entrypoint, takže
+# ten kód se nikdy nespustí. Bez tohohle kroku by se docker instalace chovala
+# jinak než nativní — a to se u téže operace stát nesmí.
+#
+# Selhání nesmí shodit přechod: image i schéma jsou v pořádku a aplikace běží.
+echo "==> Vypínám účetnictví (instalace přišla z MyInvoice, kde se neúčtovalo)…"
+if dc exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"       -e "UPDATE supplier SET accounting_enabled = 0 WHERE accounting_enabled = 1"' 2>/dev/null; then
+  echo "    Hotovo. Zapíná se v Nastavení → Licenční moduly spolu s volbou režimu."
+else
+  echo "    VAROVÁNÍ: nepodařilo se vypnout účetnictví — udělej to v Nastavení →" >&2
+  echo "              Licenční moduly, nebo zkontroluj, že heslo v .env sedí." >&2
+fi
+
 echo ""
 echo "============================================================"
 echo " Hotovo — běží MyÚčto.cz na http://localhost:${APP_PORT}"
