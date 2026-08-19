@@ -227,11 +227,22 @@ async function poll(signal: AbortSignal) {
 useSessionAwarePolling(poll, 5000, pollingEnabled)
 
 /**
- * Tvrdý reload, ne router push: v prohlížeči běží SPA MyInvoice, kterou na
- * disku nahradila SPA nástupce. Přejít se dá jen novým načtením dokumentu.
+ * Odchod na přehled nástupce.
+ *
+ * Tvrdá navigace, ne router push: v prohlížeči běží SPA MyInvoice, kterou na
+ * disku nahradila SPA nástupce, takže se přejít dá jen novým načtením
+ * dokumentu.
+ *
+ * A NE reload téhle adresy: `/admin/upgrade` je stránka předchůdce a nástupce
+ * ji nemá, takže by přechod skončil na 404 — po úspěšné operaci ta nejhorší
+ * možná odměna. Míříme proto na kořen, odkud si router nástupce najde přehled
+ * (nebo přihlášení, pokud session nepřežila).
+ *
+ * `replace` místo `assign`, aby mrtvá adresa nezůstala v historii a tlačítko
+ * zpět na ni uživatele nevrátilo.
  */
 function reloadIntoSuccessor(): void {
-  window.location.reload()
+  window.location.replace('/')
 }
 
 function fmtDate(s?: string | null): string {
