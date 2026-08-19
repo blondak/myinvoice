@@ -179,7 +179,11 @@ APP_PORT="${APP_PORT:-8080}"
 echo "==> Čekám, až aplikace odpoví (migrací je hodně, může to chvíli trvat)…"
 ok=0
 for i in $(seq 1 150); do
-  if curl -fsS -o /dev/null "http://localhost:${APP_PORT}/api/health" 2>/dev/null; then
+  # Výstup zahazuje shell, ne `curl -o /dev/null`: na Windows (Git Bash
+  # s MSYS_NO_PATHCONV) dostane curl.exe „/dev/null" jako obyčejnou cestu,
+  # neumí do ní zapsat a skončí chybou 23 — i když server vrátil 200. Health
+  # check pak hlásí zásek u aplikace, která běží.
+  if curl -fsS "http://localhost:${APP_PORT}/api/health" >/dev/null 2>&1; then
     ok=1; break
   fi
   sleep 2
