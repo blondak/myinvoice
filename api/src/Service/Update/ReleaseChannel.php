@@ -27,22 +27,56 @@ final class ReleaseChannel
      *                             (`<prefix>-X.Y.Z.tar.gz`, uvnitř `<prefix>-X.Y.Z/`)
      * @param string $productName  jméno produktu pro logy a hlášky
      * @param bool   $requiresDatabaseBackup  vynutit dump databáze před swapem
+     * @param ?string $minPhpVersion     minimální PHP cílového produktu (null = neověřovat)
+     * @param ?string $minMariaDbVersion minimální MariaDB cílového produktu (null = neověřovat)
+     * @param list<string> $requiredExtensions PHP rozšíření, bez kterých cíl nenaběhne
+     * @param bool $isSuccessorHandover  tohle není update, ale výměna produktu za nástupce
+     *                                   (po migracích se doladí stav — viz
+     *                                   {@see NativeUpdateService::handoverToSuccessor()})
      */
     private function __construct(
         public readonly string $repo,
         public readonly string $bundlePrefix,
         public readonly string $productName,
         public readonly bool $requiresDatabaseBackup = false,
+        public readonly ?string $minPhpVersion = null,
+        public readonly ?string $minMariaDbVersion = null,
+        public readonly array $requiredExtensions = [],
+        public readonly bool $isSuccessorHandover = false,
     ) {}
 
+    /**
+     * Aktualizace v rámci téhož produktu požadavky neověřuje: aplikace zrovna
+     * běží, takže je prostředí z definice splňuje. Kdyby některé vydání laťku
+     * zvedlo, doplní se sem stejně jako u nástupce.
+     */
     public static function myinvoice(): self
     {
         return new self('radekhulan/myinvoice', 'myinvoice', 'MyInvoice.cz');
     }
 
+    /**
+     * Požadavky MyÚčta drž v souladu s jeho `EnvironmentCheckService`
+     * (MIN_PHP, MIN_MARIADB, REQUIRED_EXTENSIONS) — instalace je ověří dřív,
+     * než sáhne na první soubor. Po swapu už je na zjištění „tohle prostředí
+     * na to nestačí" pozdě: kód je vyměněný a zpátky vede jen obnova zálohy.
+     */
     public static function myucto(): self
     {
-        return new self('radekhulan/myucto', 'myucto', 'MyÚčto.cz', requiresDatabaseBackup: true);
+        return new self(
+            'radekhulan/myucto',
+            'myucto',
+            'MyÚčto.cz',
+            requiresDatabaseBackup: true,
+            minPhpVersion: '8.5.0',
+            minMariaDbVersion: '11.8',
+            requiredExtensions: [
+                'bcmath', 'ctype', 'dom', 'fileinfo', 'filter', 'gd', 'iconv', 'json',
+                'libxml', 'mbstring', 'openssl', 'pdo', 'pdo_mysql', 'SimpleXML',
+                'xmlreader', 'zip', 'zlib',
+            ],
+            isSuccessorHandover: true,
+        );
     }
 
     /** API endpoint pro release podle tagu — volá se s připojenou verzí (`…/v` . $target). */

@@ -6,6 +6,7 @@ namespace MyInvoice\Service\Update;
 
 use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Config\Config;
+use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\PhpCliLocator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -190,6 +191,13 @@ final class NativeUpdateService
                 . 'jinak poběží stará bytecode cache.';
         }
 
+        // Dosud se ověřovalo jen to, jestli update proběhne. Tohle ověřuje,
+        // jestli výsledek poběží — u přechodu na nástupce s vyššími nároky
+        // je to rozdíl mezi „nespustí se" a „skončí půl na půl".
+        $req = TargetRequirements::check($this->channel, $this->rootDir);
+        $blockers = array_merge($blockers, $req['blockers']);
+        $warnings = array_merge($warnings, $req['warnings']);
+
         return [
             'ok'        => $blockers === [],
             'supported' => true,
@@ -248,11 +256,24 @@ final class NativeUpdateService
             $backup = $work . '/backup';
             $this->ensureDir($backup);
 
+            // Od téhle chvíle je instalace nekonzistentní (půl staré, půl nové
+            // verze; schéma ještě neposunuté) a musí requestům odpovídat 503,
+            // ne fatálem z půlky autoloadu. Značka padá až po migracích.
+            MaintenanceMode::begin($this->stateDir, $this->channel->productName, $target);
+            $this->appendLog($log, 'Režim údržby zapnut — requesty dostanou 503 do konce migrací.');
+
             $this->progress($target, 'swap', 'Nasazuji nové soubory…');
             $swapped = $this->swap($stage, $backup, $target, $log);
 
             $this->progress($target, 'migrate', 'Spouštím databázové migrace…');
             $this->runMigrations($log);
+
+            if ($this->channel->isSuccessorHandover) {
+                $this->handoverToSuccessor($log);
+            }
+
+            MaintenanceMode::end($this->stateDir);
+            $this->appendLog($log, 'Režim údržby vypnut.');
 
             $this->progress($target, 'finish', 'Dokončuji…');
             $this->writeVersionFile($target, $stage, $log);
@@ -267,6 +288,11 @@ final class NativeUpdateService
             $this->appendLog($log, 'CHYBA: ' . $e->getMessage());
             $this->cleanupParked($log);
             return $this->finishFailed($target, $e->getMessage(), $log);
+        } finally {
+            // I update, který skončil chybou, musí instalaci vrátit do provozu.
+            // Bez tohohle by ji značka držela na 503 až do vlastní expirace,
+            // tedy i ve chvíli, kdy rollback vrátil funkční starou verzi.
+            MaintenanceMode::end($this->stateDir);
         }
     }
 
@@ -641,6 +667,50 @@ final class NativeUpdateService
                 . 'projdi log ' . basename($log) . ' a dokonči `php api/bin/migrate.php` ručně.');
         }
         $this->appendLog($log, 'Migrace OK');
+    }
+
+    /**
+     * Doladění stavu po výměně produktu za nástupce.
+     *
+     * ÚČETNICTVÍ SE VYPÍNÁ. MyÚčto zavádí přepínač „Vést účetnictví" s
+     * defaultem zapnuto — což je správně pro firmu, která v MyÚčtu už účtuje,
+     * ale ne pro instalaci, která právě přišla z MyInvoice a účetnictví nikdy
+     * nevedla. Ta by po přechodu dostala plné účetní menu a k tomu režim
+     * „daňová evidence", tedy default sloupce `accounting_mode` — u s.r.o.
+     * rovnou špatně, protože ta vede podvojné účetnictví ze zákona.
+     *
+     * Nechat to na uživateli není totéž jako vypnout: režim účetnictví
+     * rozhoduje o tom, jak se doklady účtují, a MyÚčto ho po prvním zaúčtování
+     * nepřepíná zadarmo. Přechod proto nechá agendu skrytou a volbu (vést /
+     * nevést, a v jakém režimu) nechá na vědomém rozhodnutí — mzdy, sklad
+     * i OSS se chovají stejně, ty jsou vypnuté už z principu.
+     *
+     * Selhání nesmí shodit celý přechod: kód i schéma jsou v tuhle chvíli
+     * v pořádku a nasazená verze je platná. Zapíše se do logu a jde se dál.
+     */
+    private function handoverToSuccessor(string $log): void
+    {
+        try {
+            $pdo = (new Connection(Config::load($this->rootDir)))->pdo();
+
+            $hasColumn = $pdo->query(
+                "SHOW COLUMNS FROM supplier LIKE 'accounting_enabled'"
+            )->fetch();
+            if ($hasColumn === false) {
+                $this->appendLog($log, 'Předání nástupci: sloupec supplier.accounting_enabled neexistuje — přeskočeno.');
+                return;
+            }
+
+            $stmt = $pdo->prepare('UPDATE supplier SET accounting_enabled = 0 WHERE accounting_enabled = 1');
+            $stmt->execute();
+
+            $this->appendLog($log, 'Předání nástupci: účetnictví vypnuto u ' . $stmt->rowCount()
+                . ' firem — instalace přišla z MyInvoice.cz, kde se neúčtovalo. '
+                . 'Zapíná se v Nastavení → Licenční moduly spolu s volbou režimu.');
+        } catch (Throwable $e) {
+            $this->appendLog($log, 'VAROVÁNÍ: předání nástupci selhalo (' . $e->getMessage()
+                . '). Účetnictví zůstalo zapnuté — vypni ho v Nastavení → Licenční moduly.');
+        }
     }
 
     /** Poslední krok — teprve teď se instalace prohlásí za novou verzi. */
