@@ -61,7 +61,7 @@ services:
       MYINVOICE_SMTP_FROM_NAME: ${MYINVOICE_SMTP_FROM_NAME:-}
 
   db:
-    image: mariadb:11
+    image: mariadb:11.8
     restart: unless-stopped
     # Tuning pro hosting s málo pamětí/diskem:
     #   - performance_schema OFF → ~100–200 MB méně RAM

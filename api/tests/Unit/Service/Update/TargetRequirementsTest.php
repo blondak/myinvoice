@@ -46,6 +46,20 @@ final class TargetRequirementsTest extends TestCase
     }
 
     /**
+     * Kontrola databáze se vrací pod id `db_version` a Docker větev
+     * {@see \MyInvoice\Service\Upgrade\MyuctoUpgradeService::preflight()} podle
+     * toho id vybírá jedinou kontrolu, která tam dává smysl — PHP a rozšíření
+     * si nástupce přiveze ve vlastním image, ale db kontejner zůstává původní.
+     * Přejmenování id by tu kontrolu tiše ztratilo.
+     */
+    public function testDatabaseCheckKeepsIdTheDockerBranchFiltersOn(): void
+    {
+        $ids = array_column(TargetRequirements::check(ReleaseChannel::myucto(), __DIR__)['checks'], 'id');
+
+        self::assertContains('db_version', $ids);
+    }
+
+    /**
      * Chybějící rozšíření je blocker, ne varování: bez něj nástupce nenaběhne
      * a „zkusíme to a uvidíme" končí půlkou nasazené aplikace.
      */

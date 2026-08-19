@@ -10,6 +10,7 @@ use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\BackgroundProcess;
 use MyInvoice\Service\Update\NativeUpdateService;
 use MyInvoice\Service\Update\ReleaseChannel;
+use MyInvoice\Service\Update\TargetRequirements;
 use PDO;
 
 /**
@@ -207,15 +208,30 @@ final class MyuctoUpgradeService
     public function preflight(?string $targetVersion = null): array
     {
         if ($this->detectEnvironment() !== 'native') {
+            // Databázi ověřuj i v Dockeru — je to tam JEDINÁ sdílená součást.
+            // PHP a rozšíření si nástupce přiveze ve vlastním image, takže ta
+            // půlka požadavků je z definice splněná, ale db kontejner zůstává
+            // ten původní. Bez téhle kontroly by se na staré MariaDB přišlo až
+            // z rozbité instalace: image vyměněný, migrace spadlé.
+            $req = TargetRequirements::check(ReleaseChannel::myucto(), $this->rootDir);
+            $dbChecks = array_values(array_filter(
+                $req['checks'],
+                static fn (array $c): bool => $c['id'] === 'db_version',
+            ));
+            $dbBlockers = array_values(array_filter(
+                $req['blockers'],
+                static fn (string $b): bool => str_contains($b, 'MariaDB') || str_contains($b, 'databáz'),
+            ));
+
             return [
                 'ok'        => false,
                 'supported' => false,
-                'blockers'  => [
+                'blockers'  => array_merge([
                     'V Dockeru přechod neprovádí aplikace — kontejner nemůže přepsat vlastní image. '
                         . 'Spusť ho na hostu podle příkazů níž.',
-                ],
+                ], $dbBlockers),
                 'warnings'  => [],
-                'checks'    => [],
+                'checks'    => $dbChecks,
             ];
         }
 

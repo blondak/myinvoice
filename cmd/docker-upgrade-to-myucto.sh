@@ -77,6 +77,45 @@ for f in "${TARGET_FILES[@]}"; do echo "   - $f"; done
 echo ""
 echo " Databáze SE NEMĚNÍ — dojedou nad ní migrace MyÚčta."
 echo " Volume s daty zůstávají. Zpátky vede jen obnova zálohy."
+# --- 0. požadavky nástupce ------------------------------------------------
+# V Dockeru je databáze JEDINÁ sdílená součást: PHP i rozšíření si nástupce
+# přiveze ve vlastním image, ale db kontejner zůstává ten původní. Instalace
+# založená na plovoucím tagu `mariadb:11` může běžet na čemkoli z řady 11.x
+# a `docker compose up` na už stažený image nesáhne, takže se stará verze
+# udrží roky. Migrace MyÚčta ale chtějí 11.8 — a přijít na to až po výměně
+# image znamená rozbitou instalaci, ze které vede zpátky jen obnova zálohy.
+MIN_DB_VERSION="11.8"
+
+echo "==> Ověřuji požadavky MyÚčta…"
+DB_RAW="$(dc exec -T db mariadb --version 2>/dev/null || true)"
+if [[ -z "$DB_RAW" ]]; then
+  echo "CHYBA: nepodařilo se zjistit verzi databáze (kontejner 'db' neodpovídá)." >&2
+  echo "       MyÚčto vyžaduje MariaDB ${MIN_DB_VERSION} nebo novější. Spusť stack a zkus to znovu." >&2
+  exit 1
+fi
+if ! grep -qi mariadb <<<"$DB_RAW"; then
+  echo "CHYBA: databáze není MariaDB. MyÚčto běží jen na MariaDB ${MIN_DB_VERSION} a novější." >&2
+  echo "       Naměřeno: ${DB_RAW}" >&2
+  exit 1
+fi
+DB_VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$DB_RAW" | head -n1)"
+# sort -V řadí verze číselně (11.10 > 11.9), na rozdíl od porovnání řetězců.
+OLDEST="$( { echo "$MIN_DB_VERSION"; echo "$DB_VERSION"; } | sort -V | head -n1 )"
+if [[ -z "$DB_VERSION" || "$OLDEST" != "$MIN_DB_VERSION" ]]; then
+  echo "" >&2
+  echo "CHYBA: MyÚčto vyžaduje MariaDB ${MIN_DB_VERSION} nebo novější, tenhle stack má ${DB_VERSION:-neznámou verzi}." >&2
+  echo "       Přechod NEspouštím — instalace zůstává beze změny." >&2
+  echo "" >&2
+  echo "       Databázi povyš zvlášť, PŘED přechodem (dvě nevratné operace naráz se nedělají):" >&2
+  echo "         1) dc exec -T app php api/bin/cron-backup.php     # záloha" >&2
+  echo "         2) v compose souboru přepiš image db na mariadb:${MIN_DB_VERSION}" >&2
+  echo "         3) docker compose pull db && docker compose up -d db" >&2
+  echo "         4) ověř, že aplikace funguje, a spusť tenhle skript znovu" >&2
+  exit 1
+fi
+echo "    MariaDB ${DB_VERSION} (>= ${MIN_DB_VERSION}) OK. PHP a rozšíření si MyÚčto přiveze ve vlastním image."
+echo ""
+
 echo "============================================================"
 echo ""
 

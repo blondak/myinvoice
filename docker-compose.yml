@@ -57,7 +57,7 @@ services:
       MYINVOICE_SESSION_LOCK_AFTER_MINUTES: ${MYINVOICE_SESSION_LOCK_AFTER_MINUTES:-}
 
   db:
-    image: mariadb:11
+    image: mariadb:11.8
     restart: unless-stopped
     # Tuning pro hosting s málo pamětí/diskem:
     #   - performance_schema OFF → ~100–200 MB méně RAM
