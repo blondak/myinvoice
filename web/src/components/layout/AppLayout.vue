@@ -130,6 +130,7 @@ const ICONS = {
   log:        'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6m-6 4h4',
   cron:       'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
   updates:    'M4 4v5h5M4 9a8 8 0 0 1 14.13-4.06M20 20v-5h-5M20 15a8 8 0 0 1-14.13 4.06',
+  myucto_upgrade: 'M13 7l5 5m0 0l-5 5m5-5H6',
   api_tokens: 'M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9z',
   help:       'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827V14m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   ai:         'M13 10V3L4 14h7v7l9-11h-7z',
@@ -237,6 +238,7 @@ const navSections = computed<NavSection[]>(() => {
         { to: '/admin/integrations',     label: t('nav.integrations'),    icon: ICONS.api_tokens },
         { to: '/admin/cron-jobs',        label: t('nav.cron_jobs'),       icon: ICONS.cron },
         { to: '/admin/update',           label: t('nav.updates'),         icon: ICONS.updates },
+        { to: '/admin/upgrade',          label: t('nav.myucto_upgrade'),  icon: ICONS.myucto_upgrade },
         { to: '/profile/api-tokens',     label: t('nav.api_tokens'),      icon: ICONS.api_tokens },
       ],
     })
@@ -700,7 +702,14 @@ onMounted(async () => {
           <span aria-hidden="true">·</span>
           <button type="button" @click="supportOpen = true"
                   class="cursor-pointer text-primary-600 hover:text-primary-700 font-medium">{{ t('support.author_link') }}</button>
-          <button type="button" @click="myuctoOpen = true"
+          <RouterLink v-if="auth.user?.role === 'admin'" to="/admin/upgrade"
+                  class="cursor-pointer ml-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm hover:bg-primary-700 hover:shadow transition-colors">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+            <span>{{ t('support.myucto_link') }}</span>
+          </RouterLink>
+          <button v-else type="button" @click="myuctoOpen = true"
                   class="cursor-pointer ml-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm hover:bg-primary-700 hover:shadow transition-colors">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -788,6 +797,7 @@ onMounted(async () => {
           </a>
           <a href="https://myucto.cz/" target="_blank" rel="noopener" @click="myuctoOpen = false"
              class="cursor-pointer px-4 h-9 inline-flex items-center text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium">{{ t('support.myucto_cta') }}</a>
+          <p class="w-full text-xs text-neutral-500 text-right">{{ t('support.myucto_ask_admin') }}</p>
         </footer>
       </div>
     </div>
