@@ -670,7 +670,9 @@
       "credit_note_positive_total": "Dobropis má kladný součet — má mít záporné částky. Záporné znaménko stačí na jedné straně (např. −1 ks × 1000, nebo 1 ks × −1000); pokud jsou záporné množství i cena zároveň, výkazy DPH/KH plnění přičtou místo odečtení. Zkontroluj prosím znaménka.",
       "credit_note_mixed_sign_items": "Dobropis má položky obou znamének (například vrácené zboží záporně a kladný storno poplatek). Evidence DPH každou položku dobropisu vykáže záporně, takže kladný řádek by snížil odpočet místo zvýšení. Zkontroluj znaménka podle dokladu od dodavatele; kladnou část je potřeba evidovat samostatným dokladem.",
       "vendor_non_payer_deduction": "Dodavatel je neplátce DPH, ale je uplatněn nárok na odpočet. Od neplátce nelze DPH odpočítat — zkontroluj nastavení odpočtu.",
-      "reverse_charge_forced_by_classification": "Položka má klasifikaci v režimu přenesené povinnosti (reverse charge), proto byl na dokladu automaticky zapnut příznak reverse charge — hlavička a položky si jinak odporovaly."
+      "reverse_charge_forced_by_classification": "Položka má klasifikaci v režimu přenesené povinnosti (reverse charge), proto byl na dokladu automaticky zapnut příznak reverse charge — hlavička a položky si jinak odporovaly.",
+      "public_authority_fee_out_of_scope": "Doklad vypadá jako poplatek orgánu veřejné moci (soudní, správní poplatek, kolek). Orgán veřejné moci při výkonu veřejné správy není osobou povinnou k dani (§ 5 odst. 4 ZDPH), takže plnění není předmětem daně — a to i u zahraničního soudu či úřadu: nesamovyměřuje se podle § 9 odst. 1 a doklad nevstupuje do přiznání ani do kontrolního hlášení. Proto zůstal bez klasifikace DPH. Jde-li přesto o běžnou přijatou službu, vyberte klasifikaci ručně.",
+      "missing_vat_classification": "Doklad nese DPH (nebo je v režimu přenesené daňové povinnosti), ale nemá klasifikaci DPH — do přiznání ani do kontrolního hlášení se tak vůbec nedostane. Typicky jde o sazbu, kterou český číselník nezná (např. německých 19 %), nebo o dodavatele s neurčenou zemí. Zkontrolujte sazby na řádcích a vyberte klasifikaci ručně."
     },
     "classification": {
       "title": "Klasifikace",
@@ -679,7 +681,7 @@
       "manage_categories": "Spravovat kategorie v Číselnících →",
       "vat_classification": "VAT klasifikace (DPH přiznání)",
       "no_vat_class": "(auto-default podle sazby)",
-      "vat_classification_hint": "Pokud nevyberete, systém auto-přiřadí kód podle sazby DPH a země dodavatele: 21 % → 40, 12 % → 41 (tuzemský odpočet); reverse charge: tuzemsko → 5 (§ 92a, ř. 10), EU → 24e (služba, ř. 5), 3. země → 24 (služba, ř. 12). Pořízení ZBOŽÍ z EU (23, ř. 3) a dovoz zboží (25, ř. 7) auto-odhad nerozliší — zvolte ručně.",
+      "vat_classification_hint": "Pokud nevyberete, systém auto-přiřadí kód podle sazby DPH a země dodavatele: 21 % → 40, 12 % → 41 (tuzemský odpočet); reverse charge: tuzemsko → 5 (§ 92a, ř. 10), EU → 24e (služba, ř. 5), 3. země → 24 (služba, ř. 12). Pořízení ZBOŽÍ z EU (23, ř. 3) a dovoz zboží (25, ř. 7) auto-odhad nerozliší — zvolte ručně. U nulové sazby od tuzemského dodavatele (osvobozeno, neplátce) ani u poplatků orgánů veřejné moci (soudní, správní) se kód nepřiřazuje — takové plnění do přiznání ani do kontrolního hlášení nepatří.",
       "vat_deduction": "Nárok na odpočet DPH",
       "vat_deduction_hint": "„Bez nároku“ = faktura nevstupuje do Knihy DPH ani DPHDP3/KH (jen účetní náklad). „Krácený“ = poměrný odpočet §75 — zadáš %, kterým se odpočet zkrátí.",
       "tax_deductible": "Daňově uznatelný náklad",
@@ -1734,7 +1736,7 @@
       "title": "Klasifikace",
       "vat_classification": "VAT klasifikace (DPH přiznání)",
       "no_vat_class": "(auto-default podle sazby)",
-      "vat_classification_hint": "Auto-přiřazení podle sazby DPH a země odběratele: 21 % → 1, 12 % → 2; reverse charge: tuzemsko → 25s (§ 92, ř. 25 + KH A.1), EU → 20 (dodání zboží, ř. 20), 3. země → 26 (ř. 22). Služba do EU (22, ř. 21) se od zboží auto-odhadem nerozliší — zvolte ručně.",
+      "vat_classification_hint": "Auto-přiřazení podle sazby DPH a země odběratele: 21 % → 1, 12 % → 2; reverse charge: tuzemsko → 25s (§ 92, ř. 25 + KH A.1), EU → 20 (dodání zboží, ř. 20), 3. země → 26 (ř. 22). Služba do EU (22, ř. 21) se od zboží auto-odhadem nerozliší — zvolte ručně. U nulové sazby (osvobozená plnění) se kód nepřiřazuje — vyberte ho ručně.",
       "revenue_category": "Kategorie tržby (volitelně)",
       "revenue_category_none": "bez kategorie",
       "revenue_category_placeholder": "např. konzultace, produkt, hosting",

@@ -670,7 +670,9 @@
       "credit_note_positive_total": "Credit note has a positive total — it should have negative amounts. A negative sign on one side is enough (e.g. −1 pc × 1000, or 1 pc × −1000); if both quantity and price are negative, VAT/control-statement reports will add the amount instead of subtracting it. Please check the signs.",
       "credit_note_mixed_sign_items": "The credit note has items with both signs (e.g. returned goods as negative and a positive cancellation fee). VAT records report every credit-note item as negative, so the positive line would decrease the deduction instead of increasing it. Check the signs against the supplier's document; the positive part needs to be recorded as a separate document.",
       "vendor_non_payer_deduction": "The vendor is not a VAT payer, yet a VAT deduction is claimed. VAT cannot be deducted from a non-payer — please check the deduction setting.",
-      "reverse_charge_forced_by_classification": "An item carries a reverse-charge VAT classification, so the reverse-charge flag was enabled on the document automatically — the header and items were contradictory otherwise."
+      "reverse_charge_forced_by_classification": "An item carries a reverse-charge VAT classification, so the reverse-charge flag was enabled on the document automatically — the header and items were contradictory otherwise.",
+      "public_authority_fee_out_of_scope": "This document looks like a public-authority fee (court fee, administrative fee, duty stamp). A public authority acting in that capacity is not a taxable person (Section 5(4) of the Czech VAT Act), so the supply is outside the scope of VAT — including fees charged by a foreign court or office: no self-assessment under Section 9(1), and the document enters neither the VAT return nor the control statement. That is why no VAT classification was assigned. If this really is an ordinary purchased service, pick the classification manually.",
+      "missing_vat_classification": "This document carries VAT (or is under reverse charge) but has no VAT classification, so it reaches neither the VAT return nor the control statement. Typically a rate the Czech codebook does not know (e.g. German 19%) or a vendor with an undetermined country. Check the line rates and pick a classification manually."
     },
     "classification": {
       "title": "Classification",
@@ -679,7 +681,7 @@
       "manage_categories": "Manage categories in Codebooks →",
       "vat_classification": "VAT classification (VAT return)",
       "no_vat_class": "(auto-default by rate)",
-      "vat_classification_hint": "If unset, the system auto-assigns a code by VAT rate and vendor country: 21% → 40, 12% → 41 (domestic deduction); reverse charge: domestic → 5 (§ 92a, row 10), EU → 24e (service, row 5), non-EU → 24 (service, row 12). GOODS acquired from the EU (23, row 3) or imported (25, row 7) cannot be auto-detected — pick manually.",
+      "vat_classification_hint": "If unset, the system auto-assigns a code by VAT rate and vendor country: 21% → 40, 12% → 41 (domestic deduction); reverse charge: domestic → 5 (§ 92a, row 10), EU → 24e (service, row 5), non-EU → 24 (service, row 12). GOODS acquired from the EU (23, row 3) or imported (25, row 7) cannot be auto-detected — pick manually. Zero-rated domestic supplies (exempt, non-payer) and public-authority fees (court, administrative) get no code — they belong to neither the VAT return nor the control statement.",
       "vat_deduction": "VAT deduction entitlement",
       "vat_deduction_hint": "“None” = invoice is excluded from the VAT ledger and DPHDP3/KH (accounting cost only). “Proportional” = partial deduction §75 — enter the % the deduction is reduced to.",
       "tax_deductible": "Tax-deductible expense",
@@ -1734,7 +1736,7 @@
       "title": "Classification",
       "vat_classification": "VAT classification (VAT return)",
       "no_vat_class": "(auto-default by rate)",
-      "vat_classification_hint": "Auto-assigned by VAT rate and customer country: 21% → 1, 12% → 2; reverse charge: domestic → 25s (§ 92, row 25 + KH A.1), EU → 20 (goods supply, row 20), non-EU → 26 (row 22). A SERVICE supplied to the EU (22, row 21) cannot be auto-detected — pick manually.",
+      "vat_classification_hint": "Auto-assigned by VAT rate and customer country: 21% → 1, 12% → 2; reverse charge: domestic → 25s (§ 92, row 25 + KH A.1), EU → 20 (goods supply, row 20), non-EU → 26 (row 22). A SERVICE supplied to the EU (22, row 21) cannot be auto-detected — pick manually. Zero-rated (exempt) supplies get no code — pick one manually.",
       "revenue_category": "Revenue category (optional)",
       "revenue_category_none": "no category",
       "revenue_category_placeholder": "e.g. consulting, product, hosting",
