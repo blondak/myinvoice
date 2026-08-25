@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Novější avíza Fio banky se importují.** Fio rozesílá dva různé tvary e-mailového avíza a vestavěný parser uměl jen ten starší, řádkový („Příjem/Výdaj na kontě: … / Částka: … / VS: … / Protiúčet: …"), navíc vázaný na předmět „Fio banka - prijem/vydaj na konte". Novější prozaická varianta — typicky okamžitá platba z aktuálních aplikací Fio — nese směr, datum, částku i měnu ve větě „zůstatek účtu … se … zvýšil o … CZK" a zbytek má v bloku **Další parametry**; neprošla tedy ani detekcí, ani vytěžením a import skončil hláškou o nenalezeném parseru. Nově parser zvládá oba tvary: nový se pozná podle úvodní věty (ne podle předmětu, ten se u něj liší), „zvýšil" znamená příjem a „snížil" výdaj se záporným znaménkem, z bloku parametrů se berou Protistrana včetně názvu v závorce, variabilní i konstantní symbol, Zpráva pro příjemce (s fallbackem na Zprávu pro mě a Uživatelský symbol), ID pokynu jako reference banky a Aktuální zůstatek. Cílový účet je i tady bez kódu banky, doplní se `/2010`. Kontrola odesílatele na doménu fio.cz zůstává v platnosti. (#271, díky @TOPOSV)
+
 ## [4.56.1] — 2026-08-20
 
 ### Fixed
