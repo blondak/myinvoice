@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.56.3] — 2026-08-27
+
+### Fixed
+
+- **Přiznání k DPH složené ze samovyměření bylo nepodatelné.** Atribut `VetaD/@trans` se odvozoval ze znaménka vlastní daně, takže přiznání, ve kterém se daň na výstupu a zrcadlový odpočet vyruší (ř. 64 = 0) — typicky jediná přijatá faktura v režimu reverse charge —, dostalo `trans="N"`. EPO ale podle toho atributu **přeškrtne celý oddíl C**: sekce I.–VI. se vykreslí jako „v období nedošlo k žádnému zdanitelnému plnění" a obsahová kontrola podání shodí hláškou „JE ZAŠKRTNUTO, ŽE NEEXISTUJÍ ÚDAJE PRO C. ODDÍL, NESMÍ BÝT VYPLNĚNY ÚDAJE V ODDÍLE C." Vyplnil se jen ř. 63, takže formulář navíc vykazoval nadměrný odpočet místo nulové daňové povinnosti a soubor byl bez ručního zásahu nepodatelný, přestože `Veta1` i `Veta4` byly v pořádku. Totéž hrozilo u každého nadměrného odpočtu. `trans` je ve skutečnosti zaškrtávátko „Neexistují-li údaje pro C. oddíl", ne znaménko daně — nově je `A`, kdykoli je v oddílu C cokoliv vyplněné, a `N` zůstává pro období, ve kterém se opravdu nic nestalo. (#273, díky @TOPOSV)
+- **Manuál mapoval zrcadlový odpočet na špatný řádek.** Příklad reverse charge v kapitole *Výkazy DPH* uváděl ř. 43 jako `odp_rezim`/`odp_rez_nar`, jenže ta dvojice patří na **ř. 45** (korekce odpočtu podle § 75, § 77 a § 79 — registrace, vyrovnání); zrcadlový odpočet ze samovyměření nese `nar_zdp23`/`od_zdp23`. Protože tatáž kapitola doporučuje před podáním XML zkontrolovat a případně ručně upravit, vedl by ten příklad k vykázání korekce odpočtu místo odpočtu ze samovyměření. Opraveno i tvrzení, že builder převádí město na velká písmena — `naz_obce` se posílá beze změny a normalizuje si ho EPO samo. (#274, díky @TOPOSV)
+
 ## [4.56.2] — 2026-08-25
 
 ### Fixed
