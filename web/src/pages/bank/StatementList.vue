@@ -266,6 +266,13 @@ async function onDelete(s: BankStatement, ev: MouseEvent) {
 // vs bank-specifický PDF parser — Creditas/ČSOB/KB/Raiffeisenbank, viz BankStatementPdfParserRegistry).
 const ignorePreview = ref<(IgnoreNoticePreview & { fileName: string }) | null>(null)
 const ignoreSelected = ref<number[]>([])
+const allIgnoreSelected = computed(() => !!ignorePreview.value?.candidates.length
+  && ignorePreview.value.candidates.every(candidate => ignoreSelected.value.includes(candidate.index)))
+
+function toggleAllIgnoreSelected() {
+  ignoreSelected.value = allIgnoreSelected.value ? [] : (ignorePreview.value?.candidates.map(candidate => candidate.index) ?? [])
+}
+
 let ignoreResolver: ((decision: IgnoreNoticeDecision | null) => void) | null = null
 let disposed = false
 
@@ -619,6 +626,10 @@ async function onFileSelected(e: Event) {
     <p class="font-medium mb-2 break-words">{{ ignorePreview.fileName }}</p>
     <p class="text-sm text-neutral-600 mb-4">{{ t('bank.ignore_transfer.intro') }}</p>
     <p v-if="ignorePreview.candidates.length === 0" class="text-sm mb-4">{{ t('bank.ignore_transfer.changed') }}</p>
+    <label v-if="ignorePreview.candidates.length" class="flex items-center gap-3 mb-3 text-sm cursor-pointer">
+      <input type="checkbox" :checked="allIgnoreSelected" :indeterminate="ignoreSelected.length > 0 && !allIgnoreSelected" @change="toggleAllIgnoreSelected" />
+      <span>{{ t('common.select_all') }}</span>
+    </label>
     <label v-for="candidate in ignorePreview.candidates" :key="candidate.index" class="flex gap-3 p-3 border border-neutral-200 rounded-md mb-2 cursor-pointer">
       <input v-model="ignoreSelected" type="checkbox" :value="candidate.index" class="mt-1 shrink-0" />
       <span class="min-w-0 text-sm">

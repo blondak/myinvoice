@@ -174,7 +174,7 @@ zpět mezi pohledávky. Activity log: `bank.tx_manual_match_split`.
 ### Přenos ignorování z e-mailových avíz
 
 Při ručním importu GPC/ABO nebo PDF výpisu aplikace před párováním nabídne
-převzetí ignorování ze shodných ručně ignorovaných avíz. Vyber konkrétní
+převzetí ignorování ze shodných ručně ignorovaných avíz. Pomocí **Vybrat vše** lze označit všechny nabídnuté shody nebo jejich výběr zrušit. Vyber konkrétní
 pohyby a potvrď **Přenést vybrané a importovat**. Přenese se i poznámka;
 částky a zůstatky výpisu se nemění. Avízo zůstane ignorované.
 

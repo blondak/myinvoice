@@ -10,7 +10,7 @@ function setup(upload) {
   const script = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
     transformers: { before: [context => node => ts.visitNode(node, function visit(n) { return ts.isImportDeclaration(n) ? undefined : ts.visitEachChild(n, visit, context) })] },
   }).outputText.replace(/export \{\};?/, '')
-  return runInNewContext(`${script}\n({ uploadWithConfirmation, ignorePreview, ignoreSelected, confirmIgnorePreview, finishIgnorePreview, ambiguityModal, ambiguitySelected, confirmAmbiguity })`, {
+  return runInNewContext(`${script}\n({ allIgnoreSelected, toggleAllIgnoreSelected, uploadWithConfirmation, ignorePreview, ignoreSelected, confirmIgnorePreview, finishIgnorePreview, ambiguityModal, ambiguitySelected, confirmAmbiguity })`, {
     ref, computed, defineProps() {}, watch() {}, onMounted() {}, onBeforeUnmount() {},
     useRouter: () => ({}), useRoute: () => ({ query: {} }), useToast: () => ({}), useAuthStore: () => ({}),
     useI18n: () => ({ t: key => key, locale: ref('cs') }), bankApi: { upload, importPdf: upload },
@@ -75,4 +75,17 @@ test('account choice is retained through confirmation and a changed preview rese
   page.finishIgnorePreview({ skip: true })
   await pending
   assert.equal(calls, 4)
+})
+
+test('select all uses candidate indexes and toggles back to no selection', () => {
+  const page = setup(async () => ({}))
+  page.ignorePreview.value = { candidates: [{ index: 2 }, { index: 5 }] }
+  page.ignoreSelected.value = [2]
+  assert.equal(page.allIgnoreSelected.value, false)
+  page.toggleAllIgnoreSelected()
+  assert.deepEqual(Array.from(page.ignoreSelected.value), [2, 5])
+  assert.equal(page.allIgnoreSelected.value, true)
+  page.toggleAllIgnoreSelected()
+  assert.equal(page.ignoreSelected.value.length, 0)
+  assert.equal(page.allIgnoreSelected.value, false)
 })
