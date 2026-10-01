@@ -102,6 +102,14 @@ zůstatek, pokud je banka poskytla. Nechybí odkazy na spárované faktury, cel�
 popis z banky a případná poznámka k ignorování. Detail lze otevřít i u pohybu
 bez popisu. Funguje také na mobilu; delší text se zalamuje.
 
+Přímo v detailu jsou podle stavu transakce dostupné akce **Vytvořit fakturu**
+(pro nespárovanou odchozí platbu), **Spárovat**, **Ignorovat**, **Zrušit spárování**
+a **Zrušit ignorování**. Akce otevře příslušný formulář nebo potvrzovací dialog
+pro právě prohlíženou transakci. Zrušení nebo zavření této akce bez dokončení
+vrátí původní detail transakce. Po úspěšném dokončení se detail znovu neotevírá.
+Dostupnost odpovídá akcím v seznamu; uživatel
+bez oprávnění k zápisu vidí pouze údaje a odkazy na doklady.
+
 Odchozí platby se u přijatých faktur párují podle **platebního variabilního
 symbolu**, interního čísla nebo čísla dokladu dodavatele. Při porovnání se
 zohledňují také úvodní nuly a oddělovače v číslech dokladů. Očekávaná částka
